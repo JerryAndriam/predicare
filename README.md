@@ -21,6 +21,8 @@ administrateur.
 ```bash
 make doctor   # vérifie que la machine est prête — à lancer en premier
 make up       # démarre la plateforme
+make start    # redémarre la plateforme sans build
+make down    # arrête tout le processus de la plateforme
 ```
 
 `make up` crée le `.env` depuis `.env.example`, génère les secrets,
