@@ -66,6 +66,18 @@ up: ## Demarre toute la plateforme (commande du jury)
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
 
+.PHONY: start
+start: ## Demarre SANS reconstruire les images (apres un make down)
+	@echo "Images existantes reutilisees : aucune reconstruction."
+	@echo "Si tu as modifie du code, lance 'make up' pour reconstruire."
+	@scripts/bootstrap.sh
+	# PAS de --remove-orphans, pour la meme raison que `up` : cette option
+	# supprimerait les services des overlays (Superset, Grafana, MLflow).
+	@$(COMPOSE_CORE) up -d
+	@$(MAKE) --no-print-directory wait
+	@echo ""
+	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
+
 .PHONY: build
 build: ## Construit les images sans demarrer
 	@$(DOCKER_BUILD)
@@ -90,7 +102,7 @@ clean: ## Arrete tout ET supprime les volumes (donnees perdues)
 		fi
 
 .PHONY: restart
-restart: down up ## Redemarre completement et verifie la persistance
+restart: down start ## Redemarre SANS reconstruire (utilise `make restart up` apres une modif. de code)
 
 # =============================================================================
 # PROFILS OPTIONNELS

@@ -135,7 +135,7 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/seeds/`                |   Cherica    | Référentiels d'actes et données de référence                                                                                                                                                    |
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
-| `scripts/`                 |    Jerry     | Ce que le jury exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                             |
+| `scripts/`                 |    Jerry     | Ce qu'on exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                                   |
 | `tests/`                   |    Jerry     | pytest : 212 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision. E2E dans `tests/e2e/`                                          |
 | `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
 
@@ -202,23 +202,44 @@ Ces quatre dossiers existent sur votre machine mais **ne sont pas versionnés**
 
 ## Commandes
 
-| Commande                                                                  | Effet                                                        |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `make help`                                                               | Liste toutes les commandes                                   |
-| `make doctor`                                                             | Vérifie que la machine est prête — à lancer en premier       |
-| `make up`                                                                 | Démarre la plateforme (commande du jury)                     |
-| `make ps`                                                                 | État des conteneurs, tous profils confondus                  |
-| `make health`                                                             | Sonde `/health` et `/metrics` de chaque service              |
-| `make smoke`                                                              | Parcours de vérification de bout en bout                     |
-| `make logs` / `make logs-service S=api-core`                              | Journaux                                                     |
-| `make backup` / `make backups` / `make restore`                           | Sauvegarde et restauration                                   |
-| `make migrate` / `make reload-data`                                       | Rejouer les migrations ou le chargement                      |
-| `make n8n-import` / `make n8n-export`                                     | Installer ou exporter les workflows                          |
-| `make acces`                                                              | Régénérer la fiche d'identifiants                            |
-| `make threshold VALEUR=0.75`                                              | Changer le seuil d'alerte à chaud                            |
-| `make sync` / `make lint` / `make typecheck` / `make test` / `make check` | Développement Python                                         |
-| `make down`                                                               | Arrêt, **les données sont conservées**                       |
-| `make clean`                                                              | Arrêt **et** suppression des volumes — confirmation demandée |
+| Commande                                                                  | Effet                                                                                |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `make help`                                                               | Liste toutes les commandes                                                           |
+| `make doctor`                                                             | Vérifie que la machine est prête — à lancer en premier                               |
+| `make up`                                                                 | Démarre la plateforme **en reconstruisant** les images — commande de build principal |
+| `make ps`                                                                 | État des conteneurs, tous profils confondus                                          |
+| `make health`                                                             | Sonde `/health` et `/metrics` de chaque service                                      |
+| `make smoke`                                                              | Parcours de vérification de bout en bout                                             |
+| `make logs` / `make logs-service S=api-core`                              | Journaux                                                                             |
+| `make backup` / `make backups` / `make restore`                           | Sauvegarde et restauration                                                           |
+| `make migrate` / `make reload-data`                                       | Rejouer les migrations ou le chargement                                              |
+| `make n8n-import` / `make n8n-export`                                     | Installer ou exporter les workflows                                                  |
+| `make acces`                                                              | Régénérer la fiche d'identifiants                                                    |
+| `make threshold VALEUR=0.75`                                              | Changer le seuil d'alerte à chaud                                                    |
+| `make sync` / `make lint` / `make typecheck` / `make test` / `make check` | Développement Python                                                                 |
+| `make start`                                                              | Redémarre **sans reconstruire**, après un `make down`                                |
+| `make restart`                                                            | `down` puis `start`, sans reconstruction                                             |
+| `make down`                                                               | Arrêt, **les données sont conservées**                                               |
+| `make clean`                                                              | Arrêt **et** suppression des volumes — confirmation demandée                         |
+
+### Reconstruire ou pas
+
+`make up` reconstruit systématiquement les images : c'est le bon réflexe sur
+une machine vierge et après une modification de code. Mais compose va malgré
+tout interroger le réseau pour résoudre les images de base — un `make up`
+peut donc bloquer si la machine n'a plus internet, alors que la pile est
+parfaitement capable de démarrer.
+
+C'est le cas d'usage du jour J, où l'on répète la démonstration :
+
+```bash
+make down     # arrêt, les données restent
+make start    # redémarrage immédiat, aucune reconstruction
+```
+
+Si tu as modifié du code, il faut reconstruire : `make start` utilise
+volontairement les images existantes, et rien ne le signale dans
+l'interface.
 
 ---
 
