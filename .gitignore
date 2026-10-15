@@ -42,3 +42,4 @@ apps/n8n/credentials/
 *.log
 .idea/
 .vscode/
+local/
