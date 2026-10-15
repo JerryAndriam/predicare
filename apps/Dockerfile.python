@@ -1,0 +1,85 @@
+# =============================================================================
+# Image des services Python PrediCare (api-core, api-inference, api-rag, seed)
+# -----------------------------------------------------------------------------
+# Un seul patron pour tous les services, un contexte de build unique a la
+# racine du depot : le meme `uv.lock` et le meme environnement virtuel pour
+# tous, donc aucune divergence de version entre l'entrainement et l'inference.
+#
+# Choix : UNE image partagee, pas une image par service.
+# Chaque service reste un conteneur distinct avec sa propre commande et son
+# propre cycle de vie ; seul l'image est mutualisee. Le gain est concret :
+# une seule resolution de dependances, un cache de construction partage, et
+# aucune possibilite que `api-core` et `api-rag` divergent de quelques
+# versions. Le cout est une image plus volumineuse (XGBoost, SHAP et
+# LangChain dans le meme artefact), qui ne pese rien en memoire tant que le
+# code n'est pas importe.
+# =============================================================================
+
+# ---------- Etape 1 : installation dans un environnement temporaire -------
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+WORKDIR /app
+
+# Copie d'abord les manifestes : tant que les dependances ne changent pas,
+# cette couche est reutilisee par le cache Docker.
+COPY pyproject.toml uv.lock .python-version ./
+COPY packages/predicare-core/pyproject.toml packages/predicare-core/
+COPY apps/api-core/pyproject.toml apps/api-core/
+COPY apps/api-inference/pyproject.toml apps/api-inference/
+COPY apps/api-rag/pyproject.toml apps/api-rag/
+COPY apps/seed/pyproject.toml apps/seed/
+
+# --no-install-project : installe les dependances sans encore builder les
+# projets du workspace, dont les sources arrivent a l'etape suivante.
+# Sans cette separation, le moindre changement de code invaliderait la
+# couche de resolution, qui est la plus lente du build.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev --all-packages --no-editable
+
+# ---------- Etape 2 : code source et installation des projets -------------
+COPY packages/predicare-core/src packages/predicare-core/src
+COPY apps/api-core/src apps/api-core/src
+COPY apps/api-inference/src apps/api-inference/src
+COPY apps/api-rag/src apps/api-rag/src
+COPY apps/seed/src apps/seed/src
+
+# --no-editable : les projets du workspace sont INSTALLES dans levenv, pas
+# lies a /app. L'image d'execution ne copie que /opt/venv, donc une
+# installation editable pointant vers /app/packages n'y existerait pas.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --all-packages --no-editable
+
+# ---------- Etape 3 : image d'execution ------------------------------------
+FROM python:3.12-slim-bookworm AS runtime
+
+# libpq5 est requis par psycopg a l'execution.
+# curl sert aux healthchecks : un conteneur doit pouvoir prouver lui-meme
+# qu'il repond, sans dependre d'un client HTTP externe.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Utilisateur non root : un conteneur compromis ne doit pas offrir un shell
+# root a l'exploitant de la plateforme (critere de securite, 15 % du bareme).
+RUN groupadd --system predicare \
+    && useradd --system --gid predicare --home-dir /app --create-home predicare
+USER predicare
+
+WORKDIR /app
+
+EXPOSE 8001 8002 8003
+
+# Compose surcharge la commande : uvicorn pour les API, `alembic upgrade`
+# pour le job de migration, `python -m` pour le chargement et les workers.
+CMD ["uvicorn", "predicare_core_api.main:app", "--host", "0.0.0.0", "--port", "8001"]

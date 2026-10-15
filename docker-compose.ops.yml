@@ -1,0 +1,45 @@
+# =============================================================================
+# Overlay exploitation : sauvegarde et restauration
+# -----------------------------------------------------------------------------
+# Demarrage : `make up-backup` (en plus du coeur)
+#
+# Le conteneur joue une sauvegarde pg_dump quotidienne et conserve 14 jours.
+# La restauration est une commande explicite (`make restore`), jamais
+# automatique : restaurer par erreur ecraserait les donnees de la journee.
+#
+# Memoire : environ 64 Mo.
+# =============================================================================
+
+services:
+  backup:
+    image: postgres:16-alpine
+    container_name: predicare-backup
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-predicare}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-predicare}
+      PGDATABASE: ${POSTGRES_DB:-predicare}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+    volumes:
+      - ./db/backup:/backup:ro
+      - ./backups:/backups
+      # Supercronic remplace cron : controle des jobs plus fin, logs en
+      # stdout (donc collectes par Docker) et redemarrage plus rapide.
+      - ./ops/backup/crontab:/etc/crontabs/root:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - core
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 96M

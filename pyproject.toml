@@ -1,0 +1,96 @@
+# =============================================================================
+# PrediCare TPA - racine du workspace uv
+# -----------------------------------------------------------------------------
+# Ce projet est un "virtual root" : il ne contient aucun code, il feder les
+# membres du workspace et porte les dependances de developpement communes.
+# Le verrou (uv.lock) est commite : les builds sont reproductibles au bit.
+# =============================================================================
+
+[project]
+name = "predicare"
+version = "0.1.0"
+description = "PrediCare TPA - Detection de fraude medicale, RAG agentique et BI"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+    "packages/predicare-core",
+    "apps/api-core",
+    "apps/api-inference",
+    "apps/api-rag",
+    "apps/seed",
+]
+
+# ---------------------------------------------------------------------------
+# Dependances de developpement : une seule source de verite pour toute l'equipe.
+# ---------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "pre-commit>=4.0",
+    "types-pyyaml>=6.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+branch = true
+source = ["apps", "packages"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# ---------------------------------------------------------------------------
+# ruff : lint + format (module 8 du cursus : qualite de code)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["db/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "C4", "ARG", "PTH", "RUF"]
+ignore = [
+    "E501",    # line-length gere par le formateur
+    "B008",    # FastAPI : Depends() en valeur par defaut
+    "ARG001",  # dependances FastAPI resolues par le framework, pas par le corps
+    "ARG005",  # idem pour les parametres injectes par Depends
+    "RUF001",  # ponctuation francaise dans les commentaires
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Les parametres injectes par Depends sont utilises par FastAPI, pas par le corps.
+"apps/*/src/*/router.py" = ["ARG001", "ARG005"]
+"apps/*/tests/*" = ["ARG001", "ARG005"]
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["predicare", "predicare_core_api", "predicare_inference_api", "predicare_rag_api"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["db/migrations/"]
+
+# Ces bibliotheques embarquees n'ont pas de typage publie : on baisse la
+# verification plutot que d'ignorer le module entier.
+[[tool.mypy.overrides]]
+module = ["shap.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

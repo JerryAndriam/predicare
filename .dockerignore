@@ -1,0 +1,36 @@
+# Garde le contexte de build minimal et reproductible.
+.git/
+.github/
+.gitignore
+.dockerignore
+
+# Secrets et donnees : jamais dans une image
+.env
+.env.*
+!.env.example
+data/
+models/
+backups/
+artifacts/
+apps/n8n/credentials/
+
+# Fichiers de travail locaux
+.venv/
+venv/
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Interface compilee localement (reconstruite dans l'image)
+apps/web/node_modules/
+apps/web/dist/
+
+# Docs et tests d'integration : pas necessaires a l'execution
+docs/
+tests/
+*.md

@@ -1,0 +1,505 @@
+# =============================================================================
+# PrediCare TPA - pile principale
+# -----------------------------------------------------------------------------
+# Une seule commande sur une machine vierge : `docker compose up -d`
+# (ou `make up`, qui enchaine bootstrap + build + up + controle).
+#
+# Les briques lourdes (MLflow, Prometheus, Grafana, Superset) sont dans des
+# overlays `docker-compose.*.yml` demarrables a la demande : voir le
+# `README.md` de ce dossier.
+#
+# DEUX PLANS DE RESEAU :
+#   - `core` (internal: true) : services applicatifs <-> PostgreSQL et Redis.
+#     Aucun acces a Internet possible depuis ce plan.
+#   - `edge` : passerelle, interface, BI, supervision.
+# =============================================================================
+
+name: ${COMPOSE_PROJECT_NAME:-predicare}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-env-common: &env-common
+  TZ: ${TZ:-Europe/Paris}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  API_LOG_FORMAT: ${API_LOG_FORMAT:-json}
+  PREDICARE_DB_URL: ${PREDICARE_DB_URL:-postgresql+psycopg://predicare:predicare@db:5432/predicare}
+  PREDICARE_DB_RO_URL: ${PREDICARE_DB_RO_URL:-}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-only-change-me}
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
+  JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+  IDENTITY_ENCRYPTION_KEY: ${IDENTITY_ENCRYPTION_KEY:-}
+  FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-0.8}
+  FRAUD_MIN_RECALL: ${FRAUD_MIN_RECALL:-0.90}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+  MODEL_DIR: ${MODEL_DIR:-/models}
+  MODEL_ACTIVE_VERSION: ${MODEL_ACTIVE_VERSION:-1}
+  DRIFT_WINDOW_DAYS: ${DRIFT_WINDOW_DAYS:-30}
+  DRIFT_KS_THRESHOLD: ${DRIFT_KS_THRESHOLD:-0.1}
+  LLM_API_BASE: ${LLM_API_BASE:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.0}
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-800}
+  EMBEDDING_API_BASE: ${EMBEDDING_API_BASE:-}
+  EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+  EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  SMTP_FROM: ${SMTP_FROM:-alertes@predicare.local}
+  RAG_TOP_K: ${RAG_TOP_K:-6}
+  RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD:-0.72}
+  SEMANTIC_CACHE_THRESHOLD: ${SEMANTIC_CACHE_THRESHOLD:-0.95}
+  SEMANTIC_CACHE_TTL_SECONDS: ${SEMANTIC_CACHE_TTL_SECONDS:-86400}
+
+x-build-python: &build-python
+  image: predicare-python:latest
+  build:
+    context: .
+    dockerfile: apps/Dockerfile.python
+
+services:
+  # =======================================================================
+  # DONNEES
+  # =======================================================================
+  db:
+    # pgvector : une seule instance porte metier, vecteurs et audit.
+    # Choix justifie dans le dossier FinOps (le CDC n'autorise une base
+    # vectorielle separee que sous reserve de justification).
+    image: pgvector/pgvector:pg16
+    container_name: predicare-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-predicare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predicare}
+      POSTGRES_DB: ${POSTGRES_DB:-predicare}
+      N8N_DB_NAME: ${N8N_DB_NAME:-n8n}
+      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME:-superset}
+      TZ: ${TZ:-Europe/Paris}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+    ports:
+      - "${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - core
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-predicare} -d ${POSTGRES_DB:-predicare}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  redis:
+    image: redis:7-alpine
+    container_name: predicare-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${REDIS_PORT:-63790}:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - core
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+  # =======================================================================
+  # JOBS ONE-SHOT : migrations et chargement initial
+  # =======================================================================
+  migrate:
+    <<: *build-python
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.python
+    container_name: predicare-migrate
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *env-common
+      POSTGRES_USER: ${POSTGRES_USER:-predicare}
+      PREDICARE_DB_RO_PASSWORD: ${PREDICARE_DB_RO_PASSWORD:-}
+      SUPERSET_DB_RO_PASSWORD: ${SUPERSET_DB_RO_PASSWORD:-}
+      N8N_DB_NAME: ${N8N_DB_NAME:-n8n}
+      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME:-superset}
+      MLFLOW_DB_NAME: ${MLFLOW_DB_NAME:-mlflow}
+    volumes:
+      - ./db/migrations:/app/db/migrations:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+      - ./models:/models
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - core
+    logging: *default-logging
+
+  seed:
+    <<: *build-python
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.python
+    container_name: predicare-seed
+    restart: "no"
+    command: ["python", "-m", "predicare_seed.load_initial_data"]
+    environment:
+      <<: *env-common
+      DATA_RAW_DIR: /data/raw
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+    logging: *default-logging
+
+  # =======================================================================
+  # FLUX 3 + SOCLE : identites, factures, decisions, administration
+  # =======================================================================
+  api-core:
+    <<: *build-python
+    container_name: predicare-api-core
+    restart: unless-stopped
+    command: ["uvicorn", "predicare_core_api.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers"]
+    environment:
+      <<: *env-common
+      INFERENCE_API_URL: http://api-inference:8002
+      RAG_API_URL: http://api-rag:8003
+    ports:
+      - "${API_CORE_PORT:-8001}:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8001/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # =======================================================================
+  # FLUX 1 : detection de fraude
+  # =======================================================================
+  api-inference:
+    <<: *build-python
+    container_name: predicare-api-inference
+    restart: unless-stopped
+    command: ["uvicorn", "predicare_inference_api.main:app", "--host", "0.0.0.0", "--port", "8002", "--proxy-headers"]
+    environment:
+      <<: *env-common
+    ports:
+      - "${API_INFERENCE_PORT:-8002}:8002"
+    volumes:
+      - models:/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8002/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # =======================================================================
+  # FLUX 2 : assistant agentique
+  # =======================================================================
+  api-rag:
+    <<: *build-python
+    container_name: predicare-api-rag
+    restart: unless-stopped
+    command: ["uvicorn", "predicare_rag_api.main:app", "--host", "0.0.0.0", "--port", "8003", "--proxy-headers"]
+    environment:
+      <<: *env-common
+    ports:
+      - "${API_RAG_PORT:-8003}:8003"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+      # Plan `edge` : la passerelle doit pouvoir router /api/rag vers ce
+      # service, comme elle le fait pour les deux autres.
+      - edge
+      # Seul plan autorise a sortir vers Internet : c'est lui qui appelle le
+      # fournisseur LLM. Les API de donnees restent hors d'atteinte.
+      - egress
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8003/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  # =======================================================================
+  # TRAITEMENTS DE FOND (memes images, commandes differentes)
+  # =======================================================================
+  worker-ingest:
+    image: predicare-python:latest
+    container_name: predicare-worker-ingest
+    # Profil optionnel : tant que l'ingestion et le suivi de derive ne sont
+    # pas codes, ce worker ne fait qu'un heartbeat. Le garder actif
+    # consommerait 512 Mo pour rien. `make up-workers` le lance des que le
+    # code est la.
+    profiles: ["workers"]
+    restart: unless-stopped
+    command: ["python", "-m", "predicare_inference_api.worker"]
+    environment:
+      <<: *env-common
+    volumes:
+      - models:/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  worker-ai:
+    image: predicare-python:latest
+    container_name: predicare-worker-ai
+    # Voir worker-ingest : indexation des contrats et maintenance du cache.
+    profiles: ["workers"]
+    restart: unless-stopped
+    command: ["python", "-m", "predicare_rag_api.worker"]
+    environment:
+      <<: *env-common
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+      - egress
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 640M
+
+  # =======================================================================
+  # INTERFACE ET PASSERELLE
+  # =======================================================================
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_GATEWAY_URL: /api
+    image: predicare-web:latest
+    container_name: predicare-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8081}:8080"
+    depends_on:
+      api-core:
+        condition: service_healthy
+    networks:
+      - edge
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  gateway:
+    image: traefik:v3.7
+    container_name: predicare-gateway
+    restart: unless-stopped
+    # Routage declare en fichier (ops/traefik/) : la passerelle n'a pas
+    # besoin du socket Docker, donc une compromission de l'interface ne donne
+    # pas un acces root a l'hote. Voir ops/traefik/static.yml pour le
+    # detail de ce choix.
+    command:
+      - "--configFile=/etc/traefik/static.yml"
+      - "--accesslog=true"
+      - "--log.level=INFO"
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    volumes:
+      - ./ops/traefik/static.yml:/etc/traefik/static.yml:ro
+      - ./ops/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+    networks:
+      - edge
+    depends_on:
+      api-core:
+        condition: service_healthy
+      api-inference:
+        condition: service_healthy
+      api-rag:
+        condition: service_healthy
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+  # =======================================================================
+  # NOTIFICATIONS ET ORCHESTRATION
+  # =======================================================================
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: predicare-mailpit
+    # Profil optionnel : c'est la boite de reception de developpement. Sans
+    # lui, le workflow n8n fonctionne, mais son noeud e-mail echoue a
+    # l'execution. `make up-email` l'ajoute.
+    profiles: ["email"]
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    networks:
+      - edge
+      - egress
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: predicare-n8n
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: db
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-n8n}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-predicare}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-predicare}
+      # Stable : c'est elle qui permet de dechiffrer un export de
+      # credentials restaure sur une machine vierge.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me-n8n}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin@predicare.local}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change-me}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: http
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      GENERIC_TIMEZONE: ${TZ:-Europe/Paris}
+      TZ: ${TZ:-Europe/Paris}
+      # Variables lues par les workflows via $env dans l'interface n8n.
+      # Elles sont injectees ici pour que le workflow versionne reste
+      # independant de la machine sur laquelle il est importe.
+      PREDICARE_API_URL: http://api-inference:8002
+      SEUIL_ALERTE: ${FRAUD_ALERT_THRESHOLD:-0.8}
+      PLAFOND_ALERTE: ${N8N_PLAFOND_MONTANT:-1000}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_FROM: ${SMTP_FROM:-alertes@predicare.local}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8ndata:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    depends_on:
+      db:
+        condition: service_healthy
+      # n8n refuse de demarrer si sa base n'existe pas et redemarre en
+      # boucle : on attend donc que le job de migration l'ait creee.
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+      - edge
+      - egress
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+# =============================================================================
+# RESEAUX
+# =============================================================================
+networks:
+  # `internal: true` : aucun routage vers Internet depuis ce plan. Les
+  # services applicatifs ne peuvent joindre que PostgreSQL et Redis.
+  core:
+    internal: true
+  edge:
+  # Sortie Internet autorisee, reservee au service qui appelle le LLM et a
+  # n8n qui appelle Slack. Aucun acces au plan `core` depuis celui-ci.
+  egress:
+
+volumes:
+  pgdata:
+  redisdata:
+  n8ndata:
+  models:

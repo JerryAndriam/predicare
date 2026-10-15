@@ -1,0 +1,110 @@
+# =============================================================================
+# Passerelle - routage applicatif
+# -----------------------------------------------------------------------------
+# Une seule origine pour l'utilisateur : le navigateur ne voit jamais
+# l'adresse interne d'un service, et la politique de securite (en-tetes,
+# limitation de debit) s'applique a toute la plateforme sans cooperation du
+# code React.
+# =============================================================================
+
+http:
+
+  # --------------------------------------------------------------------
+  # Middlewares
+  # --------------------------------------------------------------------
+  middlewares:
+
+    # En-tetes de securite appliques a toute la plateforme sans cooperation
+    # du code React : une seule definition, aucun ecart possible entre deux
+    # ecrans. Pertinent pour le cadrage RGPD et AI Act.
+    predicare-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+        browserXssFilter: true
+        customResponseHeaders:
+          X-Content-Type-Options: nosniff
+          X-Frame-Options: DENY
+          Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+          Content-Security-Policy: >-
+            default-src 'self'; img-src 'self' data:;
+            style-src 'self' 'unsafe-inline';
+            frame-ancestors 'none'
+
+    # Limitation de debit : le RAG appelle un LLM paye a la requete. Sans
+    # plafond, un script peut epuiser le quota FinOps en quelques minutes.
+    predicare-rate-limit:
+      rateLimit:
+        average: 60
+        burst: 120
+        period: 1m
+
+  # --------------------------------------------------------------------
+  # Routage
+  # --------------------------------------------------------------------
+  routers:
+
+    # ---- Flux 3 et socle -------------------------------------------------
+    predicare-core:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/core`)"
+      service: predicare-core
+      priority: 100
+
+    # ---- Flux 1 : detection de fraude ------------------------------------
+    predicare-inference:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/inference`)"
+      service: predicare-inference
+      priority: 100
+
+    # ---- Flux 2 : assistant agentique ------------------------------------
+    predicare-rag:
+      entryPoints: [web]
+      rule: "PathPrefix(`/api/rag`)"
+      service: predicare-rag
+      priority: 100
+
+    # ---- Sonde de sante de la passerelle ---------------------------------
+    # Priorite 200 pour gagner devant le prefixe general `/api/...`.
+    # Les sondes par service restent accessibles sur leurs ports directs
+    # (8002, 8003) : la passerelle ne reecrit pas les chemins, une route
+    # `/health/inference` arriverait donc en `/health/inference` sur l'API
+    # d'inference, qui ne sert que `/health`.
+    predicare-health:
+      entryPoints: [web]
+      rule: "Path(`/health`)"
+      service: predicare-core
+      priority: 200
+
+    # ---- Interface : tout le reste ---------------------------------------
+    predicare-web:
+      entryPoints: [web]
+      rule: "PathPrefix(`/`)"
+      service: predicare-web
+      priority: 1
+
+  services:
+    predicare-core:
+      loadBalancer:
+        servers:
+          - url: "http://api-core:8001"
+
+    predicare-inference:
+      loadBalancer:
+        servers:
+          - url: "http://api-inference:8002"
+
+    predicare-rag:
+      loadBalancer:
+        servers:
+          - url: "http://api-rag:8003"
+
+    predicare-web:
+      loadBalancer:
+        servers:
+          - url: "http://web:8080"

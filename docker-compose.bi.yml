@@ -1,0 +1,119 @@
+# =============================================================================
+# Overlay pilotage decisionnel : Superset connecte en lecture seule
+# -----------------------------------------------------------------------------
+# Demarrage : `make up-bi`
+#
+# Superset se connecte a PostgreSQL avec un compte en LECTURE SEULE
+# (`superset_ro`) et une transaction forcee en lecture seule : conformement
+# au CDC ("connecte en lecture"), l'outil de BI ne peut pas modifier une
+# donnee metier, meme en cas de requete erroneous.
+#
+# Memoire : environ 900 Mo. C'est le service le plus lourd de la pile, d'ou
+# son isolement en profil.
+# =============================================================================
+
+x-superset-env: &superset-env
+  TZ: ${TZ:-Europe/Paris}
+  SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-change-me-superset}
+  SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+  SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-change-me-superset}
+  SUPERSET_FERNET_KEY: ${SUPERSET_FERNET_KEY:-change-me-superset-fernet}
+  SUPERSET_LOAD_EXAMPLES: ${SUPERSET_LOAD_EXAMPLES:-no}
+  # Connexion BI : lecture seule imposee par la base ET par la session.
+  # Connexion BI : c'est cette URI que `register_datasets.py` enregistre dans
+  # Superset comme source unique du tableau de bord. Elle est en lecture
+  # seule. Les metadonnees de Superset utilisent, elles, POSTGRES_USER sur
+  # la base `superset` : voir ops/superset/superset_config.py.
+  # L'option PostgreSQL `default_transaction_read_only` est portee par l'URI
+  # et non par une option globale : c'est la seule maniere de la reserver a la
+  # source BI, les metadonnees de Superset devant rester accessibles en
+  # ecriture.
+  DB_CONNECTION_STRING: postgresql+psycopg2://superset_ro:${SUPERSET_DB_RO_PASSWORD:-predicare}@db:5432/${POSTGRES_DB:-predicare}?options=-c%20default_transaction_read_only%3Don
+  POSTGRES_USER: ${POSTGRES_USER:-predicare}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predicare}
+  DB_HOST: db
+  DB_PORT: "5432"
+
+services:
+  superset-init:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset-init
+    environment:
+      <<: *superset-env
+    depends_on:
+      db:
+        condition: service_healthy
+      # La base `superset` est creee par le job de migration : sans elle,
+      # `superset init` echoue sur une base inexistante.
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+    # Script dans un fichier plutot qu'inline : le chevauchement des
+    # guillemets YAML / Compose / bash rendait une erreur silencieuse.
+    command: ["/bin/bash", "/app/init.sh"]
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  superset-import:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset-import
+    environment:
+      <<: *superset-env
+      POSTGRES_USER: ${POSTGRES_USER:-predicare}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-predicare}
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    networks:
+      - core
+    command: ["python", "/app/register_datasets.py"]
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  superset:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset
+    restart: unless-stopped
+    environment:
+      <<: *superset-env
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    volumes:
+      - supersetdata:/app/superset_home
+    depends_on:
+      superset-import:
+        condition: service_completed_successfully
+    networks:
+      - core
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+volumes:
+  supersetdata:

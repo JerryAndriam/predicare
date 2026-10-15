@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: uv.lock a jour
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$
+
+      - id: n8n-credentials-leak
+        name: pas de credentials n8n commites
+        entry: scripts/check-n8n-leak.sh
+        language: system
+        pass_filenames: true
+        files: ^apps/n8n/workflows/.*\.json$

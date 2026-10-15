@@ -1,0 +1,51 @@
+# =============================================================================
+# Overlay industrialisation ML : suivi des experiences et versionnage
+# -----------------------------------------------------------------------------
+# Demarrage : `make up-mlops` (ou `docker compose -f docker-compose.yml \
+# -f docker-compose.mlops.yml up -d`)
+#
+# MLflow est VOLONTAIREMENT hors du coeur de la pile. Le service
+# `api-inference` sert les modeles depuis le volume `models`, pas depuis
+# MLflow : la detection de fraude doit continuer a fonctionner si ce profil
+# est arrete, y compris pendant la soutenance.
+#
+# Les artefacts sont ecrits sur un volume local et non dans un stockage objet
+# separe : un seul point de sauvegarde a proteger, et aucune dependance a un
+# service tiers pour lire un modele.
+#
+# Memoire : environ 640 Mo.
+# =============================================================================
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    container_name: predicare-mlflow
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://${POSTGRES_USER:-predicare}:${POSTGRES_PASSWORD:-predicare}@db:5432/${MLFLOW_DB_NAME:-mlflow}
+      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+    environment:
+      MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+    volumes:
+      - ./artifacts/mlflow:/mlflow/artifacts
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - core
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 640M

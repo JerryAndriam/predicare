@@ -1,0 +1,73 @@
+# =============================================================================
+# Overlay observabilite : metriques et tableaux de bord de supervision
+# -----------------------------------------------------------------------------
+# Demarrage : `make up-observability`
+#
+# Ces briques sont un COMPLEMENT : la supervision exigee par le jury
+# fonctionne deja sans elles via /health, /metrics et l'ecran
+# d'administration de l'interface. Elles ajoutent l'historisation et les
+# alertes, pas la visibilite de base.
+#
+# Memoire : environ 450 Mo.
+# =============================================================================
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: predicare-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    networks:
+      - core
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: predicare-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+volumes:
+  promdata:
+  grafanadata:

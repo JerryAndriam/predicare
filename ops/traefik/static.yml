@@ -1,0 +1,37 @@
+# =============================================================================
+# Passerelle - configuration statique
+# -----------------------------------------------------------------------------
+# Configuration declaree en fichier plutot que decouverte via le socket
+# Docker. Trois raisons, toutes exploitables a la soutenance :
+#
+# 1. SECURITE : le conteneur n'a pas besoin de `docker.sock`. Ce socket est
+#    equivalente a un acces root sur l'hote ; un routeur expose dessus
+#    transformerait une faille d'interface en compromission complete.
+# 2. DETERMINISME : les routes ne dependent pas de l'ordre de demarrage ni
+#    du SDK du moteur Docker. Le meme fichier produit le meme routage partout.
+# 3. LISIBILITE : le chemin complet demande -> service est lisible en une
+#    lecture, ce qui rend le routage demonstrable devant le jury.
+# =============================================================================
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+api:
+  dashboard: false
+  insecure: false
+
+log:
+  level: INFO
+  # Le journal d'acces s'active par l'option `--accesslog` : la cle
+  # `log.accessLog` n'existe pas dans la configuration statique de
+  # Traefik v3, qui renvoie alors "field not found" et refuse de demarrer.

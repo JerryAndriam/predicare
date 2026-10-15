@@ -1,0 +1,13 @@
+# Sauvegarde quotidienne PrediCare (execute dans le conteneur `backup`)
+#
+# 03h00 : sauvegarde complete + purge au-dela de 14 jours
+# La restauration reste manuelle (`make restore`), jamais automatique.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+BACKUP_DIR=/backups
+
+0 3 * * * /backup/pg_dump.sh >> /proc/1/fd/1 2>/proc/1/fd/2
+
+# Verification hebdomadaire de l'integrite des archives : une sauvegarde
+# jamais lue n'est pas une sauvegarde.
+0 4 * * 0 gzip -t /backups/predicare_*.sql.gz 2>/dev/null && echo "Sauvegardes : integrite OK" || echo "Sauvegardes : archive corrompue trouvee"

@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------
+  # Qualite du code : lint, format, types, tests
+  # Exigence du CDC ("tests et CI" dans la condition Maintenable).
+  # --------------------------------------------------------------------
+  quality:
+    name: Qualite et tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Verifier que uv.lock est a jour
+        run: uv lock --check
+
+      - name: Installer les dependances
+        # --all-packages : le workspace contient cinq projets, un seul ne
+        # suffirait pas a executer toute la suite de tests.
+        run: uv sync --frozen --all-packages
+
+      - name: Ruff - lint
+        run: uv run --all-packages ruff check .
+
+      - name: Ruff - format
+        run: uv run --all-packages ruff format --check .
+
+      - name: Mypy
+        run: uv run --all-packages mypy packages apps
+
+      - name: Pytest avec couverture
+        run: |
+          uv run --all-packages pytest \
+            --cov \
+            --cov-report=xml \
+            --cov-report=term \
+            --junitxml=reports/junit.xml
+
+      - name: Publier le rapport de couverture
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rapports-tests
+          path: reports/
+          retention-days: 7
+
+  # --------------------------------------------------------------------
+  # Construction des images : prouve que la chaine de build est complete
+  # et reproductible, sans pousser sur le registre.
+  # --------------------------------------------------------------------
+  build:
+    name: Construction des images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: predicare-python
+            dockerfile: apps/Dockerfile.python
+            args: "APP_MODULE=predicare_core_api.main"
+          - name: predicare-web
+            dockerfile: apps/web/Dockerfile
+            args: "VITE_API_GATEWAY_URL=/api"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construire ${{ matrix.service.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.service.name }}:ci
+          build-args: ${{ matrix.service.args }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+  # --------------------------------------------------------------------
+  # Coherence du compose : `docker compose config` echoue si une variable
+  # obligatoire manque ou si une dependance de service est inconnue.
+  # --------------------------------------------------------------------
+  compose:
+    name: Coherence du compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Valider le compose principal
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Valider les overlays
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.mlops.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.bi.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.observability.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.ops.yml config --quiet
+
+  # --------------------------------------------------------------------
+  # Garde-fou secrets : le patron critique de ce projet est de ne jamais
+  # commiter de cle. On verifie que .env n'est pas suivi par Git.
+  # --------------------------------------------------------------------
+  secrets:
+    name: Aucun secret versionne
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verifier que .env est ignore
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::Le fichier .env est versionne. Il contient des secrets."
+            exit 1
+          fi
+          echo ".env est correctement ignore"
+
+      - name: Verifier l'absence de credentials n8n versionnees
+        run: |
+          if git ls-files 'apps/n8n/credentials/*.json' | grep -q .; then
+            echo "::error::Des credentials n8n sont versionnees."
+            exit 1
+          fi
+          echo "Aucune credential n8n versionnee"
+
+      - name: Scanner les secrets d'Astre (detecteur de fuites)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

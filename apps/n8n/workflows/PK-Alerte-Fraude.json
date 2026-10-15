@@ -1,0 +1,284 @@
+{
+  "name": "PK-Alerte-Fraude",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerte-fraude",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Webhook entree",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -380,
+        0
+      ],
+      "webhookId": "predicare-alerte-fraude"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "lignes",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Eclater les lignes",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "score-superieur-au-seuil",
+              "leftValue": "={{ $json.montant_total }}",
+              "rightValue": "={{ $env.PLAFOND_ALERTE }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Montant au-dessus du seuil",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PREDICARE_API_URL }}/api/inference/predire",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ facture_id: $json.facture_id, assure_pseudonyme: $json.assure_pseudonyme, prestataire_id: $json.prestataire_id, date_facture: $json.date_facture, montant_total: $json.montant_total, lignes: $json.lignes }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Invoquer l'API d'inference",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        -120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "score-fraude-eleve",
+              "leftValue": "={{ $json.score_fraude }}",
+              "rightValue": "={{ $env.SEUIL_ALERTE }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Score superieur au seuil",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "select": "fields",
+        "fieldValues": "={{ 'Facture ' + $json.facture_id + ' — score ' + $json.score_fraude + ' (seuil ' + $json.seuil_applique + ')\\n\\n' + $json.rapport_shap }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Composer le rapport SHAP",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "chatType": "channel",
+        "select": "channel",
+        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
+        "text": "={{ $json.rapport_shap }}",
+        "otherOptions": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Notifier Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        -200
+      ],
+      "notes": "La credential Slack se cree dans l'interface n8n : aucun webhook n'est versionne dans ce fichier."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "Journaliser en base",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1000,
+        40
+      ],
+      "notes": "Ecrit l'alerte dans ml.prediction pour alimenter le tableau de bord."
+    },
+    {
+      "parameters": {},
+      "id": "a1000000-0000-4000-8000-000000000009",
+      "name": "Aucune anomalie",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        760,
+        40
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook entree": {
+      "main": [
+        [
+          {
+            "node": "Eclater les lignes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eclater les lignes": {
+      "main": [
+        [
+          {
+            "node": "Montant au-dessus du seuil",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montant au-dessus du seuil": {
+      "main": [
+        [
+          {
+            "node": "Invoquer l'API d'inference",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aucune anomalie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoquer l'API d'inference": {
+      "main": [
+        [
+          {
+            "node": "Score superieur au seuil",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score superieur au seuil": {
+      "main": [
+        [
+          {
+            "node": "Composer le rapport SHAP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aucune anomalie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Composer le rapport SHAP": {
+      "main": [
+        [
+          {
+            "node": "Notifier Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Journaliser en base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "pinData": {},
+  "staticData": null
+}

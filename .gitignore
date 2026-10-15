@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------- Python / uv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.python-version.local
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ---------------------------------------------------------------- Node / web
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+
+# ---------------------------------------------------------------- Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------- Donnees runtime
+/data/
+/models/
+/backups/
+/artifacts/
+
+# ---------------------------------------------------------------- n8n
+# Les workflows sont versionnes, les credentials contiennent le webhook Slack
+# et la cle LLM : jamais commites.
+apps/n8n/credentials/
+!apps/n8n/credentials/README.md
+
+# ---------------------------------------------------------------- Divers
+.DS_Store
+*.log
+.idea/
+.vscode/

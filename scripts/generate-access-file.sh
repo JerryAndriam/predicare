@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Generateur du fichier d'identifiants PrediCare
+# -----------------------------------------------------------------------------
+# Produit une fiche d'accès à jour, lisible le jour de la soutenance.
+#
+# Pourquoi un fichier HORS du dépôt : il contient les vrais mots de passe.
+# Il est écrit à côté du CDC et du plan d'action, jamais dans le dépôt Git,
+# ce qui évite d'avoir à ajouter une règle d'exclusion et protège l'historique.
+#
+# Usage :
+#   make acces
+#   make acces ACCES_FILE=/tmp/fichier.md
+#
+# Le script n'invente jamais de valeur : un secret encore au marqueur
+# `CHANGER_MOI` est signalé « à remplir » plutôt que recopié tel quel.
+# =============================================================================
+
+set -uo pipefail
+
+RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$RACINE"
+
+# Cible par defaut : le dossier ou sont deja le CDC et le plan d'action.
+ACCES_DIR="${ACCES_DIR:-/home/jerry/Documents/predicare}"
+ACCES_FILE="${ACCES_FILE:-${ACCES_DIR}/ACCES_PREDICARE.md}"
+
+log() { printf '\033[36m[acces]\033[0m %s\n' "$*"; }
+err() { printf '\033[31m[acces]\033[0m %s\n' "$*" >&2; }
+
+if [ ! -f .env ]; then
+    err "Aucun .env. Lancez d'abord : make setup"
+    exit 1
+fi
+
+# shellcheck disable=SC1091
+set -a
+source .env
+set +a
+
+# --- Lecture des valeurs --------------------------------------------------
+valeur() {
+    local nom="$1"
+    local v="${!nom:-}"
+    if [ -z "$v" ]; then
+        printf '⚠ non défini'
+    elif printf '%s' "$v" | grep -q 'CHANGER_MOI'; then
+        printf '⚠ À REMPLIR'
+    else
+        printf '`%s`' "$v"
+    fi
+}
+
+port() { printf '%s' "${!1:-}"; }
+
+marquant() {
+    local nom="$1"
+    if [ -z "${!nom:-}" ]; then
+        printf 'absent'
+    elif printf '%s' "${!nom}" | grep -q 'CHANGER_MOI'; then
+        printf 'À REMPLIR'
+    else
+        printf 'ok'
+    fi
+}
+
+# --- État de la pile ------------------------------------------------------
+etat_service() {
+    local conteneur="$1"
+    if ! docker inspect "$conteneur" >/dev/null 2>&1; then
+        printf 'non démarré'
+        return
+    fi
+    local etat redemarrages
+    etat=$(docker inspect -f '{{.State.Status}}' "$conteneur" 2>/dev/null || echo '?')
+    redemarrages=$(docker inspect -f '{{.RestartCount}}' "$conteneur" 2>/dev/null || echo 0)
+    if [ "$etat" = "running" ]; then
+        if [ "${redemarrages:-0}" -ge 3 ]; then
+            printf 'en boucle de redémarrage'
+        else
+            printf 'démarré'
+        fi
+    else
+        printf '%s' "$etat"
+    fi
+}
+
+mkdir -p "$(dirname "$ACCES_FILE")"
+
+# --- Écriture -------------------------------------------------------------
+cat > "$ACCES_FILE" <<ENTETE
+# PrediCare TPA — fiche d'accès
+
+> **Contient des secrets.** Ne pas diffuser, ne pas versionner, ne pas
+> imprimer dans un document partagé. Ce fichier est écrit **hors** du dépôt
+> Git, à côté du CDC et du plan d'action.
+
+Généré le $(date '+%Y-%m-%d à %H:%M') par \`make acces\`.
+Source des valeurs : le fichier \`.env\` de la plateforme.
+
+---
+
+## 1. Accès aux applications
+
+| Application | URL | Utilisateur | Mot de passe | État |
+| --- | --- | --- | --- | --- |
+| **Interface PrediCare** | http://localhost:$(port GATEWAY_PORT) | ⚠ aucun compte créé | — | $(etat_service predicare-web) |
+| Documentation API (Swagger) | http://localhost:$(port GATEWAY_PORT)/api/core/docs | libre | — | $(etat_service predicare-api-core) |
+| API inference (Swagger) | http://localhost:$(port API_INFERENCE_PORT)/api/inference/docs | libre | — | $(etat_service predicare-api-inference) |
+| API RAG (Swagger) | http://localhost:$(port API_RAG_PORT)/api/rag/docs | libre | — | $(etat_service predicare-api-rag) |
+| **n8n** — workflows d'alerte | http://localhost:$(port N8N_PORT) | \`${N8N_BASIC_AUTH_USER:-admin@predicare.local}\` | $(valeur N8N_BASIC_AUTH_PASSWORD) | $(etat_service predicare-n8n) |
+| **Superset** — tableau de bord | http://localhost:$(port SUPERSET_PORT) | \`${SUPERSET_ADMIN_USERNAME:-admin}\` | $(valeur SUPERSET_ADMIN_PASSWORD) | $(etat_service predicare-superset) |
+| Grafana — supervision | http://localhost:$(port GRAFANA_PORT) | \`${GRAFANA_ADMIN_USER:-admin}\` | $(valeur GRAFANA_ADMIN_PASSWORD) | $(etat_service predicare-grafana) |
+| MLflow — suivi ML | http://localhost:$(port MLFLOW_PORT) | libre | — | $(etat_service predicare-mlflow) |
+| Prometheus — métriques | http://localhost:$(port PROMETHEUS_PORT) | libre | — | $(etat_service predicare-prometheus) |
+| Mailpit — e-mails de dev | http://localhost:$(port MAILPIT_UI_PORT) | libre | — | $(etat_service predicare-mailpit) |
+
+Les services en « libre » n'ont pas d'authentification : ils sont hors du
+réseau de données et n'exposent rien de sensible.
+
+---
+
+## 2. Accès aux bases de données
+
+Serveur unique, trois comptes avec trois périmètres distincts.
+
+| Compte | Base | Usage | Mot de passe |
+| --- | --- | --- | --- |
+| \`predicare\` | predicare | application, migrations, sauvegarde | $(valeur POSTGRES_PASSWORD) |
+| \`predicare_ro\` | predicare | **agent RAG** — lecture seule, filtré sur l'assuré connecté | $(valeur PREDICARE_DB_RO_PASSWORD) |
+| \`superset_ro\` | predicare | **tableau de bord BI** — lecture seule, aucun accès au schéma \`audit\` | $(valeur SUPERSET_DB_RO_PASSWORD) |
+
+Connexion locale :
+
+\`\`\`bash
+make shell-db
+# ou
+psql "postgresql://predicare:$(printf '%s' "${POSTGRES_PASSWORD:-MOT_DE_PASSE}")@localhost:$(port POSTGRES_PORT)/predicare"
+\`\`\`
+
+Bases annexes créées automatiquement : \`n8n\`, \`superset\`, \`mlflow\`.
+
+---
+
+## 3. Clés externes à renseigner
+
+Elles ne sont **pas** dans le dépôt et ne peuvent pas l'être.
+
+| Service | Variable | État |
+| --- | --- | --- |
+| Fournisseur LLM | \`LLM_API_KEY\` | $(marquant LLM_API_KEY) |
+| Embeddings | \`EMBEDDING_API_KEY\` | $(marquant EMBEDDING_API_KEY) |
+| Slack — alerte fraude | \`SLACK_WEBHOOK_URL\` | $(marquant SLACK_WEBHOOK_URL) |
+| Slack — canal | \`SLACK_CHANNEL_ID\` | $(marquant SLACK_CHANNEL_ID) |
+
+Sans clé LLM, l'assistant RAG démarre mais répond
+« service temporairement indisponible ». Sans webhook Slack, le workflow
+n8n s'exécute mais n'alerte personne : les credentials se créent **dans
+l'interface n8n**, pas dans un fichier.
+
+---
+
+## 4. À compléter avant la démonstration
+
+- [ ] **Comptes utilisateurs des 4 rôles.** La table \`core.utilisateur\` est
+      vide : personne ne peut encore se connecter à l'interface. À créer
+      dans \`db/seeds/\`.
+- [ ] \`LLM_API_KEY\` et \`EMBEDDING_API_KEY\` — sans eux, pas de démonstration
+      de l'assistant conversationnel.
+- [ ] Credentials Slack dans l'interface n8n (Settings → Credentials).
+- [ ] Modèle de fraude entraîné — sans lui, \`api-inference\` reste
+      \`degraded\` et ne note aucune facture.
+- [ ] Jeu de données dans \`./data/raw\` — la base est vide.
+- [ ] Workflow n8n importé : \`make n8n-import\`.
+
+---
+
+## 5. Configuration courante
+
+| Réglage | Valeur | Où le changer |
+| --- | --- | --- |
+| Seuil d'alerte | $(printf '%s' "${FRAUD_ALERT_THRESHOLD:-0.8}") | écran d'administration, sans redémarrage |
+| Rappel minimal visé | $(printf '%s' "${FRAUD_MIN_RECALL:-0.90}") | \`.env\`, sert de justification au choix du seuil |
+| Modèle d'embeddings | \`$(printf '%s' "${EMBEDDING_MODEL:-text-embedding-3-small}")\` | \`.env\` |
+| Modèle LLM | \`$(printf '%s' "${LLM_MODEL:-gpt-4o-mini}")\` | \`.env\` |
+| Dimension des vecteurs | $(printf '%s' "${EMBEDDING_DIMENSION:-1536}") | \`.env\` — **doit rester alignée sur \`EMBEDDING_MODEL\`** |
+
+---
+
+## 6. Commandes du jour J
+
+\`\`\`bash
+make up                  # démarre la plateforme
+make ps                  # état des conteneurs
+make health              # santé et métriques de chaque service
+make smoke               # parcours de vérification complet
+make logs                # journaux en direct
+make logs-service S=n8n  # journaux d'un service
+
+make n8n-import          # installe et publie les workflows versionnés
+make threshold VALEUR=0.75   # change le seuil à chaud
+
+make backup              # sauvegarde PostgreSQL immédiate
+make backups             # liste des sauvegardes
+make restore             # restauration (demande confirmation)
+
+make down                # arrêt, les données sont conservées
+\`\`\`
+
+---
+
+## 7. Deux pièges à connaître
+
+1. **Changer \`POSTGRES_PASSWORD\` casse la base existante.** L'image
+   PostgreSQL n'applique ce mot de passe qu'à la première initialisation
+   du volume. Sur une installation qui tourne, il faut soit
+   \`make clean && make up\`, soit un \`ALTER ROLE\` suivi de la mise à jour
+   des URL dans le \`.env\`.
+2. **\`n8n\` redémarre en boucle si sa base n'existe pas.** Le job
+   \`migrate\` la crée ; s'il n'a pas abouti, le correctif est
+   \`make migrate\` puis \`docker compose restart n8n\`.
+
+---
+
+*Regénérer ce fichier : \`make acces\`.*
+ENTETE
+
+# shellcheck disable=SC2086
+chmod 600 "$ACCES_FILE"
+
+log "Fiche d'accès écrite :"
+log "  $ACCES_FILE"
+log ""
+log "Elle est hors du dépôt Git : aucun secret n'entre dans l'historique."
+
+# Contrôle : aucun de ces secrets ne doit avoir fui dans le dépôt.
+if git grep -q -- "$(printf '%s' "${POSTGRES_PASSWORD:-}" | head -c 12)" 2>/dev/null; then
+    err "ATTENTION : un mot de passe de base figure dans un fichier versionné."
+    exit 1
+fi
