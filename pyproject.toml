@@ -72,7 +72,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Les parametres injectes par Depends sont utilises par FastAPI, pas par le corps.
 "apps/*/src/*/router.py" = ["ARG001", "ARG005"]
-"apps/*/tests/*" = ["ARG001", "ARG005"]
+# Les fixtures pytest non utilisees dans un test restent une signature
+# explicite : c'est ce qui documente ce que le test recoit.
+"tests/**" = ["ARG001", "ARG005"]
 "**/__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]

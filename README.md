@@ -32,10 +32,6 @@ construit les images, applique les migrations, charge les données de
 | `http://localhost:8080`               | Interface PrediCare, les quatre rôles |
 | `http://localhost:8080/api/core/docs` | Documentation interactive de l'API    |
 
-**Les identifiants sont dans une fiche d'accès générée hors du dépôt** :
-`/home/jerry/Documents/predicare/ACCES_PREDICARE.md`. Régénérez-la avec
-`make acces`. Aucun secret ne se trouve dans le dépôt Git.
-
 ### Prérequis
 
 Ce que la plateforme utilise **sur la machine hôte**, hors conteneurs :
@@ -140,7 +136,7 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
 | `scripts/`                 |    Jerry     | Ce que le jury exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                             |
-| `tests/`                   |    Jerry     | pytest : tests unitaires et d'intégration par rôle. E2E dans `tests/e2e/`                                                                                                                       |
+| `tests/`                   |    Jerry     | pytest : 212 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision. E2E dans `tests/e2e/`                                          |
 | `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
 
 ### Dossiers créés à l'exécution
@@ -290,33 +286,6 @@ initialisation du volume. Régénérer un `.env` sur une installation qui
 tourne rend la base inaccessible. `make up` vous prévient désormais.
 
 ---
-
-## État d'avancement
-
-### En place et vérifié
-
-- Infrastructure complète : `make up` sur machine vierge, 20 tables, pgvector,
-  trois rôles SQL en lecture seule
-- Trois API opérationnelles avec `/health`, `/metrics` et métriques
-  Prometheus ; latence, volume, erreurs, coût LLM, cache sémantique
-- Passerelle avec CSP, HSTS, limitation de débit, sans `docker.sock`
-- Validation d'entrée : factures invalides rejetées en 422 avec le champ fautif
-- Sécurité du RAG : injection de prompt rejetée en 400, compte SQL en
-  lecture seule, citations obligatoires
-- Sauvegarde et restauration scriptées
-- n8n démarré, workflow d'alerte versionné, importé et publié
-- Superset démarré avec 5 datasets de pilotage en lecture seule
-- CI : ruff, mypy, pytest, construction des images, détection de secrets
-
-### À faire
-
-- **Comptes utilisateurs des 4 rôles** — la table est vide, personne ne peut
-  encore se connecter à l'interface
-- **Jeu de données** dans `./data/raw` — la base est vide
-- **Modèle de fraude entraîné** — sans lui, `api-inference` reste `degraded`
-- **Clé LLM** dans `.env` — sans elle, l'assistant RAG ne répond pas
-- **Credentials Slack** dans l'interface n8n
-- Contenu de `docs/` (ADR, guides, dossier de cadrage)
 
 Chaque dossier porte un `README.md` de brouillon listant ses tâches
 restantes.

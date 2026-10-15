@@ -9,6 +9,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# `actions: write` est necessaire au cache de build GitHub
+# (`cache-to: type=gha`). Sans lui, le job de construction echoue sur une
+# pull request avec le message "Resource not accessible by integration".
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   # --------------------------------------------------------------------
   # Qualite du code : lint, format, types, tests
@@ -44,6 +51,7 @@ jobs:
 
       - name: Pytest avec couverture
         run: |
+          mkdir -p reports
           uv run --all-packages pytest \
             --cov \
             --cov-report=xml \
@@ -69,9 +77,11 @@ jobs:
       fail-fast: false
       matrix:
         service:
-          - name: predicare-python
-            dockerfile: apps/Dockerfile.python
-            args: "APP_MODULE=predicare_core_api.main"
+- name: predicare-python
+              dockerfile: apps/Dockerfile.python
+              # L'image Python est partagee par tous les services et n'a
+              # aucun ARG a definir : `build-args` reste vide pour elle.
+              args: ""
           - name: predicare-web
             dockerfile: apps/web/Dockerfile
             args: "VITE_API_GATEWAY_URL=/api"
@@ -84,7 +94,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: ${{ matrix.service.dockerfile }}
           push: false
           load: true
           tags: ${{ matrix.service.name }}:ci
