@@ -91,6 +91,18 @@ if command -v docker >/dev/null 2>&1; then
         manque "Compose v2" "sudo apt install docker-compose-plugin"
         PROBLEMES=$((PROBLEMES + 1))
     fi
+    # BuildKit n'est atteignable que par buildx. Sans lui, Compose construit
+    # avec le constructeur classique, qui refuse le `RUN --mount` des
+    # Dockerfiles : `make up` echoue apres avoir telecharge les images de base.
+    if docker buildx version >/dev/null 2>&1; then
+        version="$(docker buildx version 2>/dev/null | cut -c1-46)"
+        ok "buildx" "${version:-present}"
+    else
+        manque "buildx" "sudo apt install docker-buildx-plugin"
+        printf "  ${V_DOUX}Requis par BuildKit. Sans lui, le build echoue sur${V_RESET}\n"
+        printf "  ${V_DOUX}les couches RUN --mount des Dockerfiles.${V_RESET}\n"
+        PROBLEMES=$((PROBLEMES + 1))
+    fi
 else
     manque "Docker" "docs.docker.com/engine/install"
     PROBLEMES=$((PROBLEMES + 1))

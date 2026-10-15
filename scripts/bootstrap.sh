@@ -101,6 +101,23 @@ verifier_docker() {
         err "Debian / Ubuntu : sudo apt install docker-compose-plugin"
         exit 1
     }
+    # BuildKit est requis par les Dockerfiles, qui utilisent `RUN --mount`
+    # pour le cache uv. Or BuildKit n'est atteignable que par le plugin
+    # buildx : sans lui, Compose revient au constructeur classique et le build
+    # echoue sur la premiere couche `RUN --mount`, trois minutes plus tard.
+    docker buildx version >/dev/null 2>&1 || {
+        err "Le plugin Docker buildx est requis (BuildKit)."
+        err "Sans lui, Docker retombe sur le constructeur classique et le"
+        err "build des images echoue sur 'RUN --mount'."
+        err ""
+        printf '  Debian / Ubuntu : sudo apt install docker-buildx-plugin\n' >&2
+        printf '  Fedora          : sudo dnf install docker-buildx-plugin\n' >&2
+        printf '  Arch            : sudo pacman -S docker-buildx\n' >&2
+        printf '  macOS           : installez Docker Desktop, qui l\x27embarque\n' >&2
+        printf '  Sinon           : https://github.com/docker/buildx/releases\n' >&2
+        printf '                     (binaire dans ~/.docker/cli-plugins/docker-buildx)\n' >&2
+        exit 1
+    }
 }
 
 # --- Generation des secrets ----------------------------------------------
@@ -210,7 +227,12 @@ verifier_ports() {
     command -v ss >/dev/null 2>&1 || return 0
 
     for cle in $ports_a_verifier; do
-        valeur="$(grep -E "^${cle}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+        # `head -1` est obligatoire : si la meme cle apparait deux fois dans le
+        # .env, la valeur recuperee devient multiligne, le filtre `sport = :`
+        # de ss devient invalide, et le conflit passe inaperçu. C'est exactement
+        # ce qui est arrivé tant que .env.example declarait N8N_PORT et
+        # MLFLOW_PORT en double.
+        valeur="$(grep -E "^${cle}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '[:space:]' || true)"
         [ -n "$valeur" ] || continue
         if ss -ltn "sport = :${valeur}" >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -qE "[:.]${valeur}\$"; then
             conflits+=("${cle}=${valeur}")
