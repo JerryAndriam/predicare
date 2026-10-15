@@ -38,15 +38,28 @@ construit les images, applique les migrations, charge les données de
 
 Ce que la plateforme utilise **sur la machine hôte**, hors conteneurs :
 
-| Outil                   | Requis | Pourquoi                             |
-| ----------------------- | :----: | ------------------------------------ |
-| **Docker** + Compose v2 |  oui   | lance tout le reste                  |
-| **make**                |  oui   | point d'entrée des commandes         |
-| **curl**                |  oui   | sondes de santé pendant le démarrage |
-| bash + coreutils        |  oui   | déjà présents sur toute machine      |
+| Outil                          | Requis | Pourquoi                             |
+| ------------------------------ | :----: | ------------------------------------ |
+| **Docker** + Compose v2        |  oui   | lance tout le reste                  |
+| **buildx**                     |  oui   | BuildKit, pour construire les images |
+| **make**                       |  oui   | point d'entrée des commandes         |
+| **curl**                       |  oui   | sondes de santé pendant le démarrage |
+| bash + coreutils               |  oui   | déjà présents sur toute machine      |
 
 C'est tout. Les secrets sont générés par `/dev/urandom`, donc **ni `openssl`
 ni `python3` ne sont nécessaires** pour démarrer la plateforme.
+
+`buildx` est le seul prérequis qui ne soit pas évident : les Dockerfiles
+utilisent `RUN --mount=type=cache` pour le cache `uv`, or le constructeur
+historique de Docker ne sait pas l'exécuter. Sans le plugin, `make up` échoue
+sur la première couche `RUN --mount`.
+
+```bash
+sudo apt install docker-buildx-plugin   # Debian / Ubuntu
+sudo pacman -S docker-buildx            # Arch
+```
+
+Docker Desktop l'embarque déjà. `make doctor` vérifie sa présence.
 
 | Outil         | Requis pour                                        |                Nécessaire pour `make up`                 |
 | ------------- | -------------------------------------------------- | :------------------------------------------------------: |

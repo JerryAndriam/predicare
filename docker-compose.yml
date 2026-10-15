@@ -95,7 +95,14 @@ services:
     networks:
       - core
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-predicare} -d ${POSTGRES_DB:-predicare}"]
+      # -h 127.0.0.1 est indispensable, pas decoratif. Sur un volume vide,
+      # l'image officielle demarre un serveur Postgres TEMPORAIRE qui n'ecoute
+      # que sur la socket Unix. Un `pg_isready` sans -h passe alors par la
+      # socket : le conteneur est declare sain et Compose lance migrate et les
+      # API, qui se connectent en TCP et recoivent « Connection refused ».
+      # En TCP, la sonde echoue jusqu'a l'ecoute reel sur 0.0.0.0, ce qui est
+      # exactement la condition que les autres services attendent.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-predicare} -d ${POSTGRES_DB:-predicare}"]
       interval: 10s
       timeout: 5s
       retries: 12

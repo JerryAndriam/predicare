@@ -15,7 +15,7 @@ jaune() { printf '\033[33m%s\033[0m' "$1"; }
 
 verifier_service() {
     local nom="$1" url="$2"
-    local reponse statut detail
+    local reponse lecture statut detail
 
     reponse="$(curl -fsS --max-time 5 "$url" 2>/dev/null)" || {
         printf '  %-18s %s\n' "$nom" "$(rouge 'injoignable')"
@@ -23,18 +23,31 @@ verifier_service() {
         return
     }
 
-    statut="$(printf '%s' "$reponse" | python3 -c \
-        'import json,sys; print(json.load(sys.stdin).get("status","?"))' 2>/dev/null || echo '?')"
+    # Deux formats de reponse coexistent : les API rendent du JSON
+    # ({"status": "ok"|"degraded", "checks": {...}}), l'interface nginx rend
+    # du texte plat ("ok") sur /healthz. Un parseur JSON unique faisait passer
+    # l'interface pour un service en panne : `make health` sortait en erreur
+    # alors que tout repondait, y compris le jour de la demonstration.
+    lecture="$(printf '%s' "$reponse" | python3 -c \
+        'import json, sys
 
-    detail="$(printf '%s' "$reponse" | python3 -c \
-        'import json,sys
-data = json.load(sys.stdin)
-checks = data.get("checks", {})
-manquants = data.get("missing_secrets", [])
-parts = [f"{k}={v}" for k, v in checks.items()]
-if manquants:
-    parts.append(f"secrets_manquants={len(manquants)}")
-print("  ".join(parts))' 2>/dev/null || echo '-')"
+brut = sys.stdin.read().strip()
+statut, detail = "?", "-"
+try:
+    data = json.loads(brut)
+except ValueError:
+    if brut.lower() in {"ok", "healthy", "up"}:
+        statut, detail = "ok", "texte=plain"
+else:
+    statut = data.get("status", "?")
+    parts = [f"{k}={v}" for k, v in data.get("checks", {}).items()]
+    manquants = data.get("missing_secrets", [])
+    if manquants:
+        parts.append(f"secrets_manquants={len(manquants)}")
+    detail = "  ".join(parts)
+print(f"{statut}\t{detail}")' 2>/dev/null || printf '?\t-')"
+
+    IFS=$'\t' read -r statut detail <<< "$lecture"
 
     case "$statut" in
         ok)       printf '  %-18s %-12s %s\n' "$nom" "$(vert 'ok')" "$detail" ;;
