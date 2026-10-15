@@ -72,7 +72,12 @@ class SemanticCache:
         """Retourne une reponse equivalente, ou None."""
         self._purge_expired()
         if not self._entries:
+            # Un cache vide est un succes rate : le compteur doit le dire,
+            # sinon le taux de reutilisation affiche au jury exclut tous les
+            # appels faits avant le premier remplissage, et le gain parait
+            # meilleur qu'il ne l'est.
             metrics.CACHE_EVENTS.labels(SERVICE, "vide").inc()
+            metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
             return None
 
         vector = self._embedder.embed_documents([question])[0]
@@ -150,18 +155,49 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 def estimate_saving(hits: int, miss: int, cost_per_call_eur: float) -> dict[str, object]:
     """Chiffre le gain du cache, pour le dossier FinOps.
 
-    Formule : economie = (taux de reutilisation) x (appels LLM evites) x
-    cout par appel. Le jury demande une demonstration, pas une intention :
-    on expose donc le calcul et ses entrees, y compris la trace du calcul.
+    Formule : economie = nombre de succes de cache x cout par appel LLM.
+
+    Chaque succes de cache correspond a UN appel qui n'a pas ete fait.
+    La formule precedente multipliait en plus par le taux d'echec, ce qui
+    sous-estimait le gain - et surtout donnait ZERO quand le cache etait
+    parfaitement efficace (100 % de succes), c'est-a-dire au moment ou il
+    rapporte le plus. Une formule qui decoit le jury sur son meilleur
+    resultat ne peut pas etre presentee comme une demonstration.
+
+    `miss` reste fourni pour le taux de reutilisation, et le calcul est
+    expose avec ses entrees : un chiffre d'economie n'est opposable que si
+    le jury peut le refaire a la main.
     """
     total = hits + miss
     if total == 0:
-        return {"taux_de_reutilisation": 0.0, "economie_eur": 0.0, "cout_evite_eur": 0.0}
+        return {
+            "taux_de_reutilisation": 0.0,
+            "economie_eur": 0.0,
+            "cout_evite_eur": 0.0,
+            "json": json.dumps(
+                {"hits": hits, "miss": miss, "cout_par_appel_eur": cost_per_call_eur}
+            ),
+            "timestamp": time.time(),
+        }
+
     taux = hits / total
+    economie = hits * cost_per_call_eur
     return {
         "taux_de_reutilisation": taux,
-        "economie_eur": round(taux * miss * cost_per_call_eur, 6),
-        "cout_evite_eur": round(taux * miss * cost_per_call_eur, 6),
-        "json": json.dumps({"hits": hits, "miss": miss, "cout_par_appel_eur": cost_per_call_eur}),
+        # `calls_evites` est alimente sur le compteur de succes : c'est la
+        # meme information, mais exposee pour que le dossier FinOps puisse
+        # afficher « X appels LLM economises » sans refaire le calcul.
+        "appels_evites": hits,
+        "appels_payes": miss,
+        "economie_eur": round(economie, 6),
+        "cout_evite_eur": round(economie, 6),
+        "json": json.dumps(
+            {
+                "hits": hits,
+                "miss": miss,
+                "cout_par_appel_eur": cost_per_call_eur,
+                "formule": "economie = hits x cout_par_appel",
+            }
+        ),
         "timestamp": time.time(),
     }

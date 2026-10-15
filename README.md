@@ -21,6 +21,8 @@ administrateur.
 ```bash
 make doctor   # vérifie que la machine est prête — à lancer en premier
 make up       # démarre la plateforme
+make start    # redémarre la plateforme sans build
+make down    # arrête tout le processus de la plateforme
 ```
 
 `make up` crée le `.env` depuis `.env.example`, génère les secrets,
@@ -31,10 +33,6 @@ construit les images, applique les migrations, charge les données de
 | ------------------------------------- | ------------------------------------- |
 | `http://localhost:8080`               | Interface PrediCare, les quatre rôles |
 | `http://localhost:8080/api/core/docs` | Documentation interactive de l'API    |
-
-**Les identifiants sont dans une fiche d'accès générée hors du dépôt** :
-`/home/jerry/Documents/predicare/ACCES_PREDICARE.md`. Régénérez-la avec
-`make acces`. Aucun secret ne se trouve dans le dépôt Git.
 
 ### Prérequis
 
@@ -152,8 +150,8 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/seeds/`                |   Cherica    | Référentiels d'actes et données de référence                                                                                                                                                    |
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
-| `scripts/`                 |    Jerry     | Ce que le jury exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                             |
-| `tests/`                   |    Jerry     | pytest : tests unitaires et d'intégration par rôle. E2E dans `tests/e2e/`                                                                                                                       |
+| `scripts/`                 |    Jerry     | Ce qu'on exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                                   |
+| `tests/`                   |    Jerry     | pytest : 212 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision. E2E dans `tests/e2e/`                                          |
 | `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
 
 ### Dossiers créés à l'exécution
@@ -219,23 +217,44 @@ Ces quatre dossiers existent sur votre machine mais **ne sont pas versionnés**
 
 ## Commandes
 
-| Commande                                                                  | Effet                                                        |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `make help`                                                               | Liste toutes les commandes                                   |
-| `make doctor`                                                             | Vérifie que la machine est prête — à lancer en premier       |
-| `make up`                                                                 | Démarre la plateforme (commande du jury)                     |
-| `make ps`                                                                 | État des conteneurs, tous profils confondus                  |
-| `make health`                                                             | Sonde `/health` et `/metrics` de chaque service              |
-| `make smoke`                                                              | Parcours de vérification de bout en bout                     |
-| `make logs` / `make logs-service S=api-core`                              | Journaux                                                     |
-| `make backup` / `make backups` / `make restore`                           | Sauvegarde et restauration                                   |
-| `make migrate` / `make reload-data`                                       | Rejouer les migrations ou le chargement                      |
-| `make n8n-import` / `make n8n-export`                                     | Installer ou exporter les workflows                          |
-| `make acces`                                                              | Régénérer la fiche d'identifiants                            |
-| `make threshold VALEUR=0.75`                                              | Changer le seuil d'alerte à chaud                            |
-| `make sync` / `make lint` / `make typecheck` / `make test` / `make check` | Développement Python                                         |
-| `make down`                                                               | Arrêt, **les données sont conservées**                       |
-| `make clean`                                                              | Arrêt **et** suppression des volumes — confirmation demandée |
+| Commande                                                                  | Effet                                                                                |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `make help`                                                               | Liste toutes les commandes                                                           |
+| `make doctor`                                                             | Vérifie que la machine est prête — à lancer en premier                               |
+| `make up`                                                                 | Démarre la plateforme **en reconstruisant** les images — commande de build principal |
+| `make ps`                                                                 | État des conteneurs, tous profils confondus                                          |
+| `make health`                                                             | Sonde `/health` et `/metrics` de chaque service                                      |
+| `make smoke`                                                              | Parcours de vérification de bout en bout                                             |
+| `make logs` / `make logs-service S=api-core`                              | Journaux                                                                             |
+| `make backup` / `make backups` / `make restore`                           | Sauvegarde et restauration                                                           |
+| `make migrate` / `make reload-data`                                       | Rejouer les migrations ou le chargement                                              |
+| `make n8n-import` / `make n8n-export`                                     | Installer ou exporter les workflows                                                  |
+| `make acces`                                                              | Régénérer la fiche d'identifiants                                                    |
+| `make threshold VALEUR=0.75`                                              | Changer le seuil d'alerte à chaud                                                    |
+| `make sync` / `make lint` / `make typecheck` / `make test` / `make check` | Développement Python                                                                 |
+| `make start`                                                              | Redémarre **sans reconstruire**, après un `make down`                                |
+| `make restart`                                                            | `down` puis `start`, sans reconstruction                                             |
+| `make down`                                                               | Arrêt, **les données sont conservées**                                               |
+| `make clean`                                                              | Arrêt **et** suppression des volumes — confirmation demandée                         |
+
+### Reconstruire ou pas
+
+`make up` reconstruit systématiquement les images : c'est le bon réflexe sur
+une machine vierge et après une modification de code. Mais compose va malgré
+tout interroger le réseau pour résoudre les images de base — un `make up`
+peut donc bloquer si la machine n'a plus internet, alors que la pile est
+parfaitement capable de démarrer.
+
+C'est le cas d'usage du jour J, où l'on répète la démonstration :
+
+```bash
+make down     # arrêt, les données restent
+make start    # redémarrage immédiat, aucune reconstruction
+```
+
+Si tu as modifié du code, il faut reconstruire : `make start` utilise
+volontairement les images existantes, et rien ne le signale dans
+l'interface.
 
 ---
 
@@ -303,33 +322,6 @@ initialisation du volume. Régénérer un `.env` sur une installation qui
 tourne rend la base inaccessible. `make up` vous prévient désormais.
 
 ---
-
-## État d'avancement
-
-### En place et vérifié
-
-- Infrastructure complète : `make up` sur machine vierge, 20 tables, pgvector,
-  trois rôles SQL en lecture seule
-- Trois API opérationnelles avec `/health`, `/metrics` et métriques
-  Prometheus ; latence, volume, erreurs, coût LLM, cache sémantique
-- Passerelle avec CSP, HSTS, limitation de débit, sans `docker.sock`
-- Validation d'entrée : factures invalides rejetées en 422 avec le champ fautif
-- Sécurité du RAG : injection de prompt rejetée en 400, compte SQL en
-  lecture seule, citations obligatoires
-- Sauvegarde et restauration scriptées
-- n8n démarré, workflow d'alerte versionné, importé et publié
-- Superset démarré avec 5 datasets de pilotage en lecture seule
-- CI : ruff, mypy, pytest, construction des images, détection de secrets
-
-### À faire
-
-- **Comptes utilisateurs des 4 rôles** — la table est vide, personne ne peut
-  encore se connecter à l'interface
-- **Jeu de données** dans `./data/raw` — la base est vide
-- **Modèle de fraude entraîné** — sans lui, `api-inference` reste `degraded`
-- **Clé LLM** dans `.env` — sans elle, l'assistant RAG ne répond pas
-- **Credentials Slack** dans l'interface n8n
-- Contenu de `docs/` (ADR, guides, dossier de cadrage)
 
 Chaque dossier porte un `README.md` de brouillon listant ses tâches
 restantes.
