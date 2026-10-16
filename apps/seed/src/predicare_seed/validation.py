@@ -142,8 +142,7 @@ def controler_integrite(tables: dict[str, pd.DataFrame], rapport: Rapport) -> No
         orphelines = set(tables["factures.csv"]["prestataire_id"]) - prestataires
         if orphelines:
             rapport.ajouter(
-                f"factures.csv : {len(orphelines)} prestataire_id absent(s) de "
-                "prestataires.csv."
+                f"factures.csv : {len(orphelines)} prestataire_id absent(s) de prestataires.csv."
             )
     if "grille_tarifaire.csv" in tables:
         orphelines = set(tables["grille_tarifaire.csv"]["prestataire_id"]) - prestataires
@@ -210,8 +209,7 @@ def controler_dates(tables: dict[str, pd.DataFrame], rapport: Rapport) -> None:
         reception = pd.to_datetime(f["date_reception"], errors="coerce")
         if int((facture < soin).sum()):
             rapport.ajouter(
-                f"factures.csv : {int((facture < soin).sum())} facture(s) anterieure(s) "
-                "au soin."
+                f"factures.csv : {int((facture < soin).sum())} facture(s) anterieure(s) au soin."
             )
         if int((reception < facture).sum()):
             rapport.ajouter(
@@ -269,7 +267,9 @@ def controler_labels(tables: dict[str, pd.DataFrame], rapport: Rapport) -> None:
                 f"labels_fraude.csv : est_fraude contient {sorted(valeurs)}, "
                 "seuls 0 et 1 sont attendus."
             )
-        rapport.mesurer("taux de fraude", f"{float(tables['labels_fraude.csv']['est_fraude'].mean()):.4f}")
+        rapport.mesurer(
+            "taux de fraude", f"{float(tables['labels_fraude.csv']['est_fraude'].mean()):.4f}"
+        )
 
 
 def valider(tables: dict[str, pd.DataFrame], rapport: Rapport | None = None) -> Rapport:

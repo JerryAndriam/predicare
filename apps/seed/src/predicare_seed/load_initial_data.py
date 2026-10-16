@@ -63,10 +63,7 @@ def _relire_brut(dossier: Path) -> dict[str, pd.DataFrame]:
     """
     import pandas as pd
 
-    fichiers = [
-        f for f in sorted(dossier.glob("*.csv"))
-        if f.name in COLONNES_ATTENDUES
-    ]
+    fichiers = [f for f in sorted(dossier.glob("*.csv")) if f.name in COLONNES_ATTENDUES]
     return {f.name: pd.read_csv(f, low_memory=False) for f in fichiers}
 
 
@@ -109,19 +106,21 @@ def _resoudre(carte: dict[str, int], valeur: object) -> int | None:
 # ---------------------------------------------------------------------------
 # Petits utilitaires d'insertion
 # ---------------------------------------------------------------------------
-def _inserer(session: Session, table: str, colonnes: tuple[str, ...], lignes: list[dict], conflit: str) -> int:
+def _inserer(
+    session: Session, table: str, colonnes: tuple[str, ...], lignes: list[dict], conflit: str
+) -> int:
     """INSERT parametre. `conflit` est la clause ON CONFLICT complete."""
     if not lignes:
         return 0
     cols = ", ".join(colonnes)
     params = ", ".join(f":{c}" for c in colonnes)
-    session.execute(
-        text(f"INSERT INTO {table} ({cols}) VALUES ({params}) {conflit}"), lignes
-    )
+    session.execute(text(f"INSERT INTO {table} ({cols}) VALUES ({params}) {conflit}"), lignes)
     return len(lignes)
 
 
-def _upsert(session: Session, table: str, colonnes: tuple[str, ...], lignes: list[dict], cle: str) -> int:
+def _upsert(
+    session: Session, table: str, colonnes: tuple[str, ...], lignes: list[dict], cle: str
+) -> int:
     """INSERT ... ON CONFLICT (cle) DO UPDATE : rafraichit les referentiels."""
     if not lignes:
         return 0
@@ -129,7 +128,9 @@ def _upsert(session: Session, table: str, colonnes: tuple[str, ...], lignes: lis
     params = ", ".join(f":{c}" for c in colonnes)
     sets = ", ".join(f"{c} = EXCLUDED.{c}" for c in colonnes if c != cle)
     session.execute(
-        text(f"INSERT INTO {table} ({cols}) VALUES ({params}) ON CONFLICT ({cle}) DO UPDATE SET {sets}"),
+        text(
+            f"INSERT INTO {table} ({cols}) VALUES ({params}) ON CONFLICT ({cle}) DO UPDATE SET {sets}"
+        ),
         lignes,
     )
     return len(lignes)
@@ -236,7 +237,9 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
         }
         for r in d["assures"].to_dict("records")
     ]
-    _inserer(session, "core.assure", tuple(assures[0]), assures, "ON CONFLICT (pseudonyme) DO NOTHING")
+    _inserer(
+        session, "core.assure", tuple(assures[0]), assures, "ON CONFLICT (pseudonyme) DO NOTHING"
+    )
 
     # Identites nominatives : chiffrees et isolees dans leur propre table.
     fernet = get_fernet()
@@ -253,9 +256,13 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
         identites.append(
             {
                 "pseudonyme": pseudonymize("assr", _cle(r["assure_id"], "assure_id")),
-                "reference_brute_chiffree": encrypt_value(_cle(r["assure_id"], "assure_id"), fernet).encode(),
+                "reference_brute_chiffree": encrypt_value(
+                    _cle(r["assure_id"], "assure_id"), fernet
+                ).encode(),
                 "nom_chiffre": encrypt_value(nom, fernet).encode() if nom else None,
-                "coordonnees_chiffrees": encrypt_value(json.dumps(coordonnees, ensure_ascii=False), fernet).encode(),
+                "coordonnees_chiffrees": encrypt_value(
+                    json.dumps(coordonnees, ensure_ascii=False), fernet
+                ).encode(),
                 "date_naissance_chiffree": (
                     encrypt_value(_cle(r["date_naissance"], "date_naissance"), fernet).encode()
                     if en_texte(r["date_naissance"])
@@ -265,12 +272,18 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
             }
         )
     _inserer(
-        session, "core.identite_chiffree", tuple(identites[0]), identites, "ON CONFLICT (pseudonyme) DO NOTHING"
+        session,
+        "core.identite_chiffree",
+        tuple(identites[0]),
+        identites,
+        "ON CONFLICT (pseudonyme) DO NOTHING",
     )
 
     par_pseudo = _carte(session, "SELECT pseudonyme, id FROM core.assure")
     return {
-        _cle(r["assure_id"], "assure_id"): par_pseudo[pseudonymize("assr", _cle(r["assure_id"], "assure_id"))]
+        _cle(r["assure_id"], "assure_id"): par_pseudo[
+            pseudonymize("assr", _cle(r["assure_id"], "assure_id"))
+        ]
         for r in d["assures"].to_dict("records")
     }
 
@@ -278,7 +291,9 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
 # ---------------------------------------------------------------------------
 # 3. Contrats, beneficiaires, garanties, grille tarifaire
 # ---------------------------------------------------------------------------
-def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[str, dict]) -> dict[str, int]:
+def charger_contrats(
+    session: Session, d: dict[str, pd.DataFrame], cartes: dict[str, dict]
+) -> dict[str, int]:
     assures = cartes["assures"]
     # Assure principal de chaque contrat (celui marque ASSURE_PRINCIPAL).
     principal: dict[str, str] = {
@@ -305,7 +320,9 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
         }
         for r in d["contrats"].to_dict("records")
     ]
-    _inserer(session, "core.contrat", tuple(contrats[0]), contrats, "ON CONFLICT (numero) DO NOTHING")
+    _inserer(
+        session, "core.contrat", tuple(contrats[0]), contrats, "ON CONFLICT (numero) DO NOTHING"
+    )
     id_contrats = _carte(session, "SELECT numero, id FROM core.contrat")
 
     beneficiaires = [
@@ -315,7 +332,9 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
             "rang_beneficiaire": en_texte(r["rang_beneficiaire"]),
             "date_adhesion": en_date(r["date_adhesion"]),
             "date_radiation": en_date(r["date_radiation"]),
-            "assure_principal_id": assures.get(principal.get(_cle(r["contrat_id"], "contrat_id"), "")),
+            "assure_principal_id": assures.get(
+                principal.get(_cle(r["contrat_id"], "contrat_id"), "")
+            ),
         }
         for r in d["assures"].to_dict("records")
     ]
@@ -363,7 +382,13 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
                         "plafond_annuel": g["plafond_annuel_categorie"],
                     }
                 )
-        _inserer(session, "core.garantie", ("contrat_id", "nom", "taux_remboursement", "plafond_annuel"), lignes_garantie, "ON CONFLICT DO NOTHING")
+        _inserer(
+            session,
+            "core.garantie",
+            ("contrat_id", "nom", "taux_remboursement", "plafond_annuel"),
+            lignes_garantie,
+            "ON CONFLICT DO NOTHING",
+        )
 
     # Grille tarifaire : un code est SOIT un acte SOIT un medicament.
     grille = []
@@ -398,7 +423,9 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
 # ---------------------------------------------------------------------------
 # 4. Ordonnances
 # ---------------------------------------------------------------------------
-def charger_ordonnances(session: Session, d: dict[str, pd.DataFrame], cartes: dict[str, dict]) -> None:
+def charger_ordonnances(
+    session: Session, d: dict[str, pd.DataFrame], cartes: dict[str, dict]
+) -> None:
     ordonnances = [
         {
             "reference": en_texte(r["ordonnance_id"]),
@@ -412,7 +439,13 @@ def charger_ordonnances(session: Session, d: dict[str, pd.DataFrame], cartes: di
         }
         for r in d["ordonnances"].to_dict("records")
     ]
-    _inserer(session, "core.ordonnance", tuple(ordonnances[0]), ordonnances, "ON CONFLICT (reference) DO NOTHING")
+    _inserer(
+        session,
+        "core.ordonnance",
+        tuple(ordonnances[0]),
+        ordonnances,
+        "ON CONFLICT (reference) DO NOTHING",
+    )
     id_ordos = _carte(session, "SELECT reference, id FROM core.ordonnance")
 
     lignes = []
@@ -440,7 +473,15 @@ def charger_ordonnances(session: Session, d: dict[str, pd.DataFrame], cartes: di
     _inserer(
         session,
         "core.ordonnance_ligne",
-        ("ordonnance_id", "num_ligne", "acte_id", "medicament_id", "libelle", "quantite", "posologie"),
+        (
+            "ordonnance_id",
+            "num_ligne",
+            "acte_id",
+            "medicament_id",
+            "libelle",
+            "quantite",
+            "posologie",
+        ),
         lignes,
         "ON CONFLICT (ordonnance_id, num_ligne) DO NOTHING",
     )
@@ -454,7 +495,13 @@ def charger_factures(
 ) -> tuple[set[str], pd.DataFrame]:
     """Valide (Phase 1.4) puis charge. Rend les factures valides + les rejets."""
     valides, rejets = valider_factures(
-        d["factures"], d["lignes_facture"], d["actes"], d["medicaments"], d["assures"], d["prestataires"], d["contrats"]
+        d["factures"],
+        d["lignes_facture"],
+        d["actes"],
+        d["medicaments"],
+        d["assures"],
+        d["prestataires"],
+        d["contrats"],
     )
     if len(rejets):
         logger.warning("factures.rejetees", nombre=len(rejets))
@@ -492,11 +539,15 @@ def charger_factures(
         }
         for r in valides.to_dict("records")
     ]
-    _inserer(session, "core.facture", tuple(factures[0]), factures, "ON CONFLICT (reference) DO NOTHING")
+    _inserer(
+        session, "core.facture", tuple(factures[0]), factures, "ON CONFLICT (reference) DO NOTHING"
+    )
     id_factures = _carte(session, "SELECT reference, id FROM core.facture")
 
     # Chaque ligne porte la date de soin de sa facture (pas de date propre).
-    date_soin = {en_texte(r["facture_id"]): en_date(r["date_soin"]) for r in valides.to_dict("records")}
+    date_soin = {
+        en_texte(r["facture_id"]): en_date(r["date_soin"]) for r in valides.to_dict("records")
+    }
 
     if _compter(session, "core.ligne_facture") == 0:
         lignes = []
@@ -528,7 +579,16 @@ def charger_factures(
         _inserer(
             session,
             "core.ligne_facture",
-            ("facture_id", "acte_id", "medicament_id", "quantite", "montant_unitaire", "date_acte", "num_ligne", "libelle"),
+            (
+                "facture_id",
+                "acte_id",
+                "medicament_id",
+                "quantite",
+                "montant_unitaire",
+                "date_acte",
+                "num_ligne",
+                "libelle",
+            ),
             lignes,
             "ON CONFLICT DO NOTHING",
         )
@@ -539,7 +599,9 @@ def charger_factures(
 # ---------------------------------------------------------------------------
 # 6. Labels
 # ---------------------------------------------------------------------------
-def charger_labels(session: Session, d: dict[str, pd.DataFrame], factures_valides: set[str]) -> None:
+def charger_labels(
+    session: Session, d: dict[str, pd.DataFrame], factures_valides: set[str]
+) -> None:
     id_factures = _carte(session, "SELECT reference, id FROM core.facture")
     labels = [
         {
@@ -551,7 +613,9 @@ def charger_labels(session: Session, d: dict[str, pd.DataFrame], factures_valide
         for r in d["labels_fraude"].to_dict("records")
         if en_texte(r["facture_id"]) in factures_valides
     ]
-    _inserer(session, "ml.label_fraude", tuple(labels[0]), labels, "ON CONFLICT (facture_id) DO NOTHING")
+    _inserer(
+        session, "ml.label_fraude", tuple(labels[0]), labels, "ON CONFLICT (facture_id) DO NOTHING"
+    )
 
     id_prestas = _carte(session, "SELECT code, id FROM core.prestataire")
     labels_p = [
@@ -562,7 +626,11 @@ def charger_labels(session: Session, d: dict[str, pd.DataFrame], factures_valide
         for r in d["labels_prestataires"].to_dict("records")
     ]
     _inserer(
-        session, "ml.label_prestataire", tuple(labels_p[0]), labels_p, "ON CONFLICT (prestataire_id) DO NOTHING"
+        session,
+        "ml.label_prestataire",
+        tuple(labels_p[0]),
+        labels_p,
+        "ON CONFLICT (prestataire_id) DO NOTHING",
     )
 
 

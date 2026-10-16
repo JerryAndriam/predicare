@@ -56,50 +56,73 @@ def _jeu_valide() -> dict[str, pd.DataFrame]:
             {"code_medicament": ["MED-1"], "libelle": ["M"], "prix_reference": [5]}
         ),
         "prestataires.csv": pd.DataFrame(
-            {"prestataire_id": ["PRE-1", "PRE-2"], "nom": ["P1", "P2"],
-             "type_prestataire": ["PHARMACIE", "CLINIQUE"]}
+            {
+                "prestataire_id": ["PRE-1", "PRE-2"],
+                "nom": ["P1", "P2"],
+                "type_prestataire": ["PHARMACIE", "CLINIQUE"],
+            }
         ),
         "contrats.csv": pd.DataFrame(
-            {"contrat_id": ["CTR-1", "CTR-2"], "formule": ["ESSENTIEL", "CONFORT"],
-             "date_effet": ["2024-01-01", "2024-01-01"]}
+            {
+                "contrat_id": ["CTR-1", "CTR-2"],
+                "formule": ["ESSENTIEL", "CONFORT"],
+                "date_effet": ["2024-01-01", "2024-01-01"],
+            }
         ),
         "assures.csv": pd.DataFrame(
-            {"assure_id": ["ASS-1", "ASS-2"], "contrat_id": ["CTR-1", "CTR-2"],
-             "sexe": ["F", "M"], "date_adhesion": ["2024-01-01", "2024-01-01"],
-             "date_radiation": [None, None]}
+            {
+                "assure_id": ["ASS-1", "ASS-2"],
+                "contrat_id": ["CTR-1", "CTR-2"],
+                "sexe": ["F", "M"],
+                "date_adhesion": ["2024-01-01", "2024-01-01"],
+                "date_radiation": [None, None],
+            }
         ),
         "identites_pii.csv": pd.DataFrame(
-            {"assure_id": ["ASS-1", "ASS-2"], "nom": ["N1", "N2"],
-             "date_naissance": ["1980-01-01", "1990-01-01"]}
+            {
+                "assure_id": ["ASS-1", "ASS-2"],
+                "nom": ["N1", "N2"],
+                "date_naissance": ["1980-01-01", "1990-01-01"],
+            }
         ),
         "ordonnances.csv": pd.DataFrame(
-            {"ordonnance_id": ["ORD-1"], "assure_id": ["ASS-1"],
-             "date_prescription": ["2024-01-01"]}
+            {
+                "ordonnance_id": ["ORD-1"],
+                "assure_id": ["ASS-1"],
+                "date_prescription": ["2024-01-01"],
+            }
         ),
         "ordonnance_lignes.csv": pd.DataFrame(
             {"ordonnance_id": ["ORD-1"], "num_ligne": [1], "code": ["ACTE-1"]}
         ),
         "factures.csv": pd.DataFrame(
-            {"facture_id": ["FAC-1", "FAC-2"], "prestataire_id": ["PRE-1", "PRE-2"],
-             "assure_id": ["ASS-1", "ASS-2"], "montant_total": [100, 200],
-             "date_soin": ["2024-01-02", "2024-01-02"],
-             "date_facture": ["2024-01-03", "2024-01-03"],
-             "date_reception": ["2024-01-04", "2024-01-04"]}
+            {
+                "facture_id": ["FAC-1", "FAC-2"],
+                "prestataire_id": ["PRE-1", "PRE-2"],
+                "assure_id": ["ASS-1", "ASS-2"],
+                "montant_total": [100, 200],
+                "date_soin": ["2024-01-02", "2024-01-02"],
+                "date_facture": ["2024-01-03", "2024-01-03"],
+                "date_reception": ["2024-01-04", "2024-01-04"],
+            }
         ),
         "lignes_facture.csv": pd.DataFrame(
-            {"ligne_id": ["LIG-1"], "facture_id": ["FAC-1"], "code": ["ACTE-1"],
-             "quantite": [1], "prix_unitaire": [100], "montant": [100]}
+            {
+                "ligne_id": ["LIG-1"],
+                "facture_id": ["FAC-1"],
+                "code": ["ACTE-1"],
+                "quantite": [1],
+                "prix_unitaire": [100],
+                "montant": [100],
+            }
         ),
         "garanties.csv": pd.DataFrame(
-            {"formule": ["ESSENTIEL"], "categorie": ["CONSULTATION"],
-             "taux_remboursement": [80]}
+            {"formule": ["ESSENTIEL"], "categorie": ["CONSULTATION"], "taux_remboursement": [80]}
         ),
         "grille_tarifaire.csv": pd.DataFrame(
             {"prestataire_id": ["PRE-1"], "code": ["ACTE-1"], "tarif_pratique": [12]}
         ),
-        "labels_fraude.csv": pd.DataFrame(
-            {"facture_id": ["FAC-1", "FAC-2"], "est_fraude": [0, 1]}
-        ),
+        "labels_fraude.csv": pd.DataFrame({"facture_id": ["FAC-1", "FAC-2"], "est_fraude": [0, 1]}),
         "labels_prestataires.csv": pd.DataFrame(
             {"prestataire_id": ["PRE-1", "PRE-2"], "est_suspect": [0, 1]}
         ),

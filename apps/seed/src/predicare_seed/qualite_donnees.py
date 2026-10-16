@@ -111,7 +111,11 @@ MANQUANTS_STRUCTURELS = {
 # Conversions de types (famille 1)
 # ---------------------------------------------------------------------------
 def _vide(valeur: object) -> bool:
-    return valeur is None or (isinstance(valeur, float) and pd.isna(valeur)) or str(valeur).strip() == ""
+    return (
+        valeur is None
+        or (isinstance(valeur, float) and pd.isna(valeur))
+        or str(valeur).strip() == ""
+    )
 
 
 def en_texte(valeur: object) -> str | None:
@@ -160,7 +164,9 @@ def lire_csv(chemin: Path) -> pd.DataFrame:
     `keep_default_na=False` + `na_values=['']` : seul le vide devient NaN, la
     chaine 'NA' ou '0' reste une donnee. Encodage UTF-8 (dictionnaire).
     """
-    return pd.read_csv(chemin, dtype=str, keep_default_na=False, na_values=[""], encoding="utf-8-sig")
+    return pd.read_csv(
+        chemin, dtype=str, keep_default_na=False, na_values=[""], encoding="utf-8-sig"
+    )
 
 
 def lire_tous(dossier: Path) -> dict[str, pd.DataFrame]:
@@ -255,20 +261,30 @@ def signaux_dates(
     m = f.merge(c, on="contrat_id", how="left")
 
     p = prestataires[["prestataire_id", "statut"]].copy()
-    p["date_conv"] = pd.to_datetime(prestataires["date_conventionnement"], errors="coerce", format="%Y-%m-%d")
-    p["date_fin_conv"] = pd.to_datetime(prestataires["date_fin_convention"], errors="coerce", format="%Y-%m-%d")
+    p["date_conv"] = pd.to_datetime(
+        prestataires["date_conventionnement"], errors="coerce", format="%Y-%m-%d"
+    )
+    p["date_fin_conv"] = pd.to_datetime(
+        prestataires["date_fin_convention"], errors="coerce", format="%Y-%m-%d"
+    )
     mp = f.merge(p, on="prestataire_id", how="left")
 
     regles = {
-        "soin avant l'effet du contrat (HORS_COUVERTURE)": int((m["date_soin"] < m["date_effet"]).sum()),
-        "soin apres la fin du contrat (HORS_COUVERTURE)": int((m["date_soin"] > m["date_fin"]).sum()),
-        "soin apres la fin de convention (PRESTATAIRE_RADIE)": int((mp["date_soin"] > mp["date_fin_conv"]).sum()),
-        "soin avant le conventionnement (PRESTATAIRE_RADIE)": int((mp["date_soin"] < mp["date_conv"]).sum()),
+        "soin avant l'effet du contrat (HORS_COUVERTURE)": int(
+            (m["date_soin"] < m["date_effet"]).sum()
+        ),
+        "soin apres la fin du contrat (HORS_COUVERTURE)": int(
+            (m["date_soin"] > m["date_fin"]).sum()
+        ),
+        "soin apres la fin de convention (PRESTATAIRE_RADIE)": int(
+            (mp["date_soin"] > mp["date_fin_conv"]).sum()
+        ),
+        "soin avant le conventionnement (PRESTATAIRE_RADIE)": int(
+            (mp["date_soin"] < mp["date_conv"]).sum()
+        ),
         "facture d'un prestataire RADIE": int((mp["statut"] == "RADIE").sum()),
     }
-    return pd.DataFrame(
-        {"signal": list(regles), "cas": list(regles.values())}
-    )
+    return pd.DataFrame({"signal": list(regles), "cas": list(regles.values())})
 
 
 # ---------------------------------------------------------------------------
@@ -316,14 +332,22 @@ def valider_factures(
     # Reference temporelle : par defaut, le dernier jour present dans les
     # donnees (le jeu est un instantane). Sinon, la date du jour.
     if date_reference is None:
-        date_reference = f["soin_date"].max().date() if f["soin_date"].notna().any() else date.today()
+        date_reference = (
+            f["soin_date"].max().date() if f["soin_date"].notna().any() else date.today()
+        )
 
     motifs: list[list[str]] = []
     for _, r in f.iterrows():
         m: list[str] = []
-        if (r["montant_num"] is not None and not pd.isna(r["montant_num"]) and r["montant_num"] < 0) or bool(
-            r.get("ligne_negative", False)
-        ) or bool(r.get("quantite_negative", False)):
+        if (
+            (
+                r["montant_num"] is not None
+                and not pd.isna(r["montant_num"])
+                and r["montant_num"] < 0
+            )
+            or bool(r.get("ligne_negative", False))
+            or bool(r.get("quantite_negative", False))
+        ):
             m.append("MONTANT_NEGATIF")
         if bool(r.get("code_inconnu", False)):
             m.append("CODE_ACTE_INCONNU")
@@ -333,7 +357,11 @@ def valider_factures(
             m.append("DATE_FUTURE")
         if _vide(r["assure_id"]) or _vide(r["prestataire_id"]) or _vide(r["facture_id"]):
             m.append("CHAMP_OBLIGATOIRE_MANQUANT")
-        if not pd.isna(r["somme_lignes"]) and not pd.isna(r["montant_num"]) and abs(r["somme_lignes"] - r["montant_num"]) > 1:
+        if (
+            not pd.isna(r["somme_lignes"])
+            and not pd.isna(r["montant_num"])
+            and abs(r["somme_lignes"] - r["montant_num"]) > 1
+        ):
             m.append("TOTAL_INCOHERENT")
         if r["prestataire_id"] not in prestataires_connus:
             m.append("PRESTATAIRE_INCONNU")
@@ -403,7 +431,9 @@ def rapport(dossier: Path, sortie: Path | None = None) -> str:
     )
 
     lignes_md.append("\n## 4. Signaux de dates (a CONSERVER, pas des erreurs)\n")
-    sig = signaux_dates(donnees["factures"], donnees["contrats"], donnees["assures"], donnees["prestataires"])
+    sig = signaux_dates(
+        donnees["factures"], donnees["contrats"], donnees["assures"], donnees["prestataires"]
+    )
     lignes_md.append("| signal | cas |\n|---|---:|")
     for _, r in sig.iterrows():
         lignes_md.append(f"| {r['signal']} | {r['cas']} |")
@@ -445,7 +475,9 @@ def main() -> int:
     DATA_RAW_DIR, sinon `data/raw`.
     Le rapport s'ecrit dans RAPPORT_DIR (defaut `reports`).
     """
-    parseur = argparse.ArgumentParser(description="Controle qualite des donnees brutes (Phase 1.4).")
+    parseur = argparse.ArgumentParser(
+        description="Controle qualite des donnees brutes (Phase 1.4)."
+    )
     parseur.add_argument(
         "dossier",
         nargs="?",
