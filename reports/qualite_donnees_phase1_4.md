@@ -1,6 +1,6 @@
 # Rapport qualite des donnees — Phase 1.4
 
-Source : `C:\capstone\CohorteAI_datagen\dataset`
+Source : `data\raw`
 
 ## 1. Volume
 

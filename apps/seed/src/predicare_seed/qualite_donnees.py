@@ -35,6 +35,7 @@ Les quatre familles du plan et LES DECISIONS PRISES
 
 from __future__ import annotations
 
+import argparse
 import os
 from collections.abc import Iterable
 from datetime import date, datetime
@@ -438,19 +439,30 @@ def rapport(dossier: Path, sortie: Path | None = None) -> str:
 
 
 def main() -> int:
-    """Point d'entree : `python -m predicare_seed.qualite_donnees`.
+    """Point d'entree : `python -m predicare_seed.qualite_donnees [DOSSIER]`.
 
-    DATA_RAW_DIR : dossier des 14 CSV (defaut `data/raw`).
-    RAPPORT_DIR  : ou ecrire le rapport (defaut `reports`).
+    Le dossier des 14 CSV peut etre donne en argument, sinon on lit
+    DATA_RAW_DIR, sinon `data/raw`.
+    Le rapport s'ecrit dans RAPPORT_DIR (defaut `reports`).
     """
-    dossier = Path(os.environ.get("DATA_RAW_DIR", "data/raw"))
+    parseur = argparse.ArgumentParser(description="Controle qualite des donnees brutes (Phase 1.4).")
+    parseur.add_argument(
+        "dossier",
+        nargs="?",
+        default=os.environ.get("DATA_RAW_DIR", "data/raw"),
+        help="dossier contenant les 14 CSV (defaut : $DATA_RAW_DIR ou data/raw)",
+    )
+    arguments = parseur.parse_args()
+
+    dossier = Path(arguments.dossier)
     if not dossier.exists():
         print(
             f"Dossier de donnees introuvable : {dossier}\n"
-            "Definissez DATA_RAW_DIR vers le dossier des 14 CSV, par exemple :\n"
-            '  $env:DATA_RAW_DIR="C:\\chemin\\vers\\dataset"'
+            "Indiquez le dossier des 14 CSV en argument, par exemple :\n"
+            '  uv run --frozen --package predicare-seed python -m predicare_seed.qualite_donnees "C:\\chemin\\vers\\dataset"'
         )
         return 1
+
     sortie = Path(os.environ.get("RAPPORT_DIR", "reports")) / "qualite_donnees_phase1_4.md"
     rapport(dossier, sortie=sortie)
     print(f"Rapport ecrit dans {sortie}")
