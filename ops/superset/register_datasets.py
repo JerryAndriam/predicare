@@ -133,6 +133,15 @@ def synchroniser(table: object, session: object) -> None:
     `fetch_metadata` fait autorité : il lit la vue et remplace la liste de
     colonnes. Le rappeler a chaque execution resynchronise un dataset dont la
     vue a gagne une colonne, ce qui arrive des que l'on ajoute un indicateur.
+
+    La colonne de temps, ensuite
+    ----------------------------
+    Le controle « Time column » du frontal se remplit par defaut depuis
+    `main_dttm_col`. Le laisser vide condamne toute requete de serie
+    temporelle -- et `big_number` en construit toujours une, meme pour une
+    valeur unique -- a un 400 « Datetime column not provided as part table
+    configuration ». L'auto-detection de Superset a beau tomber juste sur la
+    plupart des vues, elle n'est pas un contrat : on la rend explicite.
     """
     table.fetch_metadata()  # type: ignore[attr-defined]
     session.commit()  # type: ignore[attr-defined]
@@ -142,7 +151,17 @@ def synchroniser(table: object, session: object) -> None:
             f"la vue bi.{table.table_name} n'a pas de colonne exploitable "  # type: ignore[attr-defined]
             "par Superset : le dataset resterait inutilisable."
         )
-    print(f"    {table.table_name:24} {nb:3d} colonne(s)")  # type: ignore[attr-defined]
+
+    temps = [c.column_name for c in table.columns if c.is_dttm]  # type: ignore[attr-defined]
+    if temps and table.main_dttm_col not in temps:  # type: ignore[attr-defined]
+        # Deja valide : on ne remue pas un choix existant (`v_prestataires_risque`
+        # date ses conventions par `date_fin_convention`, pas par sa premiere
+        # colonne temporelle).
+        table.main_dttm_col = temps[0]  # type: ignore[attr-defined]
+        session.commit()  # type: ignore[attr-defined]
+    print(  # type: ignore[attr-defined]
+        f"    {table.table_name:24} {nb:3d} colonne(s)  temps={table.main_dttm_col or '(aucune)'}"  # type: ignore[attr-defined]
+    )
 
 
 def enregistrer(session: object) -> tuple[list[str], list[str]]:
@@ -202,9 +221,12 @@ def enregistrer(session: object) -> tuple[list[str], list[str]]:
             # `table_name`. Ne pas y remettre le SQL : il transformerait la
             # vue physique en source virtuelle, ce que cette migration
             # supprime justement.
-            if not existant.columns:
-                # Dataset enregistre mais colonnee. Voir `sans_colonnes`.
-                synchroniser(existant, session)
+            # Resynchronisation a CHAQUE execution, et non sur le seul dataset
+            # vide : une vue qui gagne une colonne doit la voir arriver dans
+            # `table_columns`. Ne resynchroniser que les datasets vides rendait
+            # la nouvelle colonne invisible de Superset, et le graphique
+            # echouait alors que la vue etait juste.
+            synchroniser(existant, session)
             continue
         table = SqlaTable(
             database=chaine,

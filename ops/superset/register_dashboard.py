@@ -274,6 +274,10 @@ GRAPHIQUES = [
         "params": {
             "metrics": [_metrique("montant_total_mga", "NUMERIC", "Montant present (MGA)")],
             "groupby": ["mois"],
+            # Colonne de temps de l'axe : `echarts_timeseries` en fait
+            # `is_timeseries`, et sans elle la requete part sans granularite.
+            "granularity_sqla": "mois",
+            "time_grain_sqla": "P1M",
             "order_desc": True,
             "row_limit": 24,
             "y_axis_format": "~s",
@@ -323,6 +327,8 @@ GRAPHIQUES = [
         "params": {
             "metrics": [_metrique("delai_traitement_jours", "DOUBLE", "Delai moyen (jours)")],
             "groupby": ["mois"],
+            "granularity_sqla": "mois",
+            "time_grain_sqla": "P1M",
             "order_desc": True,
             "row_limit": 24,
             "y_axis_format": ".1f",
@@ -363,6 +369,14 @@ TOUS: list[dict] = (
                 "adhoc_filters": [],
                 "row_limit": 1,
                 "time_range": "No filter",
+                # `granularity_sqla` n'est pas decoratif : `big_number`
+                # construit TOUJOURS une requete de serie temporelle, meme
+                # pour une valeur unique, et Superset la refuse sans colonne
+                # de temps (« Datetime column not provided »). Le controle
+                # « Time column » de l'interface se remplit par defaut depuis
+                # `main_dttm_col` ; un graphique ecrit par API ne l'a jamais
+                # recu et doit donc le porter explicitement.
+                "granularity_sqla": "periode",
                 "y_axis_format": format_,
                 "subheader": sous_titre,
             },
@@ -381,6 +395,10 @@ TOUS: list[dict] = (
                 "adhoc_filters": [],
                 "row_limit": 1,
                 "time_range": "No filter",
+                # Meme raison que pour les tuiles `v_kpi_global` ci-dessus :
+                # `periode` est NULL tant que le modele n'a rien produit, mais
+                # la colonne existe et c'est elle qui autorise la requete.
+                "granularity_sqla": "periode",
                 "y_axis_format": format_,
                 "subheader": sous_titre,
             },

@@ -206,11 +206,22 @@ SELECT
 
     -- DELAI DE DECISION : alerte -> decision gestionnaire.
     ROUND(AVG(EXTRACT(EPOCH FROM (d.decided_at - p.created_at))) / 3600.0, 2)
-                                                            AS delai_decision_heures
+                                                            AS delai_decision_heures,
+
+    -- Temps
+    -- -----
+    -- `periode` = mois de la derniere detection. Meme role que dans
+    -- v_kpi_global : c'est la colonne temporelle que le frontal Superset
+    -- reclame pour toute requete de serie temporelle, et `big_number` en
+    -- construit toujours une. Sans elle : 400 « Datetime column not
+    -- provided ». NULL tant que `ml.prediction` est vide -- la vue rend
+    -- quand meme une ligne, et la tuile affiche « en attente ».
+    -- En DERNIERE position : un CREATE OR REPLACE VIEW n'ajoute qu'a la fin.
+    MAX(date_trunc('month', p.created_at))::date            AS periode
 FROM ml.prediction p
 LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
 LEFT JOIN ml.label_fraude              l ON l.facture_id    = p.facture_id
 LEFT JOIN core.facture                 f ON f.id            = p.facture_id;
 
 COMMENT ON VIEW bi.v_cdc_global IS
-    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. Source ml.prediction + audit.decision_gestionnaire. TODO : modele non entraine, aucune decision enregistree.';
+    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere detection, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire. TODO : modele non entraine, aucune decision enregistree.';

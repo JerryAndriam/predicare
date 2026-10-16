@@ -113,12 +113,28 @@ SELECT
     -- correcte, et non la moyenne des moyennes de v_kpi_mensuel.
     ROUND(AVG(EXTRACT(EPOCH FROM (f.date_traitement - f.date_reception)))
           FILTER (WHERE f.date_traitement IS NOT NULL) / 86400.0, 2)
-                                                            AS delai_moyen_jours
+                                                            AS delai_moyen_jours,
+
+    -- Temps
+    -- -----
+    -- `periode` est la date d'arreté : le dernier mois couvert, meme
+    -- expression que `v_kpi_mensuel.mois`. Ce n'est pas un grain de lecture,
+    -- c'est ce qui date les totaux.
+    --
+    -- Elle est INDISPENSABLE au frontal, en DERNIERE position (un
+    -- CREATE OR REPLACE VIEW ne peut ajouter des colonnes qu'a la fin).
+    -- Superset construit une requete de serie temporelle des qu'un graphique
+    -- en demande une -- et `big_number` en demande toujours une -- puis
+    -- exige une colonne de temps : sans elle, la tuile echoue en 400
+    -- « Datetime column not provided ». Le controle « Time column » de
+    -- l'interface se remplit par defaut depuis `main_dttm_col` ; ecrit par
+    -- API, il faut le poser a la main.
+    MAX(date_trunc('month', f.date_facture))::date          AS periode
 FROM core.facture f
 LEFT JOIN ml.label_fraude l ON l.facture_id = f.id;
 
 COMMENT ON VIEW bi.v_kpi_global IS
-    'Bandeau d''indicateurs, 1 ligne : volumes, montants MGA, taux de fraude RECALCULE sur toute la periode et delai moyen PONDERE par facture. Un taux ne se somme pas et une moyenne de moyennes n''est pas une moyenne. Source core.facture + ml.label_fraude.';
+    'Bandeau d''indicateurs, 1 ligne : volumes, montants MGA, taux de fraude RECALCULE sur toute la periode et delai moyen PONDERE par facture. Un taux ne se somme pas et une moyenne de moyennes n''est pas une moyenne. `periode` date les totaux (dernier mois couvert) et sert de colonne temporelle au frontal. Source core.facture + ml.label_fraude.';
 
 
 -- ============================================================================

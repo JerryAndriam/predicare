@@ -69,10 +69,10 @@ Le jeu de l'encadrement est en **MGA**. Une colonne nommee `montant_eur`
 serait fausse d'un facteur d'environ 57 000. Toutes les colonnes portent
 `mga` dans leur nom, et les titres de graphiques le rappelent.
 
-## Quatre pieges que les tests ne voient pas
+## Cinq pieges que les tests ne voient pas
 
-Ils ont chacun a fait afficher « there was an issue » sur des graphiques dont la
-requete etait pourtant correcte. Les deux meritaient d'etre ecrits.
+Chacun a fait afficher « there was an issue » sur des graphiques dont la
+requete etait pourtant correcte. Tous meritaient d'etre ecrits.
 
 ### 1. Une colonne existe dans la vue, pas dans Superset
 
@@ -162,6 +162,45 @@ Corollaire : une mise a jour du tableau commence par relire la position
 DEJA stockee pour construire l'arbre des onglets. Un document invalide
 empoisonne donc sa propre correction -- il faut l'ecraser une fois en direct
 avant que l'API reaccepte quoi que ce soit.
+
+### 5. Les defauts des controles ne s'appliquent pas aux graphiques ecrits par API
+
+Le controle « Time column » de l'interface se remplit par defaut depuis
+`main_dttm_col`. C'est ce defaut qui pose `granularity_sqla` sur un graphique
+cree a la main ; `register_dashboard.py` passant par l'API, il ne s'applique
+jamais, et le parametre restait absent.
+
+Or le frontal construit une requete de serie temporelle des que le graphique
+en demande une -- et `big_number` en demande **toujours** une, meme pour une
+valeur unique : sa fabrique de requete pose `is_timeseries: true` des que le
+graphique n'a pas de colonnes de regroupement. Le serveur refuse alors la
+requete :
+
+```
+POST /api/v1/chart/data -> 400
+"Datetime column not provided as part table configuration
+ and is required by this type of chart"
+```
+
+La regle exacte, dans `superset/models/helpers.py`, surprend : le repli sur
+`main_dttm_col` n'a lieu **que si `granularity` est deja renseigne**. Une serie
+temporelle sans colonne de temps echoue donc meme sur un dataset qui en a une.
+
+Deux consequences dans ce depot :
+
+* `granularity_sqla` est ecrit explicitement dans les `params` de chaque
+  graphique qui en a besoin -- `mois` sur `v_kpi_mensuel`, `periode` ailleurs ;
+* `v_kpi_global` et `v_cdc_global` portent une colonne `periode`. Une tuile de
+  valeur unique n'en a pas besoin pour calculer, mais le frontal la reclame
+  pour construire sa requete : c'est ce qui date le total, et sans elle la
+  tuile n'a pas de colonne de temps a lui donner.
+
+Le controle qui va avec : `verifier_graphiques.py` reproduit la regle du
+frontal (drapeau pose selon le type de graphique, `granularity` prise
+uniquement de `granularity_sqla`) et refuse toute serie temporelle sans
+colonne de temps. Une verification qui complete ce qu'elle verifie ne verifie
+rien : la version precedente deduisait `granularity` du `groupby`, et validait
+donc 200 les neuf tuiles que le navigateur recevait en 400.
 
 ### Les cinq indicateurs du CDC, tous affiches
 

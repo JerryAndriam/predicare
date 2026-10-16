@@ -65,30 +65,56 @@ def _appel(methode, chemin, charge=None, jeton="", csrf="", brut=False):
         return 0, {"_err": str(erreur)}
 
 
+def _serie_temporelle(viz_type: str, params: dict) -> bool:
+    """Reproduit la regle du frontal, graphique par graphique.
+
+    Le frontal ne pose pas `is_timeseries` de la meme facon pour tout le
+    monde (code du paquet frontal, verifie a l'execution) :
+
+      * `big_number` : vrai des que les colonnes sont vides -- donc toujours
+        pour une tuile KPI, qui n'a pas de regroupement : la requete part avec
+        `columns: []` et `is_timeseries: true`, meme pour une valeur unique ;
+      * `echarts_timeseries` : `!!formData.time_grain_sqla` ;
+      * `table`, `dist_bar` : pas de drapeau du tout.
+
+    La version precedente ne l'activait que pour `echarts_timeseries`. Elle
+    envoyait donc au serveur des corps que le navigateur n'envoie jamais, et
+    rendait 200 sur neuf tuiles que le navigateur recevait en 400.
+    """
+    if viz_type == "big_number":
+        return not (params.get("groupby") or [])
+    if viz_type == "echarts_timeseries":
+        return bool(params.get("time_grain_sqla"))
+    return False
+
+
 def _corps_requete(viz_type: str, params: dict, id_dataset: int) -> dict:
-    """Corps de requete, construit SANS transformer les valeurs.
+    """Corps de requete, reconstruit COMME LE NAVIGATEUR le construit.
 
     `groupby` (forme du form_data) devient `columns` (forme de la requete) :
     c'est un renommage structurel, celui que fait le frontal. Les VALEURS, en
     revanche, sont recopiees telles quelles.
 
-    C'est precisement ce que faisait de travers la version precedente : elle
-    convertissait les colonnes en chaines, et validait donc une charge que le
-    navigateur n'envoie jamais. Une verification qui normalise ce qu'elle
-    verifie ne verifie rien.
+    Deux regles du frontal sont reproduites ici, et il faut les deux :
+
+    1. `is_timeseries` depend du graphique, pas du dataset -- voir
+       `_serie_temporelle`.
+
+    2. `granularity` vient UNIQUEMENT de `form_data.granularity_sqla` : le
+       frontal fait `y.granularity = y.granularity_sqla || e.granularity`.
+       La version precedente la deduisait de la premiere colonne du
+       regroupement : elle fournissait donc au serveur une colonne de temps
+       que le graphique ne demandait pas, et la verification passait pendant
+       que le navigateur recevait « Datetime column not provided ».
+
+    Une verification qui complete ce qu'elle verifie ne verifie rien.
     """
-    serie = viz_type == "echarts_timeseries"
     colonnes = list(params.get("groupby") or [])
     metriques = params.get("metrics") or []
     if isinstance(params.get("metric"), dict):
         metriques = [params["metric"]]
 
-    # La granularite est un NOM de colonne : le frontal l'extrait du
-    # regroupement. Ce champ n'est pas celui que l'on veut tester -- le
-    # regroupement lui-meme reste intact dans `columns`.
-    premiere = colonnes[0] if colonnes else None
-    nom = premiere.get("column_name") if isinstance(premiere, dict) else premiere
-
+    serie = _serie_temporelle(viz_type, params)
     requete = {
         "metrics": metriques,
         "columns": colonnes,
@@ -100,8 +126,14 @@ def _corps_requete(viz_type: str, params: dict, id_dataset: int) -> dict:
         "is_timeseries": serie,
         "result_type": "full",
     }
-    if serie and nom:
-        requete["granularity"] = nom
+    if serie:
+        # Presentes seulement si le graphique les porte : un parametre absent
+        # doit rester absent, sinon on verifie une charge plus riche que la
+        # vraie, et on ne verifie plus rien.
+        if params.get("granularity_sqla"):
+            requete["granularity"] = params["granularity_sqla"]
+        if params.get("time_grain_sqla"):
+            requete["time_grain_sqla"] = params["time_grain_sqla"]
     return {
         "datasource": {"id": id_dataset, "type": "table"},
         "queries": [requete],
@@ -201,25 +233,43 @@ def main() -> int:
     rison = urllib.parse.quote("(page:0,page_size:100)", safe="()")
     _, rep = _appel("GET", f"/api/v1/chart/?q={rison}", None, jeton)
     graphiques = rep.get("result") or []
+    # L'URL que le navigateur compose pour chaque tuile : `form_data` reduit a
+    # l'identifiant, plus l'identifiant NUMERIQUE du tableau. Le serveur s'en
+    # sert pour la journalisation et la cle de cache.
+    _, rep_tableau = _appel("GET", f"/api/v1/dashboard/{TABLEAU}", None, jeton)
+    id_tableau = (rep_tableau.get("result") or {}).get("id")
     print(f"\n    {len(graphiques)} graphiques, requete reelle de chacun :")
     for graphique in graphiques:
         identifiant = graphique["id"]
-        # Le parametre d'URL `form_data` est celui du navigateur -- il sert a
-        # la journalisation et a la cle de cache. Le corps, lui, porte la
-        # requete, et ses valeurs viennent des parametres STOCKES, recopiees
-        # sans transformation.
+        nom = graphique["slice_name"][:44]
+        # Le corps porte la requete, et ses valeurs viennent des parametres
+        # STOCKES, recopiees sans transformation.
         params = graphique.get("params")
         if isinstance(params, str):
             params = json.loads(params or "{}")
         params = params or {}
-        form_data = urllib.parse.quote(json.dumps({"slice_id": identifiant}))
         corps = _corps_requete(graphique.get("viz_type") or "", params, graphique["datasource_id"])
+        # Garde-fou explicite : une serie temporelle sans colonne de temps ne
+        # peut pas repondre 200. Sans ce controle, l'echec ne se lit que dans
+        # un message du serveur qui ne dit pas quel parametre manque.
+        requete = corps["queries"][0]
+        if requete["is_timeseries"] and not requete.get("granularity"):
+            echecs.append(f"{graphique['slice_name']} : granularity_sqla absent")
+            print(
+                f"    {nom:46} ECHEC  serie temporelle sans granularity_sqla "
+                "(le serveur repond « Datetime column not provided »)"
+            )
+            continue
+        form_data = urllib.parse.quote(json.dumps({"slice_id": identifiant}))
         statut, rep = _appel(
-            "POST", f"/api/v1/chart/data?form_data={form_data}", corps, jeton, csrf
+            "POST",
+            f"/api/v1/chart/data?form_data={form_data}&dashboard_id={id_tableau}",
+            corps,
+            jeton,
+            csrf,
         )
         resultat = (rep.get("result") or [{}])[0] if isinstance(rep.get("result"), list) else {}
         donnees = resultat.get("data") or []
-        nom = graphique["slice_name"][:44]
         if statut == 200:
             valeur = ""
             if len(donnees) == 1:
