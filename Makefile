@@ -80,6 +80,20 @@ up: ## Demarre toute la plateforme, tooling de demonstration inclus
 	# overlays demarraient par des `make up-*` separes : leurs `depends_on`
 	# vers le core (superset -> db: service_healthy) ne pouvaient etre resolus
 	# que par le hasard de l'ordre de lancement. Ici Compose orchestre tout.
+	@$(COMPOSE_STACK) up -d db redis
+	# `migrate` passe par `run --rm` et non par `up -d`.
+	#
+	# `up -d` NE RELANCE PAS un one-shot deja sorti : Compose le reutilise tant
+	# que son `config-hash` correspond, et ce hash couvre la definition du
+	# service (YAML, image, environnement) -- pas le contenu de ./db/migrations,
+	# monte en lecture seule. Une migration ajoutee apres le premier demarrage
+	# restait donc jamais appliquee, sans erreur : `migrate` sortait en 0 et
+	# `make wait` concluait que tout allait bien sur un schema perime.
+	#
+	# `run --rm` cree un conteneur neuf a chaque fois : le bug ne peut plus
+	# revenir, et l'ordre reste garanti avant les API (qui dependent de
+	# `service_completed_successfully`).
+	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	@echo ""
@@ -94,6 +108,8 @@ start: ## Demarre SANS reconstruire les images (apres un make down)
 	@echo "Images existantes reutilisees : aucune reconstruction."
 	@echo "Si tu as modifie du code, lance 'make up' pour reconstruire."
 	@scripts/bootstrap.sh
+	@$(COMPOSE_STACK) up -d db redis
+	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	@echo ""
@@ -104,6 +120,8 @@ up-light: ## Demarre le NOYAU seul, sans Superset/Grafana/Prometheus/MLflow
 	@echo "Demarrage minimal (noyau applicatif uniquement)."
 	@echo "Si un service de demonstration manque, repasser par 'make start'."
 	@scripts/bootstrap.sh
+	@$(COMPOSE_CORE) up -d db redis
+	@$(COMPOSE_CORE) run --rm migrate
 	@$(COMPOSE_CORE) up -d
 	@$(MAKE) --no-print-directory wait
 	@echo ""
@@ -251,8 +269,12 @@ backups: ## Liste les sauvegardes disponibles
 	@ls -lh backups/ 2>/dev/null || echo "Aucune sauvegarde (repertoire vide)"
 
 .PHONY: migrate
-migrate: ## Applique les migrations de base
+migrate: ## Applique les migrations en attente
 	@$(COMPOSE_CORE) run --rm migrate
+
+.PHONY: db-status
+db-status: ## Compare la version du schema en base et celle attendue par le code
+	@scripts/db-status.sh
 
 .PHONY: reload-data
 reload-data: ## Recharge les donnees depuis ./data/raw
@@ -260,8 +282,44 @@ reload-data: ## Recharge les donnees depuis ./data/raw
 	@$(COMPOSE_CORE) run --rm seed
 
 .PHONY: shell-db
-shell-db: ## Ouvre psql sur la base PrediCare
-	@$(COMPOSE_CORE) exec db psql -U $${POSTGRES_USER:-predicare} -d $${POSTGRES_DB:-predicare}
+shell-db: ## Ouvre psql sur la base (ROLE=predicare_ro pour un acces lecture seule)
+	@$(COMPOSE_CORE) exec db psql -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}
+
+# Exécute une requête ou un fichier SQL.
+#
+#   make db-sql Q="SELECT count(*) FROM core.facture"
+#   make db-sql FILE=analyse.sql
+#   cat rapport.sql | make db-sql
+#
+# `Q=` et non un argument positionnel : Make prend le premier argument comme
+# un nom de cible, donc `make db-sql "SELECT 1"` echoue sur « Aucune règle pour
+# fabriquer la cible » apres avoir pourtant execute la requete.
+#
+# Le fichier est lu par l'HOST puis envoye sur l'entree standard, et non par
+# `psql -f` : le fichier est sur la machine du developpeur, pas dans le
+# conteneur, et `psql -f` le chercherait a l'interieur.
+#
+# `ON_ERROR_STOP=1` n'est pas décoratif : sans lui, psql émule le shell et
+# continue après une erreur en renvoyant 0. Un script à moitié appliqué
+# paraîtrait alors réussi.
+#
+# `ROLE=predicare_ro` bascule vers le compte en lecture seule, ce qui permet de
+# vérifier sur un cas réel que le moindre privilège s'applique bien.
+FILE ?=
+Q ?=
+ROLE ?=
+PSQL_DB = $(COMPOSE_CORE) exec -T db psql -v ON_ERROR_STOP=1 -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}
+
+.PHONY: db-sql
+db-sql: ## Execute une requete SQL (Q="...") ou un fichier (FILE=...), ou lit stdin
+	@if [ -n "$(FILE)" ]; then \
+		if [ ! -r "$(FILE)" ]; then echo "Fichier SQL introuvable : $(FILE)" >&2; exit 1; fi; \
+		$(PSQL_DB) < "$(FILE)"; \
+	elif [ -n "$(Q)" ]; then \
+		printf '%s\n' "$(Q)" | $(PSQL_DB); \
+	else \
+		$(PSQL_DB); \
+	fi
 
 # =============================================================================
 # MODELE

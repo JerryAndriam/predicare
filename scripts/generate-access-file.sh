@@ -209,12 +209,16 @@ localhost:55432` échoue donc en `Connection refused` — ce n'est pas une panne
 Pour parler au serveur SQL :
 
 ```bash
-make shell-db                                  # psql dans le conteneur
-docker compose exec -T db psql -U predicare -d predicare -c '\dt'
+make shell-db                                  # psql interactif
+make shell-db ROLE=predicare_ro                # en lecture seule
+make db-sql Q="SELECT count(*) FROM core.facture"
+make db-sql FILE=analyse.sql
+make db-status                                 # version du schema vs code
+make migrate                                   # appliquer les migrations en attente
 ```
 
-Pour un client graphique (DBeaver, pgAdmin), passer par un tunnel SSH vers le
-conteneur plutôt que par un port direct.
+Un client graphique (DBeaver, pgAdmin) ne peut pas se connecter : aucun port
+n'est publie et aucun relais n'est prevu. Tout passe par `docker compose exec`.
 
 Bases annexes créées automatiquement : `n8n`, `superset`, `mlflow`.
 
