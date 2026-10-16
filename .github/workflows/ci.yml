@@ -76,15 +76,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service:
-- name: predicare-python
+          service:
+            - name: predicare-python
               dockerfile: apps/Dockerfile.python
               # L'image Python est partagee par tous les services et n'a
               # aucun ARG a definir : `build-args` reste vide pour elle.
               args: ""
-          - name: predicare-web
-            dockerfile: apps/web/Dockerfile
-            args: "VITE_API_GATEWAY_URL=/api"
+            - name: predicare-web
+              dockerfile: apps/web/Dockerfile
+              args: "VITE_API_GATEWAY_URL=/api"
     steps:
       - uses: actions/checkout@v4
 
@@ -101,6 +101,19 @@ jobs:
           build-args: ${{ matrix.service.args }}
           cache-from: type=gha,scope=${{ matrix.service.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Le Makefile expose 47 cibles. Une commande ajoutee puis oubliee dans le
+      # README ne leve aucune erreur : elle est simplement absente, et l'echec
+      # n'apparait que le jour ou quelqu'un la tape. Ce controle rend
+      # l'absence visible des la revue.
+      - name: Le README documente toutes les commandes
+        run: python3 scripts/check_readme_commandes.py
 
   # --------------------------------------------------------------------
   # Coherence du compose : `docker compose config` echoue si une variable

@@ -245,7 +245,28 @@ if [ "$DEGRADES" -gt 0 ]; then
     log "Detail : make health"
 fi
 
-log "Plateforme accessible sur http://localhost:${GATEWAY_PORT:-8080}"
+  # --- 7. Derive du schema --------------------------------------------------
+  # `migrate` est un one-shot : Compose le reutilise s'il est sorti avec le meme
+  # config-hash. Ajouter une migration ne change pas ce hash (les fichiers sont
+  # montes en lecture seule), donc la base peut rester perimee sans que rien ne
+  # le signale. C'est exactement ce qui est arrive ici : `make up` annoncait
+  # une plateforme prete sur un schema 0002 alors que le code attendait 0003.
+  #
+  # Ce controle est BLOQUANT : le reste de la pile peut tourner, mais si le
+  # schema ne correspond pas au code, la demonstration porte sur autre chose que
+  # ce que le projet contient.
+  if scripts/db-status.sh >/dev/null 2>&1; then
+      ok "schema a jour avec le code"
+  else
+      ko "schema derrive : la base n'est pas au niveau attendu par le code"
+      scripts/db-status.sh 2>/dev/null | sed 's/^/      /'
+      log "Les migrations ne sont pas appliquees automatiquement par 'make up'."
+      log "  Lance 'make migrate', puis 'make start'."
+      CODES_ECHEC=1
+  fi
+
+  echo ""
+  log "Plateforme accessible sur http://localhost:${GATEWAY_PORT:-8080}"
 
 if [ "$CODES_ECHEC" -ne 0 ]; then
     ko "La pile n'est pas completement demarree. Corrigez ce qui est ci-dessus avant toute demonstration."

@@ -3,15 +3,22 @@
 Phases **1.2** (chargement) et **1.4** (qualite) du plan d'action. Job execute
 au premier demarrage de la plateforme (compose depend de sa sortie reussie).
 
-## Deux scripts
+## Trois modules
 
-| Script | Role | Besoin d'une base ? |
+| Module | Role | Besoin d'une base ? |
 | --- | --- | --- |
 | `load_initial_data.py` | Chargement des 14 CSV en base (Phase 1.2) | **Oui** (PostgreSQL) |
-| `qualite_donnees.py` | Nettoyage + validation + rapport (Phase 1.4) | **Non** |
+| `qualite_donnees.py` | Analyse, regles metier, rapport (Phase 1.4) | **Non** |
+| `validation.py` | Porte d'integrite avant toute ecriture | **Non** |
 
-`load_initial_data.py` appelle `qualite_donnees.py` avant d'ecrire : aucune
-facture invalide n'entre en base.
+`load_initial_data.py` enchaine les deux garde-fous avant d'ouvrir la moindre
+transaction : `validation.py` refuse un fichier douteux, `qualite_donnees.py`
+ecarte les factures invalides. Aucun ecrit n'a lieu si l'un des deux echoue.
+
+`validation.py` relit les CSV **par lui-meme**, sans passer par
+`qualite_donnees.lire_tous` : un controle qui partage le chemin de lecture du
+code qu'il controle ne peut pas attraper une erreur de ce chemin. Le cout est
+une seconde lecture des 44 Mo, soit quelques secondes.
 
 ## Fonctionnement
 

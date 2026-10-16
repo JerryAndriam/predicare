@@ -41,6 +41,9 @@ from predicare_seed.qualite_donnees import (
     rapport,
     valider_factures,
 )
+from predicare_seed.validation import (
+    COLONNES_ATTENDUES,
+)
 
 configure_logging("seed", get_settings().log_level, get_settings().log_format)
 logger = get_logger("seed")
@@ -49,6 +52,59 @@ logger = get_logger("seed")
 DATA_RAW_DIR = Path(os.environ.get("DATA_RAW_DIR", "/data/raw"))
 #: Dossier du rapport de qualite (le volume des donnees est monte en lecture seule).
 RAPPORT_DIR = Path(os.environ.get("RAPPORT_DIR", "/tmp"))
+
+
+def _relire_brut(dossier: Path) -> dict[str, pd.DataFrame]:
+    """Relit les CSV sans interpretation, pour la porte d'integrite.
+
+    `lire_tous` applique deja les regles metier de `qualite_donnees` ;
+    `validation.py` a besoin des valeurs brutes pour verifier le schema, les
+    doublons et l'integrite referentielle. Deux lectures, deux regards : c'est
+    le prix d'un controle qui ne depend pas du code qu'il controle.
+    """
+    import pandas as pd
+
+    fichiers = [
+        f for f in sorted(dossier.glob("*.csv"))
+        if f.name in COLONNES_ATTENDUES
+    ]
+    return {f.name: pd.read_csv(f, low_memory=False) for f in fichiers}
+
+
+def _cle(valeur: object, nom: str) -> str:
+    """Cle primaire d'un CSV, garantie non vide.
+
+    `en_texte` rend `None` sur une cellule vide, ce qui est correct pour une
+    colonne ordinaire : 44 % des factures n'ont pas d'ordonnance, et cette
+    absence porte du sens. Une cle primaire n'a pas cette latitude : la
+    passer a `pseudonymize` produirait le pseudonyme de la chaine « None »,
+    c'est-a-dire le meme pour tous les assures sans identite, et la ligne
+    serait ecrasee par la contrainte d'unicite.
+
+    On leve donc plutot que de deviner. L'erreur nomme la colonne, ce qui est
+    la seule information utile pour corriger un fichier source.
+    """
+    texte = en_texte(valeur)
+    if texte is None:
+        raise ValueError(f"Cle primaire absente sur la colonne « {nom} » du jeu de donnees")
+    return texte
+
+
+def _resoudre(carte: dict[str, int], valeur: object) -> int | None:
+    """Resout une cle etrangere facultative en identifiant interne.
+
+    Distingue de `_cle` parce que les deux sens sont opposes. Une facture
+    sans ordonnance est normale -- beaucoup d'actes n'en exigent pas -- alors
+    qu'une facture sans identifiant est un fichier corrompu. Traiter les deux
+    de la meme maniere ferait echouer le chargement sur 44 % des lignes, ou
+    laisserait passer un fichier abime.
+
+    Le `carte.get(...)` est conditionnel, et non `carte.get(en_texte(...))` :
+    `dict.get` refuse une cle `None`, et passer `""` chercherait un
+    identifiant vide au lieu de rendre l'absence.
+    """
+    texte = en_texte(valeur)
+    return carte.get(texte) if texte else None
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +228,7 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
     """
     assures = [
         {
-            "pseudonyme": pseudonymize("assr", en_texte(r["assure_id"])),
+            "pseudonyme": pseudonymize("assr", _cle(r["assure_id"], "assure_id")),
             "annee_naissance": en_entier(r["annee_naissance"]),
             "sexe": en_texte(r["sexe"]),
             "commune_code": en_texte(r["ville"]),
@@ -197,12 +253,12 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
         nom = " ".join(x for x in (en_texte(r["nom"]), en_texte(r["prenoms"])) if x)
         identites.append(
             {
-                "pseudonyme": pseudonymize("assr", en_texte(r["assure_id"])),
-                "reference_brute_chiffree": encrypt_value(en_texte(r["assure_id"]), fernet).encode(),
+                "pseudonyme": pseudonymize("assr", _cle(r["assure_id"], "assure_id")),
+                "reference_brute_chiffree": encrypt_value(_cle(r["assure_id"], "assure_id"), fernet).encode(),
                 "nom_chiffre": encrypt_value(nom, fernet).encode() if nom else None,
                 "coordonnees_chiffrees": encrypt_value(json.dumps(coordonnees, ensure_ascii=False), fernet).encode(),
                 "date_naissance_chiffree": (
-                    encrypt_value(en_texte(r["date_naissance"]), fernet).encode()
+                    encrypt_value(_cle(r["date_naissance"], "date_naissance"), fernet).encode()
                     if en_texte(r["date_naissance"])
                     else None
                 ),
@@ -215,7 +271,7 @@ def charger_assures(session: Session, d: dict[str, pd.DataFrame]) -> dict[str, i
 
     par_pseudo = _carte(session, "SELECT pseudonyme, id FROM core.assure")
     return {
-        en_texte(r["assure_id"]): par_pseudo[pseudonymize("assr", en_texte(r["assure_id"]))]
+        _cle(r["assure_id"], "assure_id"): par_pseudo[pseudonymize("assr", _cle(r["assure_id"], "assure_id"))]
         for r in d["assures"].to_dict("records")
     }
 
@@ -227,7 +283,7 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
     assures = cartes["assures"]
     # Assure principal de chaque contrat (celui marque ASSURE_PRINCIPAL).
     principal: dict[str, str] = {
-        en_texte(r["contrat_id"]): en_texte(r["assure_id"])
+        _cle(r["contrat_id"], "contrat_id"): _cle(r["assure_id"], "assure_id")
         for r in d["assures"].to_dict("records")
         if en_texte(r["rang_beneficiaire"]) == "ASSURE_PRINCIPAL"
     }
@@ -235,7 +291,7 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
     contrats = [
         {
             "numero": en_texte(r["contrat_id"]),
-            "assure_id": assures.get(principal.get(en_texte(r["contrat_id"]), "")),
+            "assure_id": assures.get(principal.get(_cle(r["contrat_id"], "contrat_id"), "")),
             "niveau": en_texte(r["formule"]) or "bronze",
             "date_debut": en_date(r["date_effet"]),
             "date_fin": en_date(r["date_fin"]),
@@ -255,12 +311,12 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
 
     beneficiaires = [
         {
-            "contrat_id": id_contrats.get(en_texte(r["contrat_id"])),
+            "contrat_id": id_contrats.get(_cle(r["contrat_id"], "contrat_id")),
             "assure_id": assures.get(en_texte(r["assure_id"])),
             "rang_beneficiaire": en_texte(r["rang_beneficiaire"]),
             "date_adhesion": en_date(r["date_adhesion"]),
             "date_radiation": en_date(r["date_radiation"]),
-            "assure_principal_id": assures.get(principal.get(en_texte(r["contrat_id"]), "")),
+            "assure_principal_id": assures.get(principal.get(_cle(r["contrat_id"], "contrat_id"), "")),
         }
         for r in d["assures"].to_dict("records")
     ]
@@ -296,13 +352,13 @@ def charger_contrats(session: Session, d: dict[str, pd.DataFrame], cartes: dict[
     if _compter(session, "core.garantie") == 0:
         regles_par_formule: dict[str, list[dict]] = {}
         for g in garanties:
-            regles_par_formule.setdefault(g["formule"], []).append(g)
+            regles_par_formule.setdefault(_cle(g["formule"], "formule"), []).append(g)
         lignes_garantie = []
         for c in contrats:
-            for g in regles_par_formule.get(c["niveau"], []):
+            for g in regles_par_formule.get(_cle(c["niveau"], "niveau"), []):
                 lignes_garantie.append(
                     {
-                        "contrat_id": id_contrats.get(c["numero"]),
+                        "contrat_id": id_contrats.get(_cle(c["numero"], "numero")),
                         "nom": g["categorie"],
                         "taux_remboursement": g["taux_remboursement"],
                         "plafond_annuel": g["plafond_annuel_categorie"],
@@ -371,7 +427,7 @@ def charger_ordonnances(session: Session, d: dict[str, pd.DataFrame], cartes: di
             continue
         lignes.append(
             {
-                "ordonnance_id": id_ordos.get(en_texte(r["ordonnance_id"])),
+                "ordonnance_id": id_ordos.get(_cle(r["ordonnance_id"], "ordonnance_id")),
                 "num_ligne": en_entier(r["num_ligne"]),
                 "acte_id": acte_id,
                 "medicament_id": medicament_id,
@@ -417,8 +473,8 @@ def charger_factures(
             "montant_total": en_decimal(r["montant_total"]) or 0,
             "statut": en_texte(r["statut"]) or "recue",
             "numero_facture": en_texte(r["numero_facture"]),
-            "contrat_id": contrats.get(en_texte(r["contrat_id"])),
-            "ordonnance_id": id_ordos.get(en_texte(r["ordonnance_id"])) if en_texte(r["ordonnance_id"]) else None,
+            "contrat_id": _resoudre(contrats, r["contrat_id"]),
+            "ordonnance_id": _resoudre(id_ordos, r["ordonnance_id"]),
             "type_facture": en_texte(r["type_facture"]),
             "date_soin": en_date(r["date_soin"]),
             "heure_soin": en_texte(r["heure_soin"]),
@@ -488,7 +544,7 @@ def charger_labels(session: Session, d: dict[str, pd.DataFrame], factures_valide
     id_factures = _carte(session, "SELECT reference, id FROM core.facture")
     labels = [
         {
-            "facture_id": id_factures.get(en_texte(r["facture_id"])),
+            "facture_id": id_factures.get(_cle(r["facture_id"], "facture_id")),
             "label": en_entier(r["est_fraude"]) or 0,
             "type_fraude": en_texte(r["type_fraude"]),
             "detail_fraude": en_texte(r["detail_fraude"]),
@@ -501,7 +557,7 @@ def charger_labels(session: Session, d: dict[str, pd.DataFrame], factures_valide
     id_prestas = _carte(session, "SELECT code, id FROM core.prestataire")
     labels_p = [
         {
-            "prestataire_id": id_prestas.get(en_texte(r["prestataire_id"])),
+            "prestataire_id": id_prestas.get(_cle(r["prestataire_id"], "prestataire_id")),
             "est_suspect": en_entier(r["est_suspect"]) or 0,
         }
         for r in d["labels_prestataires"].to_dict("records")
