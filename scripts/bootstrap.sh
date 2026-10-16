@@ -221,7 +221,7 @@ creer_repertoires() {
 
 verifier_ports() {
     local conflits=()
-    local ports_a_verifier="GATEWAY_PORT WEB_PORT API_CORE_PORT API_INFERENCE_PORT API_RAG_PORT POSTGRES_PORT N8N_PORT MAILPIT_UI_PORT"
+    local ports_a_verifier="GATEWAY_PORT WEB_PORT API_CORE_PORT API_INFERENCE_PORT API_RAG_PORT N8N_PORT MAILPIT_UI_PORT SUPERSET_PORT GRAFANA_PORT PROMETHEUS_PORT MLFLOW_PORT"
 
     command -v ss >/dev/null 2>&1 || return 0
 

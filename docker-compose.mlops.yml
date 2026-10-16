@@ -18,7 +18,9 @@
 
 services:
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.19.0
+    image: predicare-mlflow:latest
+    build:
+      context: ./apps/mlops/mlflow
     container_name: predicare-mlflow
     restart: unless-stopped
     command: >

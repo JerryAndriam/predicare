@@ -12,6 +12,18 @@ set -uo pipefail
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RACINE"
 
+# Charge le .env. Compose le fait pour lui, pas ce script : sans cela, une
+# valeur de port personnalisee dans le .env fait tourner le conteneur sur
+# 3007 alors que la sonde interroge 3001, et le service est declare degrade
+# alors qu'il fonctionne. `set -a` exporte chaque variable pour les sous-
+# commandes (curl, docker).
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
 DELAI_MAX="${DELAI_MAX:-180}"
 INTERVALLE=3
 ATTENTE=0
@@ -156,10 +168,74 @@ else
     CODES_ECHEC=1
 fi
 
-echo ""
-log "Etat final :"
-docker compose ps --format 'table {{.Service}}\t{{.Status}}'
-echo ""
+  echo ""
+  log "Etat final :"
+  docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+  echo ""
+
+  # --- 6. Services de demonstration ---------------------------------------
+  # Superset, Grafana, Prometheus et MLflow ont ete integres a `make up` et
+  # `make start`. Aucun ne declare de `healthcheck`, donc Compose considere
+  # demarre un conteneur qui n'ecoute pas encore : sans cette phase, `make up`
+  # annoncerait « pret » pendant que Superset initialise encore ses bases, et
+  # le premier clic du jury tomberait sur une page blanche.
+  #
+  # Mode degrade VOLONTAIRE : un echec ici n'annule pas le code de sortie.
+  # Le noyau est deja verifie et fonctionnel ; un Superset qui ne demarre pas
+  # doit priver le jury de la demonstration complete, pas l'annuler. Le detail
+  # de l'echec est quand meme affiche.
+  log "Services de demonstration (mode degrade : un echec n'annule pas 'make up')..."
+  attendre_optional() {
+      local nom="$1" url="$2" delai="$3"
+
+      if ! docker inspect "predicare-${nom}" >/dev/null 2>&1; then
+          printf '\033[90m  [--]\033[0m   %s non lance (attendu en mode `make up-light`)\n' "$nom"
+          return 0
+      fi
+
+      if en_boucle "$nom"; then
+          printf '\033[33m  [!!]\033[0m   %s en boucle de redemarrage\n' "$nom"
+          signaler_boucle "$nom"
+          return 0
+      fi
+
+      # Un seul `curl` ne suffit pas : Superset met jusqu'a plusieurs minutes
+      # a initialiser ses bases apres un demarrage a froid, et le declarer
+      # degrade parce qu'il n'etait pas pret a l'instant T produirait un faux
+      # signal sur la service le plus lent de la pile. On interroge donc en
+      # boucle jusqu'a epuisement du delai, comme le fait attendre-http.sh.
+      local attente=0
+      while [ "$attente" -lt "$delai" ]; do
+          if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+              ok "$nom repond sur $url"
+              return 0
+          fi
+          [ $((attente % 15)) -eq 0 ] && \
+              printf '\033[90m  [..]\033[0m   %s demarre (%ss)\n' "$nom" "$attente"
+          sleep 3
+          attente=$((attente + 3))
+      done
+
+      local etat
+      etat=$(docker inspect -f '{{.State.Status}}' "predicare-${nom}" 2>/dev/null || echo absent)
+      printf '\033[33m  [!!]\033[0m   %s ne repond pas sur %s apres %ss (etat : %s) -- service degrade, la suite reste utilisable\n' \
+          "$nom" "$url" "$delai" "$etat"
+  }
+
+  attendre_optional superset   "http://localhost:${SUPERSET_PORT:-8088}/health"    "${DELAI_SUPERSET:-240}"
+  attendre_optional grafana    "http://localhost:${GRAFANA_PORT:-3001}/api/health"  "${DELAI_OPTIONAL:-120}"
+  attendre_optional prometheus "http://localhost:${PROMETHEUS_PORT:-9090}/-/healthy" "${DELAI_OPTIONAL:-120}"
+  attendre_optional mlflow     "http://localhost:${MLFLOW_PORT:-5000}/health"       "${DELAI_OPTIONAL:-120}"
+
+  # Les workers n'ont pas de port : on verifie seulement qu'ils ne bouclent
+  # pas, ce que fait deja `en_boucle`.
+  for worker in worker-ingest worker-ai; do
+      if docker inspect "predicare-${worker}" >/dev/null 2>&1 && ! en_boucle "$worker"; then
+          ok "$worker stable"
+      fi
+  done
+
+  echo ""
 
 # Les services degrade ne bloquent pas : un modele non entraine ou une cle
 # LLM absente laisse la plateforme utilisable, et c'est volontaire.

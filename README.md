@@ -80,12 +80,21 @@ installer.
 | Interface PrediCare                | <http://localhost:8080>               | `make up`               |
 | Documentation des API              | <http://localhost:8080/api/core/docs> | `make up`               |
 | n8n — workflows d'alerte           | <http://localhost:5678>               | `make up`               |
-| Superset — pilotage décisionnel    | <http://localhost:8088>               | `make up-bi`            |
-| Grafana — supervision              | <http://localhost:3001>               | `make up-observability` |
-| Prometheus — métriques             | <http://localhost:9090>               | `make up-observability` |
-| MLflow — suivi des modèles         | <http://localhost:5000>               | `make up-mlops`         |
+| Superset — pilotage décisionnel    | <http://localhost:8088>               | `make up`               |
+| Grafana — supervision              | <http://localhost:3001>               | `make up`               |
+| Prometheus — métriques             | <http://localhost:9090>               | `make up`               |
+| MLflow — suivi des modèles         | <http://localhost:5000>               | `make up`               |
 | Mailpit — e-mails de développement | <http://localhost:8025>               | `make up-email`         |
-| PostgreSQL + pgvector              | `localhost:55432`                     | `make up`               |
+| PostgreSQL + pgvector              | **pas de port** — `make shell-db`     | `make up`               |
+
+`make up` et `make start` démarrent désormais **toute** la plateforme, Superset,
+Grafana, Prometheus et MLflow compris. `make up-light` garde la version économe
+(le noyau seul) pour une machine contrainte.
+
+PostgreSQL et Redis ne publient aucun port sur l'hôte, et ce n'est pas un oubli :
+le réseau `core` est `internal: true`, or Docker n'active la publication d'un
+port que si le conteneur est attaché à au moins un réseau **non** interne. Pour
+accéder à la base : `make shell-db`.
 
 ---
 
@@ -264,19 +273,30 @@ Le cœur démarre seul en ~4,6 Go. Les briques lourdes se lancent à la
 demande, ce qui permet de tenir dans le budget mémoire de la machine de
 démonstration.
 
+`make up` et `make start` couvrent déjà Superset, Grafana, Prometheus, MLflow et
+les workers (~3 Go d'images). Ces commandes existent pour démarrer un service
+**seul**, notamment quand le service est déjà lancé et qu'on veut le relancer.
+
 | Commande                | Contenu                                             | Mémoire |
 | ----------------------- | --------------------------------------------------- | ------- |
-| `make up-workers`       | Workers d'ingestion et d'indexation                 | ~1,1 Go |
+| `make up-light`         | Noyau seul : API, web, base, n8n                   | ~1,5 Go |
+| `make up` / `start`     | Noyau + Superset + Grafana + Prometheus + MLflow    | ~4,5 Go |
+| `make up-workers`       | Workers d'ingestion et d'indexation (déjà inclus)   | ~1,1 Go |
+| `make up-bi`            | Superset seul (déjà inclus)                         | ~0,9 Go |
+| `make up-observability` | Prometheus et Grafana seuls (déjà inclus)           | ~0,5 Go |
+| `make up-mlops`         | MLflow seul (déjà inclus)                           | ~0,6 Go |
 | `make up-email`         | Mailpit, boîte mail de développement                | ~0,1 Go |
-| `make up-bi`            | Superset + 5 datasets de pilotage, en lecture seule | ~0,9 Go |
-| `make up-observability` | Prometheus et Grafana                               | ~0,5 Go |
-| `make up-mlops`         | MLflow                                              | ~0,6 Go |
 | `make up-backup`        | Sauvegarde quotidienne planifiée                    | ~0,1 Go |
-| `make up-all`           | Tout                                                | ~6,5 Go |
+| `make up-all`           | Tout, y compris Mailpit et le cron de sauvegarde    | ~6,5 Go |
+
+**Si `make up` échoue faute de mémoire**, utilisez `make up-light` : le noyau
+reste démontrable, seul l'outillage de pilotage est indisponible. Un service
+optionnel qui ne répond pas n'interrompt pas `make up` — le noyau est vérifié
+séparément et c'est lui seul qui est bloquant.
 
 ### Tableau de bord décisionnel
 
-`make up-bi` démarre Superset et enregistre automatiquement cinq datasets
+`make up` démarre Superset et enregistre automatiquement cinq datasets
 documentés : volumes traités, taux de détection, montants économisés, délai de
 traitement, faux positifs. La connexion BI utilise le rôle `superset_ro`, en
 lecture seule stricte — l'outil ne peut pas modifier une donnée métier.

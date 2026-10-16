@@ -124,6 +124,53 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.observability.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.ops.yml config --quiet
 
+      # Valider chaque fichier separement ne prouve rien : la CI validait les
+      # overlays isoles, jamais leur union -- celle que `make up` utilise
+      # reellement. Un service d'un overlay qui depend d'un service d'un autre
+      # (`superset-init` -> `db: service_healthy`) ne declenche d'erreur que
+      # dans la combinaison complete.
+      - name: Valider la pile complete de `make up`
+        run: |
+          docker compose --profile workers \
+            -f docker-compose.yml -f docker-compose.bi.yml \
+            -f docker-compose.observability.yml -f docker-compose.mlops.yml \
+            config --quiet
+
+      - name: Verifier qu'aucun port n'est publie sur un reseau interne
+        run: |
+          # `core` est `internal: true`. Docker n'active la publication d'un
+          # port que pour un conteneur attache a au moins un reseau NON interne.
+          # Une ligne `ports:` sur `db` ou `redis` serait donc du code mort :
+          # elle passerait la validation compose ci-dessus tout en restant
+          # inoperante, et l'utilisateur verrait `Connection refused`.
+          #
+          # On lit le JSON produit par compose lui-meme plutot que le YAML du
+          # depot : aucune dependance supplementaire, et les variables
+          # `${...}` deja resolues.
+          docker compose -f docker-compose.yml config --format json > /tmp/resolved.json
+          python3 - <<'PY'
+          import json, sys
+
+          cfg = json.load(open("/tmp/resolved.json"))
+          # `compose config --format json` ecrit `internal` en minuscule, et
+          # declare les reseaux d'un service sous forme de DICTIONNAIRE
+          # (`{"core": null}`) et non de liste.
+          internes = {n for n, c in cfg.get("networks", {}).items()
+                      if isinstance(c, dict) and c.get("internal")}
+
+          fautes = [
+              nom for nom, svc in cfg.get("services", {}).items()
+              if svc.get("ports") and internes
+              and set(svc.get("networks") or {}) <= internes
+          ]
+
+          if fautes:
+              print("::error::Ports publies alors que le reseau est 100% interne : "
+                    + ", ".join(sorted(fautes)))
+              sys.exit(1)
+          print("Aucun port mort detecte.")
+          PY
+
   # --------------------------------------------------------------------
   # Garde-fou secrets : le patron critique de ce projet est de ne jamais
   # commiter de cle. On verifie que .env n'est pas suivi par Git.
