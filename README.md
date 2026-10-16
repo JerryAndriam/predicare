@@ -16,23 +16,20 @@ administrateur.
 > Le compose seul n'a pas de `.env` : les mots de passe des rôles SQL en
 > lecture seule restent vides, les migrations échouent, et les trois API ne
 > démarrent jamais puisque toutes dépendent de la migration. `make up` crée
-> le `.env` et génère les secrets avant de lancer le compose.
+> le `.env`, génère les secrets, applique les migrations, charge `data/raw/`,
+> puis attend que tous les services soient sains.
 
 ```bash
 make doctor   # vérifie que la machine est prête — à lancer en premier
-make up       # démarre la plateforme
-make start    # redémarre la plateforme sans build
-make down    # arrête tout le processus de la plateforme
+make up       # démarre et construit toute la plateforme
+make start    # redémarre sans reconstruire
+make down     # arrête tout, les données sont conservées
 ```
 
-`make up` crée le `.env` depuis `.env.example`, génère les secrets,
-construit les images, applique les migrations, charge les données de
-`./data/raw`, puis attend que tous les services soient sains.
-
-| Cible                                 | Résultat                              |
-| ------------------------------------- | ------------------------------------- |
-| `http://localhost:8080`               | Interface PrediCare, les quatre rôles |
-| `http://localhost:8080/api/core/docs` | Documentation interactive de l'API    |
+| Cible | Contenu |
+| --- | --- |
+| `http://localhost:8080` | Interface PrediCare, les quatre rôles |
+| `http://localhost:8080/api/core/docs` | Documentation interactive de l'API |
 
 ### Prérequis
 
@@ -73,6 +70,8 @@ installer.
 
 ---
 
+---
+
 ## Points d'entrée
 
 | Application                        | URL                                   | Lancée par              |
@@ -98,6 +97,190 @@ accéder à la base : `make shell-db`.
 
 ---
 
+## Actions récurrentes
+
+Ce tableau répond à la seule question qui compte quand on reprend le projet :
+**quand lancer quoi, et pourquoi.**
+
+| Situation | Séquence | Pourquoi |
+| --- | --- | --- |
+| **Machine vierge** | `make doctor` puis `make up` | Jamais `docker compose up` seul : sans `.env`, les rôles SQL restent sans mot de passe, les migrations échouent et les API ne démarrent pas, puisqu'elles en dépendent. |
+| **Après une modification de code** | `make up` puis `make smoke` | `make up` **reconstruit**. `make start` ne le fait pas, et ne le signale nulle part dans l'interface. |
+| **Redémarrage rapide** | `make down` puis `make start` | Les données sont conservées. Le second ne reconstruit rien. |
+| **Après une modification de `.env`** | `make down` puis `make start` | Les secrets ne sont relus qu'au démarrage des conteneurs. |
+| **Après ajout d'une migration** | `make migrate` puis `make db-status` | `make up` applique déjà les migrations. En revanche, `migrate` ne se rejoue pas tout seul si le job a déjà abouti : c'est précisément ce que `db-status` détecte. |
+| **Après modification du jeu de données** | déposer les CSV dans `data/raw/` puis `make reload-data` | Rechargement idempotent : `TRUNCATE … RESTART IDENTITY CASCADE` puis 14 tables, en une transaction. |
+| **Mémoire insuffisante** | `make up-light` | Le noyau reste démontrable ; seul l'outillage de pilotage manque. |
+| **Jour de démonstration** | `make down`, `make start`, `make health`, `make smoke`, `make acces`, `make n8n-compte` | Checklist détaillée plus bas. |
+| **Incident** | `make health`, puis `make logs-service S=<service>` | `make restore` si la base est corrompue, après confirmation. |
+
+### Le jour de démonstration
+
+```bash
+make down && make start   # redémarrage propre, sans reconstruction
+make health                # chaque service doit répondre
+make smoke                 # parcours de bout en bout
+make acces                 # fiche d'identifiants régénérée, hors dépôt, mode 600
+make n8n-compte            # l'état du compte n8n de CE poste
+```
+
+`make n8n-compte` n'est pas un détail : n8n n'a plus d'authentification basique
+depuis la version 1.x. Le compte propriétaire se crée au premier lancement de
+l'interface, avec l'email saisi par le visiteur, et **le mot de passe n'est
+écrit dans aucun fichier**. Chaque poste a le sien, qu'il faut avoir noté.
+
+---
+
+## Commandes
+
+`make help` liste les 44 commandes. Cette section les regroupe par tâche.
+
+### Cycle de vie
+
+| Commande | Effet |
+| --- | --- |
+| `make up` | Démarre tout **en reconstruisant** les images. Commande de référence du projet. |
+| `make start` | Démarre **sans reconstruire**, après un `make down`. |
+| `make up-light` | Noyau seul : API, web, base, n8n. Pour machine contrainte. |
+| `make down` | Arrêt. **Les données sont conservées.** |
+| `make restart` | `down` puis `start`, sans reconstruction. |
+| `make clean` | Arrêt **et** suppression des volumes — confirmation demandée. |
+| `make build` | Construit les images sans démarrer. |
+| `make wait` | Attend que tous les services soient sains. |
+
+### Données
+
+| Commande | Effet |
+| --- | --- |
+| `make reload-data` | Recharge `data/raw/` : purge puis 14 tables, en une transaction. |
+| `make migrate` | Applique les migrations en attente. |
+| `make db-status` | Compare la version du schéma en base et celle attendue par le code. |
+
+`make db-status` est le garde-fou le plus utile du projet. Le job `migrate`
+étant un one-shot, Compose ne le relance pas spontanément : sans ce contrôle,
+une migration ajoutée après le premier démarrage resterait non appliquée, et
+`make up` annoncerait une plateforme prête sur un schéma périmé.
+
+### Base de données
+
+| Commande | Effet |
+| --- | --- |
+| `make shell-db` | `psql` interactif. `ROLE=predicare_ro` pour un accès lecture seule. |
+| `make db-sql Q="SELECT …"` | Exécute une requête. |
+| `make db-sql FILE=analyse.sql` | Exécute un fichier SQL de l'hôte. |
+| `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
+
+Aucun port TCP n'atteint PostgreSQL : tout passe par `docker compose exec`, donc
+pas de client graphique. Un `psql localhost:55432` échoue en
+`Connection refused`, ce qui n'est pas une panne — voir
+[`db/seeds/README.md`](db/seeds/README.md).
+
+`ROLE=predicare_ro` sert à démontrer le moindre privilège sur un cas réel : la
+même requête aboutit en `predicare` et se voit refuser sur le schéma `audit`.
+
+### Modèle
+
+| Commande | Effet |
+| --- | --- |
+| `make model-state` | Version active du modèle et seuil courant. |
+| `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
+| `make train VERSION=2` | **Cible réservée.** Elle ne lance encore aucun entraînement et renvoie vers [`apps/ml-training/README.md`](apps/ml-training/README.md). |
+
+### n8n
+
+| Commande | Effet |
+| --- | --- |
+| `make n8n-compte` | Compte propriétaire de ce poste, et procédure s'il n'existe pas. |
+| `make n8n-export` | Exporte les workflows dans `apps/n8n/workflows/`. |
+| `make n8n-import` | Restaure et publie les workflows après un `down`/`up`. |
+
+Les workflows se partagent **par Git**, pas à l'intérieur de n8n : l'édition
+Community n'a pas de partage de projet. Détails dans
+[`apps/n8n/README.md`](apps/n8n/README.md).
+
+### Qualité
+
+| Commande | Effet |
+| --- | --- |
+| `make sync` | Installe les dépendances Python (workspace uv complet). |
+| `make lint` | Style et erreurs statiques (ruff). |
+| `make format` | Corrige le style automatiquement. |
+| `make typecheck` | Vérifie les types (mypy). |
+| `make test` | Lance la suite de tests. |
+| `make test-cov` | Tests avec le rapport de couverture. |
+| `make check` | Les quatre vérifications de la CI. |
+| `make readme` | Vérifie que le README documente exactement les commandes de `make help`. |
+| `make export-requirements` | Exporte les versions pip depuis `uv.lock`, non versionné. |
+
+Aucun test ne démarre de conteneur ni ne touche PostgreSQL : la CI doit
+tourner sur une pull request sans Docker.
+
+### Diagnostic
+
+| Commande | Effet |
+| --- | --- |
+| `make doctor` | Vérifie que la machine est prête. **À lancer en premier.** |
+| `make ps` | État des conteneurs, tous profils confondus. |
+| `make health` | Sonde `/health` et `/metrics` de chaque service. |
+| `make logs` | Suit les journaux de la plateforme. |
+| `make logs-service S=api-core` | Suit le journal d'un service. |
+| `make smoke` | Parcours de vérification de bout en bout. |
+
+`make doctor` contrôle les outils de l'hôte, le démon Docker, Compose v2,
+buildx, la présence et la santé du `.env`, l'absence de marqueur de secret en
+clair, la fiche d'accès, et que `.env` n'est pas versionné.
+
+### Sauvegarde
+
+| Commande | Effet |
+| --- | --- |
+| `make backup` | Sauvegarde immédiate. |
+| `make backups` | Liste les archives disponibles. |
+| `make restore` | Restaure la dernière archive — confirmation demandée. |
+| `make up-backup` | Démarre la planification quotidienne. |
+
+La restauration n'est **jamais** automatique : une restauration déclenchée par
+une erreur de script écraserait les données du jour.
+
+### Accès et configuration
+
+| Commande | Effet |
+| --- | --- |
+| `make acces` | Génère la fiche d'identifiants, hors dépôt, mode `600`. |
+| `make setup` | Crée le `.env` et génère les secrets manquants. |
+| `make secrets` | Régénère les secrets cryptographiques. |
+
+### Services optionnels
+
+`make up` démarre déjà Superset, Grafana, Prometheus, MLflow et les workers.
+Ces commandes servent à démarrer un service **seul**, ou à ajouter ce que le
+défaut exclut volontairement.
+
+| Commande | Contenu |
+| --- | --- |
+| `make up-bi` | Superset seul. |
+| `make up-observability` | Prometheus et Grafana seuls. |
+| `make up-mlops` | MLflow seul. |
+| `make up-workers` | Workers d'ingestion et d'indexation. |
+| `make up-email` | Mailpit, boîte mail de développement. |
+| `make up-backup` | Sauvegarde quotidienne planifiée. |
+| `make up-all` | Tout, y compris Mailpit et le cron de sauvegarde. |
+
+### Reconstruire ou pas
+
+`make up` reconstruit systématiquement les images : bon réflexe sur une machine
+vierge et après une modification de code. Mais Compose interroge malgré tout le
+réseau pour résoudre les images de base — un `make up` peut bloquer sur une
+machine sans internet, alors que la pile est parfaitement capable de démarrer.
+
+C'est le cas d'usage du jour J, où l'on répète la démonstration :
+
+```bash
+make down     # arrêt, les données restent
+make start    # redémarrage immédiat, aucune reconstruction
+```
+
+---
 ## Architecture
 
 Trois flux, trois services FastAPI indépendants, une base de données unique.
@@ -143,6 +326,8 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 
 ---
 
+---
+
 ## Organisation du dépôt
 
 | Dossier                    | Propriétaire | Utilité                                                                                                                                                                                         |
@@ -184,115 +369,32 @@ Ces quatre dossiers existent sur votre machine mais **ne sont pas versionnés**
 
 ---
 
-## Répartition du travail
-
-|                       | Jerry                                                   | Cherica                                               | Mirado                                    |
-| --------------------- | ------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------- |
-| **Socle partagé**     | `packages/predicare-core/`                              |                                                       |                                           |
-| **Flux 1 — fraude**   | Versionnement MLflow, métriques de latence et de dérive | Robustesse sur factures mal formées                   | Entraînement, seuil, SHAP, dérive         |
-| **Flux 2 — RAG**      | Supervision, dérive                                     | Tests d'attaque injection                             | Agent ReAct, indexation, cache sémantique |
-| **Flux 3 — pilotage** | Ecran d'administration, métriques, rollback             | Authentification, quatre rôles, parcours gestionnaire | —                                         |
-| **Interface**         | —                                                       | React, quatre parcours de rôle                        | Vue assured (chat RAG)                    |
-| **Données**           | Requêtes d'analyse pour la BI                           | Migrations, chargement initial, nettoyage             | Chargement des factures d'entraînement    |
-| **Orchestration**     | —                                                       | —                                                     | Workflow n8n, alerte Slack + rapport SHAP |
-| **Exploitation**      | Passerelle, sauvegarde, CI, scripts, docs               | Guide utilisateur                                     | Dossier de cadrage FinOps et conformité   |
-
-### Rattachement aux phases
-
-| Phase              | Jerry                                              | Cherica                                  | Mirado                                                |
-| ------------------ | -------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------- |
-| 0 — cadrage        | Dépôt, CI, README, ADR                             | —                                        | —                                                     |
-| 1 — données        | Requêtes BI, sauvegarde                            | Migrations, chargement, pseudonymisation | —                                                     |
-| 2 — modèle         | MLflow                                             | Robustesse                               | EDA, feature engineering, entraînement, seuil, SHAP   |
-| 3 — API            | Logs, métriques, dérive, Docker                    | Endpoints, Pydantic, tests               | —                                                     |
-| 4 — n8n            | —                                                  | —                                        | Workflow, erreurs, export                             |
-| 5 — RAG            | —                                                  | —                                        | Indexation, outils, sécurité, cache, jeu de questions |
-| 6 — interface      | Administration                                     | Auth, rôles, parcours                    | Vue assuré                                            |
-| 7 — BI             | Indicateurs, tableaux de bord                      | —                                        | —                                                     |
-| 8 — exploitation   | Supervision, rollback, persistance, machine vierge | Seuil en direct                          | —                                                     |
-| 9 — conformité     | Cartographie, conservation, sécurité               | Recherche de PII résiduelles             | AI Act, audit d'équité                                |
-| 10 — documentation | Exploitation, README                               | Guide utilisateur                        | Dossier de cadrage                                    |
-| 11 — soutenance    | Lot de 20 factures, démo                           | Slides                                   | Réponses aux objections                               |
-
-### Points de coordination
-
-- **Figer les contrats d'interface avant la Phase 3** : format des prédictions
-  et des explications SHAP. C'est le point de dépendance entre les trois.
-- Réunion hebdomadaire courte pour synchroniser les dépendances.
-- Le seuil d'alerte et le format du rapport SHAP touchent les trois membres :
-  à décider ensemble.
-
----
-
-## Commandes
-
-| Commande                                                                  | Effet                                                                                |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `make help`                                                               | Liste toutes les commandes                                                           |
-| `make doctor`                                                             | Vérifie que la machine est prête — à lancer en premier                               |
-| `make up`                                                                 | Démarre la plateforme **en reconstruisant** les images — commande de build principal |
-| `make ps`                                                                 | État des conteneurs, tous profils confondus                                          |
-| `make health`                                                             | Sonde `/health` et `/metrics` de chaque service                                      |
-| `make smoke`                                                              | Parcours de vérification de bout en bout                                             |
-| `make logs` / `make logs-service S=api-core`                              | Journaux                                                                             |
-| `make backup` / `make backups` / `make restore`                           | Sauvegarde et restauration                                                           |
-| `make migrate` / `make reload-data`                                       | Rejouer les migrations ou le chargement                                              |
-| `make n8n-import` / `make n8n-export`                                     | Installer ou exporter les workflows                                                  |
-| `make acces`                                                              | Régénérer la fiche d'identifiants                                                    |
-| `make threshold VALEUR=0.75`                                              | Changer le seuil d'alerte à chaud                                                    |
-| `make sync` / `make lint` / `make typecheck` / `make test` / `make check` | Développement Python                                                                 |
-| `make start`                                                              | Redémarre **sans reconstruire**, après un `make down`                                |
-| `make restart`                                                            | `down` puis `start`, sans reconstruction                                             |
-| `make down`                                                               | Arrêt, **les données sont conservées**                                               |
-| `make clean`                                                              | Arrêt **et** suppression des volumes — confirmation demandée                         |
-
-### Reconstruire ou pas
-
-`make up` reconstruit systématiquement les images : c'est le bon réflexe sur
-une machine vierge et après une modification de code. Mais compose va malgré
-tout interroger le réseau pour résoudre les images de base — un `make up`
-peut donc bloquer si la machine n'a plus internet, alors que la pile est
-parfaitement capable de démarrer.
-
-C'est le cas d'usage du jour J, où l'on répète la démonstration :
-
-```bash
-make down     # arrêt, les données restent
-make start    # redémarrage immédiat, aucune reconstruction
-```
-
-Si tu as modifié du code, il faut reconstruire : `make start` utilise
-volontairement les images existantes, et rien ne le signale dans
-l'interface.
-
 ---
 
 ## Profils optionnels
 
-Le cœur démarre seul en ~4,6 Go. Les briques lourdes se lancent à la
-demande, ce qui permet de tenir dans le budget mémoire de la machine de
-démonstration.
+`make up` couvre déjà le noyau, Superset, Grafana, Prometheus, MLflow et les
+workers — environ 4,5 Go. `make up-light` garde la version économe, environ
+1,5 Go, pour tenir dans le budget mémoire d'une machine de démonstration.
 
-`make up` et `make start` couvrent déjà Superset, Grafana, Prometheus, MLflow et
-les workers (~3 Go d'images). Ces commandes existent pour démarrer un service
-**seul**, notamment quand le service est déjà lancé et qu'on veut le relancer.
-
-| Commande                | Contenu                                             | Mémoire |
-| ----------------------- | --------------------------------------------------- | ------- |
-| `make up-light`         | Noyau seul : API, web, base, n8n                   | ~1,5 Go |
-| `make up` / `start`     | Noyau + Superset + Grafana + Prometheus + MLflow    | ~4,5 Go |
-| `make up-workers`       | Workers d'ingestion et d'indexation (déjà inclus)   | ~1,1 Go |
-| `make up-bi`            | Superset seul (déjà inclus)                         | ~0,9 Go |
-| `make up-observability` | Prometheus et Grafana seuls (déjà inclus)           | ~0,5 Go |
-| `make up-mlops`         | MLflow seul (déjà inclus)                           | ~0,6 Go |
-| `make up-email`         | Mailpit, boîte mail de développement                | ~0,1 Go |
-| `make up-backup`        | Sauvegarde quotidienne planifiée                    | ~0,1 Go |
-| `make up-all`           | Tout, y compris Mailpit et le cron de sauvegarde    | ~6,5 Go |
+| Jeu de commandes | Mémoire |
+| --- | --- |
+| `make up-light` | ~1,5 Go |
+| `make up` / `make start` | ~4,5 Go |
+| `make up-all` | ~6,5 Go |
 
 **Si `make up` échoue faute de mémoire**, utilisez `make up-light` : le noyau
 reste démontrable, seul l'outillage de pilotage est indisponible. Un service
 optionnel qui ne répond pas n'interrompt pas `make up` — le noyau est vérifié
 séparément et c'est lui seul qui est bloquant.
+
+### Ce que le défaut exclut, et pourquoi
+
+- **Mailpit** intercepte tout le courrier sortant. Il resterait actif en
+  permanence et masquerait un envoi réel pendant la démonstration. Il se lance
+  avec `make up-email`.
+- **Le cron de sauvegarde** est invisible pendant une soutenance et coûte un
+  conteneur en plus. `make up-backup` le démarre.
 
 ### Tableau de bord décisionnel
 
@@ -300,6 +402,40 @@ séparément et c'est lui seul qui est bloquant.
 documentés : volumes traités, taux de détection, montants économisés, délai de
 traitement, faux positifs. La connexion BI utilise le rôle `superset_ro`, en
 lecture seule stricte — l'outil ne peut pas modifier une donnée métier.
+
+---
+
+## Chargement des données
+
+Le jeu synthétique de l'encadrement est dans `data/raw/`, **gitignoré** : 44 Mo
+de données de santé restent hors du dépôt.
+
+```bash
+cp ~/Documents/predicare/CohorteAI_datagen/dataset/*.csv data/raw/
+make reload-data
+```
+
+14 fichiers, environ **436 700 lignes** sur 24 mois, vers 14 tables réparties
+entre les schémas `core` (métier), `ml` (modèles et labels) et `audit`.
+
+Trois points méritent d'être connus :
+
+- **Pseudonymisation.** Les assurés sont pseudonymisés par HMAC-SHA256 ; le
+  même assure donne toujours le même pseudonyme, ce qui permet de relier une
+  facture à un dossier sans jamais stocker l'identité. `identites_pii.csv` est
+  le **seul** fichier nominatif : il alimente `core.identite_chiffree`, chiffré
+  en Fernet, et rien d'autre.
+- **Validation bloquante avant écriture.** Un contrôle qui échoue interrompt le
+  chargement et nomme le fichier fautif. Les valeurs manquantes ne sont pas
+  des anomalies : 44 % des factures n'ont pas d'ordonnance parce que beaucoup
+  d'actes n'en exigent pas.
+- **Fuite de données.** `statut` et `motif_rejet` sont fortement corrélés à la
+  fraude — 70 % des factures rejetées sont frauduleuses contre 7 % des payées.
+  Ces colonnes restent dans `core`, la validité dérivée atterrit dans `ml` :
+  la disposition des tables empêche le feature engineering de les utiliser
+  comme variables.
+
+Détail complet dans [`db/seeds/README.md`](db/seeds/README.md).
 
 ---
 
@@ -328,6 +464,8 @@ make check      # les trois, comme la CI
 
 ---
 
+---
+
 ## Configuration et accès
 
 Tout se règle dans `.env`, créé automatiquement à partir de `.env.example`.
@@ -335,16 +473,36 @@ Aucun secret n'est codé en dur et aucun `.env` n'est versionné. Le seuil
 d'alerte, les canaux de notification et l'état de la plateforme sont aussi
 modifiables depuis l'écran d'administration, sans redémarrage.
 
+La fiche d'identifiants — mots de passe, URL, état de chaque service — est
+générée **hors du dépôt**, en mode `600` :
+
+```bash
+make acces
+```
+
 ### Piège connu
 
 `POSTGRES_PASSWORD` n'est appliqué par l'image PostgreSQL qu'à la **première**
-initialisation du volume. Régénérer un `.env` sur une installation qui
-tourne rend la base inaccessible. `make up` vous prévient désormais.
+initialisation du volume. Régénérer un `.env` sur une installation qui tourne
+rend la base inaccessible. `make up` vous prévient désormais.
+
+### Piège sur les ports
+
+Aucun port TCP n'atteint PostgreSQL ni Redis. Le réseau `core` est
+`internal: true`, et Docker n'active la publication d'un port que si le
+conteneur est attaché à au moins un réseau **non** interne. Un `ports:` déclaré
+sur ces services passerait `docker compose config` tout en étant inopérant, et
+produirait un `Connection refused` trompeur. La CI vérifie qu'aucun service ne
+porte de port sur un réseau entièrement interne.
+
+L'accès à la base passe donc par `make shell-db` et `make db-sql`.
 
 ---
 
-Chaque dossier porte un `README.md` de brouillon listant ses tâches
-restantes.
+Chaque dossier porte un `README.md` listant ses tâches restantes. Le suivi du
+projet — qui fait quoi, rattachement aux phases — est dans
+[`docs/equipe.md`](docs/equipe.md), et l'index documentaire dans
+[`docs/`](docs/README.md).
 
 ---
 

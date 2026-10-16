@@ -231,7 +231,11 @@ export-requirements: ## Exporte les versions pip depuis uv.lock (non versionne)
 	@echo "requirements.lock ecrit. Ne pas le commiter : uv.lock reste la source de verite."
 
 .PHONY: check
-check: lint typecheck test ## Les trois verifications de la CI
+check: lint typecheck test readme ## Les verifications de la CI
+
+.PHONY: readme
+readme: ## Verifie que le README documente exactement les commandes de make help
+	@python3 scripts/check_readme_commandes.py
 
 # =============================================================================
 # EXPLOITATION

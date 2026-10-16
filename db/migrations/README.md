@@ -11,9 +11,10 @@ lance par le job `migrate`, qui doit aboutir AVANT que les API ne demarrent.
 | `versions/0001_initial_schema.py` | Referentiels, facturation, ML, audit, compte `predicare_ro` |
 | `versions/0002_superset_readonly.py` | Role SQL en lecture seule pour le tableau de bord BI |
 | `versions/0003_enrichissement_schema.py` | Grille tarifaire, contrat de groupe, garanties par formule, ordonnances en lignes |
+| `versions/0004_referentiels_et_labels.py` | Referentiel des actes et medicaments, formule du contrat, validite metier |
 | `script.py.mako` | Gabarit des migrations suivantes |
 
-La chaine est lineaire et sans branche : `0001` -> `0002` -> `0003`. Chaque
+La chaine est lineaire et sans branche : `0001` -> `0002` -> `0003` -> `0004`. Chaque
 revision declare son `down_revision`, donc `alembic downgrade -1` remonte d'un
 cran a chaque fois.
 
@@ -37,7 +38,10 @@ make migrate      # applique les migrations en attente
 make db-status    # version appliquee en base contre version attendue par le code
 make shell-db     # psql interactif
 make db-sql Q="SELECT count(*) FROM core.facture"
+make reload-data  # recharge le jeu de donnees de data/raw
 ```
+
+Le chargement des donnees est decrit dans `db/seeds/README.md`.
 
 ## Pourquoi `make up` execute `migrate` via `run --rm`
 
