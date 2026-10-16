@@ -34,9 +34,7 @@ REFERENCE = re.compile(r"make ([a-z][a-z0-9-]*)")
 
 
 def commandes_reelles() -> set[str]:
-    aide = subprocess.run(
-        ["make", "help"], capture_output=True, text=True, cwd=RACINE
-    )
+    aide = subprocess.run(["make", "help"], capture_output=True, text=True, cwd=RACINE)
     return set(LIGNE_COMMANDE.findall(ANSI.sub("", aide.stdout)))
 
 
