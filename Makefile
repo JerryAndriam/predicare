@@ -192,6 +192,11 @@ format: ## Corrige automatiquement le style
 	@$(PY) ruff check . --fix
 	@$(PY) ruff format .
 
+.PHONY: qualite
+qualite: ## Verifie et nettoie les donnees brutes (make qualite D=../chemin/dataset)
+	@DATA_RAW_DIR=$(or $(D),data/raw) RAPPORT_DIR=reports \
+		$(PY) python -m predicare_seed.qualite_donnees
+
 .PHONY: typecheck
 typecheck: ## Verifie les types
 	@$(PY) mypy packages apps
