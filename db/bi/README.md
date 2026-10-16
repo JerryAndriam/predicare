@@ -69,7 +69,7 @@ Le jeu de l'encadrement est en **MGA**. Une colonne nommee `montant_eur`
 serait fausse d'un facteur d'environ 57 000. Toutes les colonnes portent
 `mga` dans leur nom, et les titres de graphiques le rappelent.
 
-## Deux pieges que les tests ne voient pas
+## Quatre pieges que les tests ne voient pas
 
 Ils ont chacun a fait afficher « there was an issue » sur des graphiques dont la
 requete etait pourtant correcte. Les deux meritaient d'etre ecrits.
@@ -99,6 +99,69 @@ delai GLOBAL pondere                8,49 j
 
 `v_kpi_global` recalcule donc chaque indicateur depuis son numerateur et son
 denominateur. Les tuiles y agrègent une vue qui ne contient qu'**une ligne**.
+
+### 3. `groupby` porte des NOMS DE COLONNES, pas des objets
+
+La forme enrichie est tentante, parce qu'elle decrit mieux :
+
+```json
+"groupby": [{"column_name": "prestataire_nom", "label": "Prestataire", "type": "STRING"}]
+```
+
+Elle est fausse. Le champ attendu est une liste de chaines :
+
+```json
+"groupby": ["prestataire_nom", "prestataire_ville"]
+```
+
+Et elle casse **trois choses a la fois**, sans qu'aucune ne parle de
+`groupby` -- c'est ce qui rend le diagnostic long :
+
+| Ce qu'on voit | Pourquoi |
+| --- | --- |
+| `GET /dashboard/<slug>/datasets` -> **422** `unhashable type: 'dict'` | `data_for_slices` range la valeur dans un `set` : un dictionnaire n'est pas hachable |
+| `POST /chart/data` -> **400** `Columns missing in dataset: [{...}]` | `get_column_names_from_columns` recopie le dictionnaire tel quel, et compare un objet a des noms |
+| `POST /chart/data` -> **400** `Empty query?` | la fabrique de requetes ne trouve plus rien a grouper |
+
+Les metriques, elles, SONT des objets : `is_adhoc_metric` les reconnait et en
+extrait `column_name`. C'est la difference entre les deux champs, et elle
+n'est ecrite nulle part.
+
+Effet collateral : `PUT /api/v1/dashboard/<id>` echouait aussi en
+`unhashable type: 'dict'`, **sans jamais nommer le coupable**. La cause etait
+ici, pas dans la mise en page.
+
+### 4. La mise en page v2 est une CARTE PLATE
+
+Un arbre imbrique parait naturel :
+
+```json
+{"ROOT_ID": {"children": [{"type": "CHART", "id": "1"}]}}
+```
+
+Superset attend une carte indexee par identifiant, ou `children` est une
+liste de **chaines** :
+
+```json
+{"ROOT_ID": {"children": ["GRID_ID"]},
+ "GRID_ID": {"children": ["ROW-0"], "parents": ["ROOT_ID"]},
+ "ROW-0":   {"children": ["COLUMN-0-7"], "parents": ["ROOT_ID", "GRID_ID"]},
+ "COLUMN-0-7": {"children": ["CHART-7"], "parents": [...]},
+ "CHART-7": {"children": [], "meta": {"chartId": 7, ...}}}
+```
+
+Le frontal fait `position[enfant]` : un enfant qui est un objet n'est ni un
+identifiant ni indexable, et **le tableau s'ouvre vide sans lever d'erreur**.
+
+Les positions `x`/`y` ne sont pas ecrites : c'est la structure
+ROOT > GRID > ROW > COLUMN qui definit la mise en page. References dans la
+version installee : `superset/examples/world_bank.py` et
+`superset/mcp_service/dashboard/tool/generate_dashboard.py`.
+
+Corollaire : une mise a jour du tableau commence par relire la position
+DEJA stockee pour construire l'arbre des onglets. Un document invalide
+empoisonne donc sa propre correction -- il faut l'ecraser une fois en direct
+avant que l'API reaccepte quoi que ce soit.
 
 ### Les cinq indicateurs du CDC, tous affiches
 

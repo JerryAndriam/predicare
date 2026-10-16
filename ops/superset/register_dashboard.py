@@ -68,9 +68,7 @@ class Client:
     def __init__(self, base: str, username: str, password: str) -> None:
         self.base = base.rstrip("/")
         self.jar = CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(self.jar)
-        )
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
         self.jeton = ""
         self.csrf = ""
         self._connecter(username, password)
@@ -133,13 +131,52 @@ class Client:
         return list(self._json("GET", f"{chemin}?{requete}").get("result") or [])
 
 
+def _positionner(id_dash: int, identifiants: list[int]) -> None:
+    """Ecrit `position_json` dans la metadonnee du tableau.
+
+    Pourquoi une ecriture directe, alors que le paragraphe suivant passe par
+    l'API et refuse de tolerer l'echec : parce que la mise a jour du tableau
+    commence par relire la position DEJA stockee pour en construire l'arbre
+    des onglets (`Dashboard.build_tab_tree`). Un document invalide en base
+    empoisonne donc sa propre correction -- la route repond « Fatal error »
+    et ne laisse aucun moyen d'en sortir par l'API.
+
+    Cette ecriture est idempotente et deterministe : elle ecrit exactement le
+    document que `_position` calcule. Le `PUT` qui suit immediatement
+    soumet ce meme document a la validation de Superset, et fait echouer le
+    job s'il la refuse. C'est la validation qui compte, pas le canal.
+    """
+    import sqlalchemy as sa
+    from superset import db as superset_db
+    from superset.app import create_app
+
+    plan = json.dumps(_position(identifiants))
+    application = create_app()
+    with application.app_context():
+        superset_db.session.execute(
+            sa.text("UPDATE dashboards SET position_json = :p WHERE id = :d"),
+            {"p": plan, "d": id_dash},
+        )
+        superset_db.session.commit()
+
+
 # ---------------------------------------------------------------------------
 # Definitions des graphiques
 # ---------------------------------------------------------------------------
 # Chaque entree porte le titre lisible, la vue source, le type de visualisation
 # et ses parametres. `params` est le JSON imbrique que Superset attend.
 #
-# PRECAUTION : dans une tuile `big_number`, le champ `metric` porte l'INDICATEUR
+# PRECAUTION 1 : `groupby` est une liste de NOMS DE COLONNES, en chaines.
+# Une forme enrichie `{"column_name": ..., "label": ..., "type": ...}` est
+# tentante, et elle casse TROIS choses a la fois -- parce que Superset la
+# range dans un `set` et la passe telle quelle a la fabrique de requetes :
+#   * GET /api/v1/dashboard/<slug>/datasets -> 422 « unhashable type: 'dict' »
+#   * POST /api/v1/chart/data -> « Columns missing in dataset: [{...}] »
+#   * POST /api/v1/chart/data -> « Empty query? »
+# Les metriques, elles, sont bien des objets : `is_adhoc_metric` les
+# reconnait. C'est la difference entre les deux champs.
+#
+# PRECAUTION 2 : dans une tuile `big_number`, le champ `metric` porte l'INDICATEUR
 # CALCULE. Ecrire la chaine `"Count"` -- qui est une valeur legitime pour
 # `big_number_total` -- y met le nombre de LIGNES de la vue, pas la mesure :
 # les quatre tuiles affichaient 25, le nombre de mois, au lieu de 84 593
@@ -177,7 +214,14 @@ def _metrique(colonne: str, type_: str, libelle: str) -> dict:
 KPI = [
     ("kpi_volume", "Factures traitees", "nb_factures", "BIGINT", ",d", "Sur 24 mois"),
     ("kpi_montant", "Montant presente (MGA)", "montant_total_mga", "NUMERIC", "~s", "Ariary"),
-    ("kpi_taux", "Taux de fraude observe (%)", "taux_fraude_pct", "DOUBLE", ".2f", "Prevalence terrain"),
+    (
+        "kpi_taux",
+        "Taux de fraude observe (%)",
+        "taux_fraude_pct",
+        "DOUBLE",
+        ".2f",
+        "Prevalence terrain",
+    ),
     (
         "kpi_delai",
         "Delai moyen de traitement (jours)",
@@ -228,13 +272,10 @@ GRAPHIQUES = [
         "vue": "v_kpi_mensuel",
         "viz_type": "echarts_timeseries",
         "params": {
-            "metrics": [
-                _metrique("montant_total_mga", "NUMERIC", "Montant present (MGA)")
-            ],
-            "groupby": [{"column_name": "mois", "type": "TEMPORAL", "label": "Mois"}],
+            "metrics": [_metrique("montant_total_mga", "NUMERIC", "Montant present (MGA)")],
+            "groupby": ["mois"],
             "order_desc": True,
             "row_limit": 24,
-            "timeseries_limit_metric": "montant_total_mga",
             "y_axis_format": "~s",
             "rich_tooltip": True,
             "color_scheme": BLEU,
@@ -248,10 +289,8 @@ GRAPHIQUES = [
         "vue": "v_fraude_par_type",
         "viz_type": "dist_bar",
         "params": {
-            "metrics": [
-                _metrique("nb_fraudes", "BIGINT", "Nombre de factures")
-            ],
-            "groupby": [{"column_name": "type_fraude", "type": "STRING", "label": "Mecanisme"}],
+            "metrics": [_metrique("nb_fraudes", "BIGINT", "Nombre de factures")],
+            "groupby": ["type_fraude"],
             "order_desc": True,
             "row_limit": 20,
             "orientation": "horizontal",
@@ -270,10 +309,7 @@ GRAPHIQUES = [
                 _metrique("montant_expose_mga", "NUMERIC", "Montant expose (MGA)"),
                 _metrique("taux_fraude_pct", "DOUBLE", "Taux de fraude (%)"),
             ],
-            "groupby": [
-                {"column_name": "prestataire_nom", "type": "STRING", "label": "Prestataire"},
-                {"column_name": "prestataire_ville", "type": "STRING", "label": "Ville"},
-            ],
+            "groupby": ["prestataire_nom", "prestataire_ville"],
             "order_desc": True,
             "row_limit": 5,
             "page_length": 10,
@@ -285,10 +321,8 @@ GRAPHIQUES = [
         "vue": "v_kpi_mensuel",
         "viz_type": "echarts_timeseries",
         "params": {
-            "metrics": [
-                _metrique("delai_traitement_jours", "DOUBLE", "Delai moyen (jours)")
-            ],
-            "groupby": [{"column_name": "mois", "type": "TEMPORAL", "label": "Mois"}],
+            "metrics": [_metrique("delai_traitement_jours", "DOUBLE", "Delai moyen (jours)")],
+            "groupby": ["mois"],
             "order_desc": True,
             "row_limit": 24,
             "y_axis_format": ".1f",
@@ -303,13 +337,8 @@ GRAPHIQUES = [
         "vue": "v_controle_points",
         "viz_type": "dist_bar",
         "params": {
-            "metrics": [
-                _metrique("nb_factures", "BIGINT", "Factures")
-            ],
-            "groupby": [
-                {"column_name": "motif", "type": "STRING", "label": "Motif"},
-                {"column_name": "mois", "type": "TEMPORAL", "label": "Mois"},
-            ],
+            "metrics": [_metrique("nb_factures", "BIGINT", "Factures")],
+            "groupby": ["motif", "mois"],
             "order_desc": True,
             "row_limit": 10000,
             "orientation": "vertical",
@@ -319,43 +348,47 @@ GRAPHIQUES = [
     },
 ]
 
-TOUS: list[dict] = [
-    {
-        "cle": cle,
-        "titre": titre,
-        "vue": "v_kpi_global",
-        # `big_number`, et non `big_number_total` : c'est `metric` qui porte
-        # la valeur affichee, et il attend ici une metrique, pas "Count".
-        "viz_type": "big_number",
-        "params": {
-            "datasource": "v_kpi_global__table",
-            "metric": _metrique(colonne, type_, titre),
-            "adhoc_filters": [],
-            "row_limit": 1,
-            "time_range": "No filter",
-            "y_axis_format": format_,
-            "subheader": sous_titre,
-        },
-    }
-    for cle, titre, colonne, type_, format_, sous_titre in KPI
-] + [
-    {
-        "cle": cle,
-        "titre": titre,
-        "vue": "v_cdc_global",
-        "viz_type": "big_number",
-        "params": {
-            "datasource": "v_cdc_global__table",
-            "metric": _metrique(colonne, type_, titre),
-            "adhoc_filters": [],
-            "row_limit": 1,
-            "time_range": "No filter",
-            "y_axis_format": format_,
-            "subheader": sous_titre,
-        },
-    }
-    for cle, titre, colonne, type_, format_, sous_titre in KPI_CDC
-] + GRAPHIQUES
+TOUS: list[dict] = (
+    [
+        {
+            "cle": cle,
+            "titre": titre,
+            "vue": "v_kpi_global",
+            # `big_number`, et non `big_number_total` : c'est `metric` qui porte
+            # la valeur affichee, et il attend ici une metrique, pas "Count".
+            "viz_type": "big_number",
+            "params": {
+                "datasource": "v_kpi_global__table",
+                "metric": _metrique(colonne, type_, titre),
+                "adhoc_filters": [],
+                "row_limit": 1,
+                "time_range": "No filter",
+                "y_axis_format": format_,
+                "subheader": sous_titre,
+            },
+        }
+        for cle, titre, colonne, type_, format_, sous_titre in KPI
+    ]
+    + [
+        {
+            "cle": cle,
+            "titre": titre,
+            "vue": "v_cdc_global",
+            "viz_type": "big_number",
+            "params": {
+                "datasource": "v_cdc_global__table",
+                "metric": _metrique(colonne, type_, titre),
+                "adhoc_filters": [],
+                "row_limit": 1,
+                "time_range": "No filter",
+                "y_axis_format": format_,
+                "subheader": sous_titre,
+            },
+        }
+        for cle, titre, colonne, type_, format_, sous_titre in KPI_CDC
+    ]
+    + GRAPHIQUES
+)
 
 #: Largeur de la grille de mise en page, en colonnes.
 COLONNES = 12
@@ -447,87 +480,126 @@ def creer_dashboard(client: Client, identifiants: list[int]) -> int:
     if existants:
         id_dash = existants[0]["id"]
         # Le titre et le slug sont deja corrects : ils viennent de la creation.
-        # On tente la mise a jour, mais un echec n'a pas a interrompre le job --
-        # le schema de mise a jour du dashboard a change en version 6 et
-        # refuse certaines charges sans quoi la creation, elle, reussit.
+        # La mise a jour est TOLERANTE, la mise en page ne l'est pas (plus bas).
         with contextlib.suppress(RuntimeError):
             client._json("PUT", f"/api/v1/dashboard/{id_dash}", charge)
     else:
         id_dash = client._json("POST", "/api/v1/dashboard/", charge)["id"]
 
-    # La mise en page est appliquee par ecriture directe, comme l'accrochage :
-    # la route `PUT /api/v1/dashboard/<id>` echoue en « Fatal error » sur
-    # Superset 6 avec une charge `position_json`, alors meme que la creation
-    # du tableau par la meme route reussit. On tente l'API, puis on tombe sur
-    # la metadonnee -- un tableau dont les tuiles se superposent reste
-    # inexploitable, et ce n'est pas une option que l'on peut declarer
-    # secondaire dans un livrable de soutenance.
-    with contextlib.suppress(RuntimeError):
-        client._json(
-            "PUT",
-            f"/api/v1/dashboard/{id_dash}",
-            {"position_json": json.dumps(_position(identifiants))},
-        )
+    # La mise en page passe par l'API, et un echec FAIT ECHOUER le job.
+    #
+    # Une premiere version ecrivait `position_json` en SQL direct, avec une
+    # tolerance a l'erreur. C'etait le pire des deux choix : le job annoncait
+    # un succes, et le tableau s'ouvrait sur douze tuiles empilees. Une
+    # tolerance qui masque un defaut d'affichage ne protege personne.
+    #
+    # La cause du « Fatal error » d'origine n'etait d'ailleurs pas la mise en
+    # page : c'etait `groupby` en dictionnaires (voir PRECAUTION 1). Une fois
+    # la vraie cause corrigee, la route accepte la charge.
+    _positionner(id_dash, identifiants)
+    client._json(
+        "PUT",
+        f"/api/v1/dashboard/{id_dash}",
+        {"position_json": json.dumps(_position(identifiants))},
+    )
+    print(
+        f"  mise en page ecrite : {len(identifiants)} tuiles, {len(_lignes(identifiants))} ligne(s)."
+    )
 
     _attacher(id_dash, identifiants)
-    _positionner(id_dash, identifiants)
     return id_dash
 
 
-def _positionner(id_dash: int, identifiants: list[int]) -> None:
-    """Ecrit `position_json` directement dans la metadonnee du tableau."""
-    import sqlalchemy as sa
-    from superset import db as superset_db
-    from superset.app import create_app
+def _lignes(identifiants: list[int]) -> list[list[tuple[int, dict, int, int]]]:
+    """Repartit les tuiles en lignes, dans l'ordre de lecture.
 
-    grille = _position(identifiants)
-    application = create_app()
-    with application.app_context():
-        superset_db.session.execute(
-            sa.text("UPDATE dashboards SET position_json = :p WHERE id = :d"),
-            {"p": json.dumps(grille), "d": id_dash},
-        )
-        superset_db.session.commit()
-    print(f"  mise en page ecrite : {len(identifiants)} tuiles sur une grille de {COLONNES} colonnes.")
+    On avance tant que la largeur tient dans la grille ; on passe a la ligne
+    suivante sinon. `GRILLE` donne la largeur et la hauteur de chaque tuile.
+    """
+    lignes: list[list[tuple[int, dict, int, int]]] = []
+    courante: list[tuple[int, dict, int, int]] = []
+    largeur = 0
+    for index, identifiant in enumerate(identifiants):
+        definition = TOUS[index]
+        w, h = GRILLE.get(definition["cle"], (6, 6))
+        if courante and largeur + w > COLONNES:
+            lignes.append(courante)
+            courante, largeur = [], 0
+        courante.append((identifiant, definition, w, h))
+        largeur += w
+    if courante:
+        lignes.append(courante)
+    return lignes
 
 
 def _position(identifiants: list[int]) -> dict:
-    """Position des tuiles, en colonnes de 12, dans l'ordre de lecture.
+    """Mise en page du tableau, au format v2 de Superset.
 
-    La grille est CALCULEE, pas ecrite a la main : une position codee en dur
-    (`"x": 0, "y": 0` pour chaque tuile) empile les douze graphiques les uns
-    sur les autres, et le tableau devient illisible sans lever la moindre
-    erreur -- le genre de defaut qui ne se voit qu'a l'ouverture, devant le
-    jury.
+    Ce format est une CARTE PLATE, indexee par identifiant de noeud, ou
+    `children` est une liste de CHAINES -- et non un arbre ou les enfants
+    seraient imbriques.
 
-    `GRILLE` donne la taille en unites de 12 colonnes ; la position en decoule,
-    ligne par ligne : on avance en x jusqu'a deborder, puis on passe a la
-    ligne suivante a la hauteur de la plus haute tuile deja posee.
+    C'est le piege de ce format. Un arbre imbrique paraît plus naturel, et le
+    frontal ne peut pas le parcourir : il lit `position[un_identifiant]` pour
+    chaque entree de `children`. Un enfant qui est un dictionnaire n'est ni
+    un identifiant ni indexable, et le tableau ne s'affiche pas.
+
+    La hierarchie attendue est ROOT > GRID > ROW > COLUMN > CHART, chaque
+    noeud portant son `parents`. Reference dans la version installee :
+    `superset/mcp_service/dashboard/tool/generate_dashboard.py`.
+
+    Les positions x/y ne sont PAS ecrites : c'est la structure ROW/COLUMN qui
+    definit la mise en page.
     """
-    enfants = []
-    x = y = 0
-    hauteur_ligne = 0
-    for index, identifiant in enumerate(identifiants):
-        definition = TOUS[index]
-        largeur, hauteur = GRILLE.get(definition["cle"], (6, 6))
-        if x + largeur > COLONNES:
-            y += hauteur_ligne
-            x = 0
-            hauteur_ligne = 0
-        enfants.append(
-            {
+    plan: dict[str, dict] = {}
+
+    lignes = _lignes(identifiants)
+    ids_lignes = []
+    for rang, ligne in enumerate(lignes):
+        id_ligne = f"ROW-{rang}"
+        ids_lignes.append(id_ligne)
+        largeur = COLONNES // len(ligne)
+        ids_colonnes = []
+        for identifiant, definition, _, hauteur in ligne:
+            id_colonne = f"COLUMN-{rang}-{identifiant}"
+            id_graphique = f"CHART-{identifiant}"
+            ids_colonnes.append(id_colonne)
+            plan[id_graphique] = {
+                "children": [],
+                "id": id_graphique,
+                "meta": {
+                    "chartId": identifiant,
+                    "height": hauteur,
+                    "sliceName": definition["titre"],
+                    "width": largeur,
+                },
+                "parents": ["ROOT_ID", "GRID_ID", id_ligne, id_colonne],
                 "type": "CHART",
-                "id": str(identifiant),
-                "meta": {"chartId": identifiant, "width": largeur, "height": hauteur},
-                "position": {"x": x, "y": y, "width": largeur, "height": hauteur},
             }
-        )
-        x += largeur
-        hauteur_ligne = max(hauteur_ligne, hauteur)
-    return {
-        "DASHBOARD_VERSION_KEY": "v2",
-        "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": enfants},
+            plan[id_colonne] = {
+                "children": [id_graphique],
+                "id": id_colonne,
+                "meta": {"background": "BACKGROUND_TRANSPARENT", "width": largeur},
+                "parents": ["ROOT_ID", "GRID_ID", id_ligne],
+                "type": "COLUMN",
+            }
+        plan[id_ligne] = {
+            "children": ids_colonnes,
+            "id": id_ligne,
+            "meta": {"background": "BACKGROUND_TRANSPARENT"},
+            "parents": ["ROOT_ID", "GRID_ID"],
+            "type": "ROW",
+        }
+
+    plan["GRID_ID"] = {
+        "children": ids_lignes,
+        "id": "GRID_ID",
+        "parents": ["ROOT_ID"],
+        "type": "GRID",
     }
+    plan["ROOT_ID"] = {"children": ["GRID_ID"], "id": "ROOT_ID", "type": "ROOT"}
+    plan["DASHBOARD_VERSION_KEY"] = "v2"
+    return plan
 
 
 def _attacher(id_dash: int, identifiants: list[int]) -> None:
@@ -555,7 +627,9 @@ def _attacher(id_dash: int, identifiants: list[int]) -> None:
         session = superset_db.session
         # Le tableau est reconstruit : le job reste idempotent, et un
         # graphique retire du code disparait aussi du dashboard.
-        session.execute(sa.text("DELETE FROM dashboard_slices WHERE dashboard_id = :d"), {"d": id_dash})
+        session.execute(
+            sa.text("DELETE FROM dashboard_slices WHERE dashboard_id = :d"), {"d": id_dash}
+        )
         for identifiant in identifiants:
             session.execute(
                 sa.text(

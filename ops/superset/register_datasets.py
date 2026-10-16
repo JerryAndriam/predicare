@@ -196,9 +196,7 @@ def enregistrer(session: object) -> tuple[list[str], list[str]]:
     crees: list[str] = []
     for nom, spec in DATASETS.items():
         vue = spec["vue"]
-        existant = session.query(SqlaTable).filter_by(
-            database_id=chaine.id, table_name=vue
-        ).first()
+        existant = session.query(SqlaTable).filter_by(database_id=chaine.id, table_name=vue).first()
         if existant is not None:
             # Un dataset physique porte `sql = None` et se resout par
             # `table_name`. Ne pas y remettre le SQL : il transformerait la
@@ -257,11 +255,7 @@ def main() -> int:
                 print(f"  - {nom}")
         print(f"Datasets enregistres : {len(DATASETS)} (nouveaux : {len(crees)})")
         for nom, spec in DATASETS.items():
-            etat = (
-                f"[vide jusqu'a {spec['vide_jusqua']}]"
-                if spec["vide_jusqua"]
-                else "[peuple]"
-            )
+            etat = f"[vide jusqu'a {spec['vide_jusqua']}]" if spec["vide_jusqua"] else "[peuple]"
             print(f"  - bi.{spec['vue']:28} {nom}  {etat}")
         return 0
 
