@@ -51,6 +51,14 @@ DATASETS: dict[str, dict[str, str | None]] = {
         "definition": "Volume, montants, prevalence de la fraude et delai de traitement, par mois.",
         "vide_jusqua": None,
     },
+    "Indicateurs globaux": {
+        "vue": "v_kpi_global",
+        "definition": (
+            "Bandeau : une seule ligne. Taux de fraude RECALCULE et delai moyen PONDERE. "
+            "Un taux ne se somme pas, une moyenne de moyennes n'est pas une moyenne."
+        ),
+        "vide_jusqua": None,
+    },
     "Detail factures": {
         "vue": "v_factures_detail",
         "definition": "Une ligne par facture, avec dimensions denormalisees et verite terrain.",
@@ -92,7 +100,49 @@ DATASETS: dict[str, dict[str, str | None]] = {
         "definition": "Matrice de confusion metier : prediction du modele contre decision humaine.",
         "vide_jusqua": "premiere execution du modele et premiere decision gestionnaire",
     },
+    "Boucle de decision": {
+        "vue": "v_cdc_global",
+        "definition": (
+            "Rappel, taux de faux positifs, montants economises confirmes et delai de decision. "
+            "Toujours une ligne, meme vide : une tuile « en attente » se voit, une absence non."
+        ),
+        "vide_jusqua": "premiere execution du modele et premiere decision gestionnaire",
+    },
 }
+
+
+def synchroniser(table: object, session: object) -> None:
+    """Remplit la liste de colonnes du dataset depuis la vue reelle.
+
+    C'est l'etape la plus importante de cet enregistrement, et celle qu'un
+    script d'amorcage oublie presque toujours.
+
+    Ecrire la ligne `SqlaTable` en SQL direct cree bien le dataset, et
+    l'interface l'affiche. Mais ses colonnes restent VIDE : `fetch_metadata`
+    n'est appele par personne, puisque rien n'est passe par le formulaire
+    « Add dataset » de Superset. Un graphique qui reference une colonne
+    inexistante *pour Superset* echoue alors a l'execution avec
+    « Columns missing in dataset » -- alors que la colonne est bel et bien
+    dans la vue.
+
+    C'est le pire des deux mondes : la vue est vraie, la colonne existe, et
+    le graphique affiche « there was an issue ». Verifier que la colonne
+    existe dans `information_schema` ne prouve donc RIEN : il faut verifier
+    ce que Superset a, lui, dans `table_columns`.
+
+    `fetch_metadata` fait autorité : il lit la vue et remplace la liste de
+    colonnes. Le rappeler a chaque execution resynchronise un dataset dont la
+    vue a gagne une colonne, ce qui arrive des que l'on ajoute un indicateur.
+    """
+    table.fetch_metadata()  # type: ignore[attr-defined]
+    session.commit()  # type: ignore[attr-defined]
+    nb = len(table.columns)  # type: ignore[attr-defined]
+    if not nb:
+        raise RuntimeError(
+            f"la vue bi.{table.table_name} n'a pas de colonne exploitable "  # type: ignore[attr-defined]
+            "par Superset : le dataset resterait inutilisable."
+        )
+    print(f"    {table.table_name:24} {nb:3d} colonne(s)")  # type: ignore[attr-defined]
 
 
 def enregistrer(session: object) -> tuple[list[str], list[str]]:
@@ -154,17 +204,20 @@ def enregistrer(session: object) -> tuple[list[str], list[str]]:
             # `table_name`. Ne pas y remettre le SQL : il transformerait la
             # vue physique en source virtuelle, ce que cette migration
             # supprime justement.
+            if not existant.columns:
+                # Dataset enregistre mais colonnee. Voir `sans_colonnes`.
+                synchroniser(existant, session)
             continue
-        session.add(
-            SqlaTable(
-                database=chaine,
-                table_name=vue,
-                schema="bi",
-                sql=None,
-                is_sqllab_view=False,
-            )
+        table = SqlaTable(
+            database=chaine,
+            table_name=vue,
+            schema="bi",
+            sql=None,
+            is_sqllab_view=False,
         )
+        session.add(table)
         session.commit()
+        synchroniser(table, session)
         crees.append(nom)
 
     return crees, supprimes

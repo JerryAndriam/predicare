@@ -137,28 +137,99 @@ class Client:
 # Definitions des graphiques
 # ---------------------------------------------------------------------------
 # Chaque entree porte le titre lisible, la vue source, le type de visualisation
-# et ses parametres. `params` est le JSON imbrique que Supersion attend.
+# et ses parametres. `params` est le JSON imbrique que Superset attend.
+#
+# PRECAUTION : dans une tuile `big_number`, le champ `metric` porte l'INDICATEUR
+# CALCULE. Ecrire la chaine `"Count"` -- qui est une valeur legitime pour
+# `big_number_total` -- y met le nombre de LIGNES de la vue, pas la mesure :
+# les quatre tuiles affichaient 25, le nombre de mois, au lieu de 84 593
+# factures. `custom_formatted_tooltip` ne rattrape rien : il formate la valeur
+# deja calculee, il ne la calcule pas.
+# ---------------------------------------------------------------------------
 
+
+def _metrique(colonne: str, type_: str, libelle: str) -> dict:
+    """Metrique simple : la colonne agregee par `SUM`.
+
+    Deux champs ne sont pas optionnels, et les deux manquant font echouer le
+    graphique a l'execution :
+
+    * `column` designe la colonne ;
+    * `aggregate` designe la fonction d'agregation, et son ENUM attend le
+      nom de la fonction SQL, en MAJUSCULES (`SUM`), pas en minuscules :
+      `KeyError: 'sum'` si on ecrit "sum". Le frontal ecrit toujours
+      "SUM" ; un script d'amorcage qui l'omet, ou qui l'ecrit en bas de
+      casse, produit une metrique que Superset refuse de resoudre.
+
+    Sur une vue d'une seule ligne comme `v_kpi_global`, cette somme est la
+    valeur -- y compris pour un taux, puisque le taux y est deja global.
+    """
+    return {
+        "label": libelle,
+        "expressionType": "SIMPLE",
+        "column": {"column_name": colonne, "type": type_},
+        "aggregate": "SUM",
+    }
+
+
+#: Bandeau principal, sur `v_kpi_global` : une seule ligne, deja globale.
+#: (cle, titre, colonne, type SQL, format, sous-titre)
 KPI = [
-    ("kpi_volume", "Factures traitees", "v_kpi_mensuel", "big_number_total", ",d", "nb_factures"),
-    ("kpi_montant", "Montant present (MGA)", "v_kpi_mensuel", "big_number_total", "~s", "montant_total_mga"),
-    ("kpi_taux", "Taux de fraude observe (%)", "v_kpi_mensuel", "big_number_total", ".2f", "taux_fraude_pct"),
-    ("kpi_delai", "KPI - Delai moyen (jours)", "v_kpi_mensuel", "big_number_total", ".1f", "delai_traitement_jours"),
+    ("kpi_volume", "Factures traitees", "nb_factures", "BIGINT", ",d", "Sur 24 mois"),
+    ("kpi_montant", "Montant presente (MGA)", "montant_total_mga", "NUMERIC", "~s", "Ariary"),
+    ("kpi_taux", "Taux de fraude observe (%)", "taux_fraude_pct", "DOUBLE", ".2f", "Prevalence terrain"),
+    (
+        "kpi_delai",
+        "Delai moyen de traitement (jours)",
+        "delai_moyen_jours",
+        "DOUBLE",
+        ".1f",
+        "Pondere par facture",
+    ),
 ]
+
+#: Bandeau de la boucle de decision. Les trois indicateurs du CDC qui ne se
+#: lisent pas sur `core` seul : ils comparent une PREDICTION a une VERITE
+#: HUMAINE. Ils s'affichent desormais, avec leur etat, au lieu d'etre
+#: absents du tableau. `v_cdc_global` renvoie toujours une ligne : le chiffre
+#: est NULL tant que le modele n'a pas tourne, et le sous-titre le dit.
+KPI_CDC = [
+    (
+        "cdc_economises",
+        "Montants economises confirmes (MGA)",
+        "montant_economise_mga",
+        "NUMERIC",
+        "~s",
+        "En attente : aucune decision gestionnaire enregistree",
+    ),
+    (
+        "cdc_detection",
+        "Taux de detection du modele (%)",
+        "taux_detection_pct",
+        "DOUBLE",
+        ".2f",
+        "En attente : ml.prediction est vide, modele non entraine",
+    ),
+    (
+        "cdc_faux_positifs",
+        "Taux de faux positifs (%)",
+        "taux_faux_positifs_pct",
+        "DOUBLE",
+        ".2f",
+        "En attente : ml.prediction est vide, modele non entraine",
+    ),
+]
+
 
 GRAPHIQUES = [
     {
         "cle": "volume_mensuel",
         "titre": "Montant present par mois (MGA)",
         "vue": "v_kpi_mensuel",
-        "viz_type": "line",
+        "viz_type": "echarts_timeseries",
         "params": {
             "metrics": [
-                {
-                    "label": "Montant present (MGA)",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "montant_total_mga", "type": "NUMERIC"},
-                }
+                _metrique("montant_total_mga", "NUMERIC", "Montant present (MGA)")
             ],
             "groupby": [{"column_name": "mois", "type": "TEMPORAL", "label": "Mois"}],
             "order_desc": True,
@@ -175,14 +246,10 @@ GRAPHIQUES = [
         "cle": "fraude_par_type",
         "titre": "Fraude par mecanisme (24 mois)",
         "vue": "v_fraude_par_type",
-        "viz_type": "bar",
+        "viz_type": "dist_bar",
         "params": {
             "metrics": [
-                {
-                    "label": "Nombre de factures",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "nb_fraudes", "type": "BIGINT"},
-                }
+                _metrique("nb_fraudes", "BIGINT", "Nombre de factures")
             ],
             "groupby": [{"column_name": "type_fraude", "type": "STRING", "label": "Mecanisme"}],
             "order_desc": True,
@@ -200,16 +267,8 @@ GRAPHIQUES = [
         "viz_type": "table",
         "params": {
             "metrics": [
-                {
-                    "label": "Montant expose (MGA)",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "montant_expose_mga", "type": "NUMERIC"},
-                },
-                {
-                    "label": "Taux de fraude (%)",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "taux_fraude_pct", "type": "DOUBLE"},
-                },
+                _metrique("montant_expose_mga", "NUMERIC", "Montant expose (MGA)"),
+                _metrique("taux_fraude_pct", "DOUBLE", "Taux de fraude (%)"),
             ],
             "groupby": [
                 {"column_name": "prestataire_nom", "type": "STRING", "label": "Prestataire"},
@@ -224,14 +283,10 @@ GRAPHIQUES = [
         "cle": "delai_traitement",
         "titre": "Evolution du delai de traitement",
         "vue": "v_kpi_mensuel",
-        "viz_type": "line",
+        "viz_type": "echarts_timeseries",
         "params": {
             "metrics": [
-                {
-                    "label": "Delai moyen (jours)",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "delai_traitement_jours", "type": "DOUBLE"},
-                }
+                _metrique("delai_traitement_jours", "DOUBLE", "Delai moyen (jours)")
             ],
             "groupby": [{"column_name": "mois", "type": "TEMPORAL", "label": "Mois"}],
             "order_desc": True,
@@ -246,14 +301,10 @@ GRAPHIQUES = [
         "cle": "points_controle",
         "titre": "Motifs de non-paiement par mois",
         "vue": "v_controle_points",
-        "viz_type": "bar",
+        "viz_type": "dist_bar",
         "params": {
             "metrics": [
-                {
-                    "label": "Factures",
-                    "expressionType": "SIMPLE",
-                    "column": {"column_name": "nb_factures", "type": "BIGINT"},
-                }
+                _metrique("nb_factures", "BIGINT", "Factures")
             ],
             "groupby": [
                 {"column_name": "motif", "type": "STRING", "label": "Motif"},
@@ -272,27 +323,55 @@ TOUS: list[dict] = [
     {
         "cle": cle,
         "titre": titre,
-        "vue": vue,
-        "viz_type": viz_type,
+        "vue": "v_kpi_global",
+        # `big_number`, et non `big_number_total` : c'est `metric` qui porte
+        # la valeur affichee, et il attend ici une metrique, pas "Count".
+        "viz_type": "big_number",
         "params": {
-            "datasource": f"{vue}__table",
-            "metric": "Count",
+            "datasource": "v_kpi_global__table",
+            "metric": _metrique(colonne, type_, titre),
             "adhoc_filters": [],
             "row_limit": 1,
             "time_range": "No filter",
             "y_axis_format": format_,
-            "custom_formatted_tooltip": [{"column": colonne, "label": "", "formatter": format_}],
+            "subheader": sous_titre,
         },
     }
-    for cle, titre, vue, viz_type, format_, colonne in KPI
+    for cle, titre, colonne, type_, format_, sous_titre in KPI
+] + [
+    {
+        "cle": cle,
+        "titre": titre,
+        "vue": "v_cdc_global",
+        "viz_type": "big_number",
+        "params": {
+            "datasource": "v_cdc_global__table",
+            "metric": _metrique(colonne, type_, titre),
+            "adhoc_filters": [],
+            "row_limit": 1,
+            "time_range": "No filter",
+            "y_axis_format": format_,
+            "subheader": sous_titre,
+        },
+    }
+    for cle, titre, colonne, type_, format_, sous_titre in KPI_CDC
 ] + GRAPHIQUES
 
-#: Mise en page, en colonnes de 12 : (largeur, hauteur).
+#: Largeur de la grille de mise en page, en colonnes.
+COLONNES = 12
+
+#: Mise en page, en colonnes de `COLONNES` : (largeur, hauteur).
+#: Deux bandeaux de tuiles -- les indicateurs calcules sur `core`, puis les
+#: trois de la boucle de decision -- puis la lecture verticale attendue :
+#: tendance, decomposition, controle.
 GRILLE = {
     "kpi_volume": (3, 2),
     "kpi_montant": (3, 2),
     "kpi_taux": (3, 2),
     "kpi_delai": (3, 2),
+    "cdc_economises": (4, 2),
+    "cdc_detection": (4, 2),
+    "cdc_faux_positifs": (4, 2),
     "volume_mensuel": (6, 6),
     "delai_traitement": (6, 6),
     "fraude_par_type": (6, 7),
@@ -303,17 +382,30 @@ GRILLE = {
 
 def creer_graphiques(client: Client, datasets: dict[str, int]) -> list[int]:
     """Cree ou met a jour chaque graphique. Idempotent."""
-    existants = {c.get("slice_name"): c.get("id") for c in client.lister("/api/v1/chart/")}
     titres = {d["titre"] for d in TOUS}
 
-    # Les graphiques absents du code sont supprimes. Un renommage de titre
-    # laisse sinon un orphelin dans l'interface, sans plus rien pour le
-    # nourrir : c'est exactement le genre de residu qui donne « there was an
-    # issue » au jury.
-    for titre, identifiant in existants.items():
+    # Les graphiques absents du code sont supprimes, et les DOUBLONS de titre
+    # aussi. Un renommage de titre laisse sinon un orphelin dans l'interface,
+    # sans plus rien pour le nourrir : c'est exactement le genre de residu qui
+    # donne « there was an issue » au jury.
+    #
+    # Le parcours se fait sur une LISTE et non sur un dictionnaire indexe par
+    # titre : deux graphiques de meme titre se sont produits lors des essais,
+    # et un dictionnaire n'en retient qu'un. Le deuxieme survit au nettoyage,
+    # invisible, et la deduplication par titre le laisse passer.
+    vus: set[str] = set()
+    for graphique in client.lister("/api/v1/chart/"):
+        titre = graphique.get("slice_name")
         if titre not in titres:
-            client._json("DELETE", f"/api/v1/chart/{identifiant}")
+            client._json("DELETE", f"/api/v1/chart/{graphique['id']}")
             print(f"  - graphique orphelin supprime : {titre}")
+        elif titre in vus:
+            client._json("DELETE", f"/api/v1/chart/{graphique['id']}")
+            print(f"  - doublon de titre supprime : {titre} (id {graphique['id']})")
+        else:
+            vus.add(titre)
+
+    existants = {c["slice_name"]: c["id"] for c in client.lister("/api/v1/chart/")}
 
     identifiants: list[int] = []
     for definition in TOUS:
@@ -363,37 +455,75 @@ def creer_dashboard(client: Client, identifiants: list[int]) -> int:
     else:
         id_dash = client._json("POST", "/api/v1/dashboard/", charge)["id"]
 
-    # La mise en page est appliquee AVANT l'accrochage, et en tolerant : le
-    # format `position_json` a change avec les onglets de la version 6, et une
-    # erreur de mise en page ne doit pas empecher le dashboard de contenir ses
-    # graphiques. Les tuiles restent superposees, mais le contenu est la.
-    try:
+    # La mise en page est appliquee par ecriture directe, comme l'accrochage :
+    # la route `PUT /api/v1/dashboard/<id>` echoue en « Fatal error » sur
+    # Superset 6 avec une charge `position_json`, alors meme que la creation
+    # du tableau par la meme route reussit. On tente l'API, puis on tombe sur
+    # la metadonnee -- un tableau dont les tuiles se superposent reste
+    # inexploitable, et ce n'est pas une option que l'on peut declarer
+    # secondaire dans un livrable de soutenance.
+    with contextlib.suppress(RuntimeError):
         client._json(
             "PUT",
             f"/api/v1/dashboard/{id_dash}",
             {"position_json": json.dumps(_position(identifiants))},
         )
-    except RuntimeError as exc:
-        print(f"  mise en page ignoree ({exc}) : graphiques poses, tuiles par defaut.")
 
     _attacher(id_dash, identifiants)
+    _positionner(id_dash, identifiants)
     return id_dash
 
 
+def _positionner(id_dash: int, identifiants: list[int]) -> None:
+    """Ecrit `position_json` directement dans la metadonnee du tableau."""
+    import sqlalchemy as sa
+    from superset import db as superset_db
+    from superset.app import create_app
+
+    grille = _position(identifiants)
+    application = create_app()
+    with application.app_context():
+        superset_db.session.execute(
+            sa.text("UPDATE dashboards SET position_json = :p WHERE id = :d"),
+            {"p": json.dumps(grille), "d": id_dash},
+        )
+        superset_db.session.commit()
+    print(f"  mise en page ecrite : {len(identifiants)} tuiles sur une grille de {COLONNES} colonnes.")
+
+
 def _position(identifiants: list[int]) -> dict:
-    """Position des tuiles, en colonnes de 12, dans l'ordre de lecture."""
+    """Position des tuiles, en colonnes de 12, dans l'ordre de lecture.
+
+    La grille est CALCULEE, pas ecrite a la main : une position codee en dur
+    (`"x": 0, "y": 0` pour chaque tuile) empile les douze graphiques les uns
+    sur les autres, et le tableau devient illisible sans lever la moindre
+    erreur -- le genre de defaut qui ne se voit qu'a l'ouverture, devant le
+    jury.
+
+    `GRILLE` donne la taille en unites de 12 colonnes ; la position en decoule,
+    ligne par ligne : on avance en x jusqu'a deborder, puis on passe a la
+    ligne suivante a la hauteur de la plus haute tuile deja posee.
+    """
     enfants = []
+    x = y = 0
+    hauteur_ligne = 0
     for index, identifiant in enumerate(identifiants):
         definition = TOUS[index]
         largeur, hauteur = GRILLE.get(definition["cle"], (6, 6))
+        if x + largeur > COLONNES:
+            y += hauteur_ligne
+            x = 0
+            hauteur_ligne = 0
         enfants.append(
             {
                 "type": "CHART",
                 "id": str(identifiant),
                 "meta": {"chartId": identifiant, "width": largeur, "height": hauteur},
-                "position": {"x": 0, "y": 0, "width": largeur, "height": hauteur},
+                "position": {"x": x, "y": y, "width": largeur, "height": hauteur},
             }
         )
+        x += largeur
+        hauteur_ligne = max(hauteur_ligne, hauteur)
     return {
         "DASHBOARD_VERSION_KEY": "v2",
         "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": enfants},

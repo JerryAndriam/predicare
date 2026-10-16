@@ -68,6 +68,60 @@ COMMENT ON VIEW bi.v_kpi_mensuel IS
 
 
 -- ============================================================================
+-- bi.v_kpi_global : grain = 1 ligne, les quatre tuiles du bandeau
+-- ============================================================================
+-- Pourquoi cette vue existe en plus de v_kpi_mensuel
+-- --------------------------------------------------
+-- Un bandeau d'indicateurs veut la valeur SUR TOUTE LA PERIODE. La lecture
+-- naive serait de sommer v_kpi_mensuel. Elle est fausse pour deux colonnes
+-- sur quatre :
+--
+--   * `taux_fraude_pct` est un TAUX. Sommer des taux n'a pas de sens :
+--     10 % sur 10 factures et 10 % sur 10 000 factures ne donnent pas 20 %.
+--     Un taux global se recalcule, il ne s'additionne pas.
+--
+--   * `delai_traitement_jours` est une MOYENNE. La moyenne des moyennes
+--     mensuelles n'est la moyenne globale que si chaque mois pese le meme
+--     nombre de factures. ici janvier compte 3 800 factures et le mois de
+--     mars 900 : la moyenne des moyennes decale la reelle.
+--
+-- Les deux volumes, eux, s'additionnent bien, mais autant les recalculer au
+-- meme endroit plutot que de melanger un SOMME et deux RECALCULS dans la
+-- meme tuile : on ne doit pas avoir a penser, tile par tile, a ce qui
+-- s'additionne et ce qui ne s'additionne pas.
+--
+-- Cette vue n'aplatit donc rien : elle recalcule chaque indicateur depuis
+-- ses numerateur et denominateur.
+--
+-- Frequence : a chaque rechargement.
+-- ============================================================================
+
+CREATE OR REPLACE VIEW bi.v_kpi_global AS
+SELECT
+    COUNT(*)                                              AS nb_factures,
+    SUM(f.montant_total)                                   AS montant_total_mga,
+    -- « Montants economises » au sens CDC : ce qu'un depistage de la fraude
+    -- aurait evite de payer. Tant qu'aucun gestionnaire ne confirme, c'est
+    -- une fraude IDENTIFIEE par les labels terrain, pas une economique
+    -- realisee. Le libelle du graphique le distingue.
+    SUM(f.montant_total) FILTER (WHERE l.label = 1)        AS montant_fraude_mga,
+    COUNT(*) FILTER (WHERE l.label = 1)                    AS nb_fraudes,
+    -- Recalcule, jamais somme.
+    ROUND(100.0 * COUNT(*) FILTER (WHERE l.label = 1)
+          / NULLIF(COUNT(*), 0), 2)                       AS taux_fraude_pct,
+    -- AVG() pese chaque facture de facon egale : c'est la ponderation
+    -- correcte, et non la moyenne des moyennes de v_kpi_mensuel.
+    ROUND(AVG(EXTRACT(EPOCH FROM (f.date_traitement - f.date_reception)))
+          FILTER (WHERE f.date_traitement IS NOT NULL) / 86400.0, 2)
+                                                            AS delai_moyen_jours
+FROM core.facture f
+LEFT JOIN ml.label_fraude l ON l.facture_id = f.id;
+
+COMMENT ON VIEW bi.v_kpi_global IS
+    'Bandeau d''indicateurs, 1 ligne : volumes, montants MGA, taux de fraude RECALCULE sur toute la periode et delai moyen PONDERE par facture. Un taux ne se somme pas et une moyenne de moyennes n''est pas une moyenne. Source core.facture + ml.label_fraude.';
+
+
+-- ============================================================================
 -- bi.v_factures_detail : grain = 1 ligne / facture
 -- ============================================================================
 -- Socle d'exploration. Superset peut agreger librement a partir d'ici :

@@ -160,3 +160,57 @@ GROUP BY 1, 2;
 
 COMMENT ON VIEW bi.v_faux_positifs IS
     'Matrice de confusion metier : prediction du modele contre decision humaine. SECURITY DEFINER : agregat seul. Source ml.prediction + audit.decision_gestionnaire. VIDE tant qu aucune decision n est enregistree.';
+
+
+-- ============================================================================
+-- bi.v_cdc_global : grain = 1 ligne, les trois indicateurs de la boucle
+-- ============================================================================
+-- Rappel, faux positifs et montants economises confirmes : ce sont les trois
+-- indicateurs qu'on ne peut pas lire sur `core` seul, parce qu'ils comparent
+-- une PREDICTION a une VERITE HUMAINE.
+--
+-- Grain = 1 LIGNE, toujours, meme vide. Une tuile qui affiche « en attente »
+-- est informative ; une tuile sans aucune ligne ne se distingue pas d'une
+-- tuile cassee. D'ou le LEFT JOIN et l'absence de filtre `WHERE` : la vue
+-- renvoie une ligne, avec des NULL explicites.
+--
+-- MEME MESURE DE PRECISION QUE v_faux_positifs et v_montants_economises, en
+-- global plutot que par mois -- et donc comme eux sans ponderation abusive :
+-- un ratio se recalcule, il ne se somme pas.
+--
+-- SECURITY DEFINER : lecture agregee de `audit`, sans en exposer le detail.
+CREATE OR REPLACE VIEW bi.v_cdc_global
+WITH (security_invoker = false) AS
+SELECT
+    COUNT(p.id)                                               AS nb_predictions,
+
+    -- RAPPEL : part des vraies fraudes que la boucle a effectivement
+    -- attrapees. Denominateur = les VRAIES fraudes, pas les predictions.
+    ROUND(100.0 * COUNT(*) FILTER (
+              WHERE l.label = 1 AND p.is_fraud AND d.decision = 'valider_fraude')
+          / NULLIF(COUNT(*) FILTER (WHERE l.label = 1), 0), 2)
+                                                            AS taux_detection_pct,
+
+    -- FAUX POSITIFS : part des alertes que le gestionnaire a ecartees.
+    -- Une prediction sans decision compte comme faux positif : le systeme a
+    -- alerte, personne n'a confirme.
+    ROUND(100.0 * COUNT(*) FILTER (
+              WHERE p.is_fraud
+                AND (d.decision IS NULL OR d.decision <> 'valider_fraude'))
+          / NULLIF(COUNT(*) FILTER (WHERE p.is_fraud), 0), 2)
+                                                            AS taux_faux_positifs_pct,
+
+    -- MONTANTS ECONOMISES : ce qu'un gestionnaire a reellement confirme.
+    ROUND(SUM(f.montant_total) FILTER (WHERE d.decision = 'valider_fraude'))
+                                                            AS montant_economise_mga,
+
+    -- DELAI DE DECISION : alerte -> decision gestionnaire.
+    ROUND(AVG(EXTRACT(EPOCH FROM (d.decided_at - p.created_at))) / 3600.0, 2)
+                                                            AS delai_decision_heures
+FROM ml.prediction p
+LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
+LEFT JOIN ml.label_fraude              l ON l.facture_id    = p.facture_id
+LEFT JOIN core.facture                 f ON f.id            = p.facture_id;
+
+COMMENT ON VIEW bi.v_cdc_global IS
+    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. Source ml.prediction + audit.decision_gestionnaire. TODO : modele non entraine, aucune decision enregistree.';

@@ -27,11 +27,12 @@ chaque retouche de libelle decourage de corriger, donc les indicateurs
 vieillissent. Elles restent versionnees dans Git et rejouables sur une
 machine vierge.
 
-## Les huit vues
+## Les dix vues
 
 | Vue | Grain | Role |
 | --- | --- | --- |
-| `v_kpi_mensuel` | 1 ligne / mois | le tableau de bord : volume, montants, prevalence, delai |
+| `v_kpi_mensuel` | 1 ligne / mois | la tendance : volume, montants, prevalence, delai |
+| `v_kpi_global` | 1 ligne | le bandeau : les memes indicateurs, sur toute la periode |
 | `v_factures_detail` | 1 ligne / facture | socle d'exploration, dimensions denormalisees |
 | `v_fraude_par_type` | type x mois | les mecanismes de fraude et leur montant expose |
 | `v_prestataires_risque` | 1 ligne / prestataire | classe par montant expose |
@@ -40,6 +41,7 @@ machine vierge.
 | `v_delai_decision` | 1 ligne / mois | alerte -> decision gestionnaire |
 | `v_montants_economises` | 1 ligne / mois | fraude confirmee par un gestionnaire |
 | `v_faux_positifs` | prediction x decision | matrice de confusion metier |
+| `v_cdc_global` | 1 ligne | la boucle de decision : rappel, faux positifs, economises, delai |
 
 ## Les cinq indicateurs du CDC
 
@@ -67,6 +69,44 @@ Le jeu de l'encadrement est en **MGA**. Une colonne nommee `montant_eur`
 serait fausse d'un facteur d'environ 57 000. Toutes les colonnes portent
 `mga` dans leur nom, et les titres de graphiques le rappelent.
 
+## Deux pieges que les tests ne voient pas
+
+Ils ont chacun a fait afficher « there was an issue » sur des graphiques dont la
+requete etait pourtant correcte. Les deux meritaient d'etre ecrits.
+
+### 1. Une colonne existe dans la vue, pas dans Superset
+
+`information_schema` dit que `nb_factures` existe. Le graphique echoue
+malgre tout, avec « Columns missing in dataset ».
+
+Les datasets sont ecrits en SQL direct par `register_datasets.py`, ce qui cree
+la ligne sans jamais appeler `fetch_metadata()`. La ligne existe, l'interface
+l'affiche, et ses colonnes sont vides. **Verifier la colonne dans la base ne
+prouve rien : il faut verifier ce que Superset a dans `table_columns`.** Le
+script appelle donc `fetch_metadata()` a chaque execution, et `make bi`
+compte les colonnes.
+
+### 2. Un taux ne se somme pas, une moyenne de moyennes n'est pas une moyenne
+
+Le bandeau voulait la valeur sur les 24 mois. Sommer `v_kpi_mensuel` :
+
+```
+SOMME des taux mensuels        219,29 %   <- absurde
+taux GLOBAL recalcule             8,69 %   <- juste
+MOYENNE des delais mensuels        8,50 j
+delai GLOBAL pondere                8,49 j
+```
+
+`v_kpi_global` recalcule donc chaque indicateur depuis son numerateur et son
+denominateur. Les tuiles y agrègent une vue qui ne contient qu'**une ligne**.
+
+### Les cinq indicateurs du CDC, tous affiches
+
+Les trois derniers sont des tuiles sur `v_cdc_global`, qui renvoie toujours
+une ligne. Tant que le modele n'a pas tourne, elles affichent « en attente »
+avec le sous-titre qui dit pourquoi -- plutot que d'etre absentes du tableau.
+Une brique vide se constate ; une brique manquante passe pour un oubli.
+
 ## Securite : la frontiere `audit`
 
 La migration 0002 retire a `superset_ro` tout acces au schema `audit` :
@@ -88,7 +128,11 @@ Verifier que la frontiere tient :
 ```bash
 make db-sql Q="SELECT count(*) FROM audit.decision_gestionnaire"        # doit echouer
 make db-sql Q="SELECT count(*) FROM bi.v_montants_economises"          # doit repondre
+make db-sql Q="SELECT * FROM bi.v_cdc_global"                           # doit repondre
 ```
+
+`v_cdc_global` est `security_invoker = false` comme ses soeurs, et pour la
+meme raison : elle agrege `audit` sans jamais en exposer le detail.
 
 ## Regles de conception appliquees
 

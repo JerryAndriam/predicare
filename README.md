@@ -169,6 +169,7 @@ une migration ajoutée après le premier démarrage resterait non appliquée, et
 | `make db-sql Q="SELECT …"` | Exécute une requête. |
 | `make db-sql FILE=analyse.sql` | Exécute un fichier SQL de l'hôte. |
 | `make bi` | Vérifie que les vues de la couche sémantique BI compilent. |
+| `make bi-graphiques` | Exécute la requête de chaque graphique et vérifie qu'elle aboutit. |
 | `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
 
 Aucun port TCP n'atteint PostgreSQL : tout passe par `docker compose exec`, donc
@@ -399,8 +400,8 @@ séparément et c'est lui seul qui est bloquant.
 
 ### Tableau de bord décisionnel
 
-`make up` démarre Superset, enregistre **neuf datasets** sur des vues
-physiques du schéma `bi`, puis crée **neuf graphiques** et le tableau de bord
+`make up` démarre Superset, enregistre **onze datasets** sur des vues
+physiques du schéma `bi`, puis crée **douze graphiques** et le tableau de bord
 « Pilotage mensuel ». La connexion BI utilise le rôle `superset_ro`, en lecture
 stricte : l'outil ne peut pas modifier une donnée métier.
 

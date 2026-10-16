@@ -240,7 +240,11 @@ bi: ## Verifie que les vues de la couche semantique compilent
 			-U $${POSTGRES_USER:-predicare} -d $${POSTGRES_DB:-predicare} < "$$f" >/dev/null \
 			&& echo "  OK  $$f"; \
 	done
-	@echo "  Vues BI : $$(ls db/bi/views/*.sql | wc -l) fichier(s) applique(s)." 
+	@echo "  Vues BI : $$(ls db/bi/views/*.sql | wc -l) fichier(s) applique(s)."
+
+.PHONY: bi-graphiques
+bi-graphiques: ## Verifie que chaque graphique rend une requete reussie
+	@uv run python ops/superset/verifier_graphiques.py
 
 .PHONY: readme
 readme: ## Verifie que le README documente exactement les commandes de make help
