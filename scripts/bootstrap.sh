@@ -172,7 +172,6 @@ generer_secrets() {
     maj_si_placeholder "PREDICARE_DB_RO_PASSWORD"  "$(generer_secret)"
     maj_si_placeholder "IDENTITY_ENCRYPTION_KEY"   "$cle_fernet"
     maj_si_placeholder "N8N_ENCRYPTION_KEY"        "$(generer_secret)"
-    maj_si_placeholder "N8N_BASIC_AUTH_PASSWORD"   "$(generer_secret)"
     maj_si_placeholder "N8N_API_KEY"               "$(generer_secret)"
     maj_si_placeholder "SUPERSET_SECRET_KEY"       "$(generer_secret)"
     maj_si_placeholder "SUPERSET_ADMIN_PASSWORD"   "$(generer_secret)"

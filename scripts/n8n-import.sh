@@ -21,8 +21,6 @@ cd "$RACINE"
 
 N8N_PORT="${N8N_PORT:-5678}"
 N8N_URL="${N8N_URL:-http://localhost:${N8N_PORT}}"
-N8N_USER="${N8N_BASIC_AUTH_USER:-}"
-N8N_PASSWORD="${N8N_BASIC_AUTH_PASSWORD:-}"
 N8N_API_KEY="${N8N_API_KEY:-}"
 
 SOURCE="${RACINE}/apps/n8n/workflows"
@@ -40,7 +38,6 @@ api_Disponible() {
     [ -n "$N8N_API_KEY" ] || return 1
     [ "$N8N_API_KEY" != "CHANGER_MOI_N8N_API_KEY" ] || return 1
     curl -fsS --max-time 6 \
-        -u "${N8N_USER}:${N8N_PASSWORD}" \
         -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
         "${N8N_URL}/api/v1/workflows?limit=1" >/dev/null 2>&1
 }
@@ -133,7 +130,7 @@ while IFS= read -r fichier; do
     # --- Cas API disponible : remplacement propre ---
     if [ "$API" -eq 1 ]; then
         ID_EXISTANT=$(curl -fsS --max-time 6 \
-            -u "${N8N_USER}:${N8N_PASSWORD}" -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+            -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
             --get --data-urlencode "name=${nom_workflow}" \
             "${N8N_URL}/api/v1/workflows" 2>/dev/null \
             | python3 -c "
@@ -146,7 +143,7 @@ except Exception:
 
         if [ -n "$ID_EXISTANT" ]; then
             if curl -fsS --max-time 6 -X DELETE \
-                -u "${N8N_USER}:${N8N_PASSWORD}" -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+                -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
                 "${N8N_URL}/api/v1/workflows/${ID_EXISTANT}" >/dev/null 2>&1; then
                 log "  version precedente supprimee"
             else
@@ -190,7 +187,7 @@ if [ "$IMPORTES" -gt 0 ]; then
     if [ "$API" -eq 1 ]; then
         log "Activation via l'API n8n"
         LISTE=$(curl -fsS --max-time 8 \
-            -u "${N8N_USER}:${N8N_PASSWORD}" -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+            -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
             "${N8N_URL}/api/v1/workflows?active=false&limit=200" 2>/dev/null \
             | python3 -c "import json,sys
 try:
@@ -200,7 +197,7 @@ except Exception:
     pass" 2>/dev/null)
         for id in $LISTE; do
             if curl -fsS --max-time 6 -X PATCH \
-                -u "${N8N_USER}:${N8N_PASSWORD}" -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+                -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
                 -H "Content-Type: application/json" \
                 "${N8N_URL}/api/v1/workflows/${id}" -d '{"active": true}' >/dev/null 2>&1; then
                 ACTIVES=$((ACTIVES + 1))

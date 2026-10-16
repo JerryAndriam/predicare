@@ -34,7 +34,7 @@ help: ## Affiche cette aide
 	@echo ""
 	@echo "PrediCare TPA - commandes disponibles"
 	@echo "----------------------------------------"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
@@ -262,6 +262,10 @@ ACCES_FILE ?= $(ACCES_DIR)/ACCES_PREDICARE.md
 .PHONY: acces
 acces: ## Genere la fiche d'identifiants (hors depot, mode 600)
 	@scripts/generate-access-file.sh
+
+.PHONY: n8n-compte
+n8n-compte: ## Affiche le compte n8n de cette machine (et la procedure s'il n'existe pas)
+	@scripts/n8n-compte.sh
 
 .PHONY: n8n-export
 n8n-export: ## Exporte les workflows n8n dans apps/n8n/workflows/

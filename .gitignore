@@ -34,7 +34,13 @@ apps/web/.vite/
 # ---------------------------------------------------------------- n8n
 # Les workflows sont versionnes, les credentials contiennent le webhook Slack
 # et la cle LLM : jamais commites.
-apps/n8n/credentials/
+#
+# On ignore le CONTENU du dossier, pas le dossier lui-meme. Ecrire
+# `apps/n8n/credentials/` suivi de `!.../README.md` ne fonctionne pas : Git ne
+# peut pas re-inclure un fichier dont un dossier parent est deja exclu, la
+# negation est silencieusement ignoree et le README restait non versionne --
+# donc la doc de restauration des credentials n'arrivait jamais a l'equipe.
+apps/n8n/credentials/*
 !apps/n8n/credentials/README.md
 
 # ---------------------------------------------------------------- Divers
