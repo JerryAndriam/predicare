@@ -80,6 +80,38 @@ services:
     networks:
       - core
     command: ["python", "/app/register_datasets.py"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Tableau de bord : job distinct, APRES que le serveur repond.
+  #
+  # Pourquoi pas dans `superset-import` : le job parle a Superset par son API
+  # REST, donc il lui faut un serveur joignable. Or `superset` depend de
+  # `superset-import` qui l'a termine : le lancer au meme moment creerait un
+  # cycle, et dans le conteneur du job `localhost` designe le job lui-meme,
+  # pas le serveur. D'ou un job qui attend la sante du serveur.
+  # ---------------------------------------------------------------------------
+  superset-dashboard:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset-dashboard
+    environment:
+      <<: *superset-env
+      # Nom du service, pas `localhost` : depuis ce conteneur, localhost est
+      # le conteneur du job.
+      SUPERSET_URL: http://superset:8088
+    command: ["python", "/app/register_dashboard.py"]
+    depends_on:
+      superset:
+        condition: service_healthy
+    networks:
+      - core
     restart: "no"
     logging:
       driver: json-file

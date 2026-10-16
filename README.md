@@ -168,6 +168,7 @@ une migration ajoutée après le premier démarrage resterait non appliquée, et
 | `make shell-db` | `psql` interactif. `ROLE=predicare_ro` pour un accès lecture seule. |
 | `make db-sql Q="SELECT …"` | Exécute une requête. |
 | `make db-sql FILE=analyse.sql` | Exécute un fichier SQL de l'hôte. |
+| `make bi` | Vérifie que les vues de la couche sémantique BI compilent. |
 | `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
 
 Aucun port TCP n'atteint PostgreSQL : tout passe par `docker compose exec`, donc
@@ -398,10 +399,20 @@ séparément et c'est lui seul qui est bloquant.
 
 ### Tableau de bord décisionnel
 
-`make up` démarre Superset et enregistre automatiquement cinq datasets
-documentés : volumes traités, taux de détection, montants économisés, délai de
-traitement, faux positifs. La connexion BI utilise le rôle `superset_ro`, en
-lecture seule stricte — l'outil ne peut pas modifier une donnée métier.
+`make up` démarre Superset, enregistre **neuf datasets** sur des vues
+physiques du schéma `bi`, puis crée **neuf graphiques** et le tableau de bord
+« Pilotage mensuel ». La connexion BI utilise le rôle `superset_ro`, en lecture
+stricte : l'outil ne peut pas modifier une donnée métier.
+
+Le tableau suit les cinq indicateurs de la Phase 7 — volumes, montants
+économisés, taux de détection, délai de traitement, faux positifs. Deux
+d'entre eux restent **vides** tant que le modèle n'a pas tourné et qu'aucune
+décision gestionnaire n'est enregistrée : les vues existent, elles sont vides,
+et le tableau le dit. Une brique absente passerait inaperçue ; une brique vide
+avec son état se discute.
+
+Détail des indicateurs, de leur source et de leur fréquence : voir
+[`db/bi/README.md`](db/bi/README.md).
 
 ---
 

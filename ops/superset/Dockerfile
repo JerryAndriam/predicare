@@ -52,7 +52,14 @@ ENV SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py \
 
 COPY ops/superset/superset_config.py /app/pythonpath/superset_config.py
 COPY ops/superset/register_datasets.py /app/register_datasets.py
+COPY ops/superset/register_dashboard.py /app/register_dashboard.py
 COPY ops/superset/init.sh /app/init.sh
+
+# Les vues de la couche semantique voyagent dans l'image : le job BI doit
+# pouvoir les reappliquer sur une base fraichement creee, sans avoir le depot
+# sous la main. Elles restent versionnees dans `db/bi/views/`, image n'est
+# qu'un moyen de les rendre accessibles au conteneur.
+COPY db/bi/views /app/bi/views
 
 # Le r\xe9pertoire de travail doit appartenir \xe0 l'utilisateur non root avec
 # lequel Superset s'execute, sinon l'ecriture des metadonnees echoue.

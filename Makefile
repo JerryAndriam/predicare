@@ -231,7 +231,16 @@ export-requirements: ## Exporte les versions pip depuis uv.lock (non versionne)
 	@echo "requirements.lock ecrit. Ne pas le commiter : uv.lock reste la source de verite."
 
 .PHONY: check
-check: lint typecheck test readme ## Les verifications de la CI
+check: lint typecheck test readme bi ## Les verifications de la CI
+
+.PHONY: bi
+bi: ## Verifie que les vues de la couche semantique compilent
+	@for f in db/bi/views/*.sql; do \
+		docker compose exec -T db psql -v ON_ERROR_STOP=1 -q \
+			-U $${POSTGRES_USER:-predicare} -d $${POSTGRES_DB:-predicare} < "$$f" >/dev/null \
+			&& echo "  OK  $$f"; \
+	done
+	@echo "  Vues BI : $$(ls db/bi/views/*.sql | wc -l) fichier(s) applique(s)." 
 
 .PHONY: readme
 readme: ## Verifie que le README documente exactement les commandes de make help
@@ -281,9 +290,10 @@ db-status: ## Compare la version du schema en base et celle attendue par le code
 	@scripts/db-status.sh
 
 .PHONY: reload-data
-reload-data: ## Recharge les donnees depuis ./data/raw
+reload-data: ## Recharge les donnees depuis ./data/raw et reapplique la couche BI
 	@$(COMPOSE_CORE) up -d db
 	@$(COMPOSE_CORE) run --rm seed
+	@bash db/bi/load.sh
 
 .PHONY: shell-db
 shell-db: ## Ouvre psql sur la base (ROLE=predicare_ro pour un acces lecture seule)

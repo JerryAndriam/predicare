@@ -2,128 +2,113 @@
 
 Ce module est execute UNE FOIS par le job `superset-import`, apres
 `superset init` et la creation de l'administrateur. Il rend le tableau de
-bord disponible sans configuration manuelle a la main : c'est ce qui permet
-de dire au jury « `make up-bi`, et le tableau de bord est deja la ».
+bord disponible sans configuration manuelle : c'est ce qui permet de dire au
+jury « `make up`, et le tableau de bord est deja la ».
 
-Deux garanties sont posees ici :
+Trois garanties sont posees ici :
 
-1. La connexion utilise le role `superset_ro`, cree par la migration
-   `0002_superset_readonly`, qui n'a aucun droit d'ecriture. Le tableau de
-   bord ne peut donc pas modifier une donnee metier, meme par une requete
-   erronee.
-2. Les requetes sont declarees en dur et versionnees avec le depot. Un
-   tableau de bord construit a la main dans l'interface n'est ni auditable,
-   ni reproductible sur une machine vierge.
+1. La connexion utilise le role `superset_ro`, cree par la migration `0002`,
+   qui n'a aucun droit d'ecriture. Le tableau de bord ne peut donc pas
+   modifier une donnee metier, meme par une requete erronee. `allow_dml`,
+   `allow_ctas` et `allow_cvas` sont en plus mis a `False` : SQL Lab ne peut
+   rien ecrire, meme si le role evoluait.
+
+2. Les datasets pointent sur des VUES PHYSIQUES du schema `bi`, declarees
+   dans `db/bi/views/*.sql`. La premiere version de ce script enregistrait
+   des sources virtuelles (requetes SQL stockees dans les metadonnees de
+   Superset). Cela posait trois problemes :
+   - elles ne sont pas versionnees : le SQL vivait dans la base de
+     metadonnees, hors du depot, et n'etait relisible par personne ;
+   - `/dataset/list/` renvoie 404 sur Superset 6 pour une source virtuelle,
+     ce qui donne l'impression d'une interface cassee ;
+   - deux d'entre elles lisaient `audit.decision_gestionnaire`, schema
+     volontairement interdit a `superset_ro` : elles echouaient en
+     production avec « permission denied for schema audit ».
+
+3. Le job est idempotent : relancer ne duplique rien. Les datasets dont le
+   SQL a change sont mis a jour, pas recrees.
 """
 
 from __future__ import annotations
 
 import sys
 
-#: Identifiants et requetes du pilotage decisionnel.
-#: Le CDC (Phase 7.1) impose de documenter, pour chaque indicateur, sa
-#: definition, sa source et sa frequence de mise a jour : ces trois
-#: informations sont dans le commentaire de chaque requete.
-DATASETS: dict[str, dict[str, str]] = {
-    "Factures traitees": {
-        "definition": "Nombre de factures et montant total, par mois.",
-        "source": "core.facture",
-        "frequence": " quotidienne, rafraichissement a l'ouverture",
-        "sql": """
-            SELECT date_trunc('month', f.date_facture) AS mois,
-                   COUNT(*)              AS nb_factures,
-                   SUM(f.montant_total)   AS montant_total_eur
-            FROM core.facture f
-            GROUP BY 1
-            ORDER BY 1
-        """,
-    },
-    "Taux de detection": {
-        "definition": "Part des factures signalees comme frauduleuses par le modele.",
-        "source": "ml.prediction",
-        "frequence": " continue, une ligne par prediction",
-        "sql": """
-            SELECT p.created_at::date                    AS jour,
-                   COUNT(*)                               AS nb_predictions,
-                   SUM(CASE WHEN p.is_fraud THEN 1 ELSE 0 END) AS nb_alertes,
-                   ROUND(100.0 * SUM(CASE WHEN p.is_fraud THEN 1 ELSE 0 END)
-                         / NULLIF(COUNT(*), 0), 2)       AS taux_detection_pct
-            FROM ml.prediction p
-            GROUP BY 1
-            ORDER BY 1
-        """,
-    },
-    "Montants economises": {
-        "definition": "Montant des factures en fraude validees par un gestionnaire.",
-        "source": "audit.decision_gestionnaire + core.facture",
-        "frequence": " a chaque decision gestionnaire",
-        "sql": """
-            SELECT d.decision,
-                   COUNT(*)              AS nb_dossiers,
-                   SUM(f.montant_total)  AS montant_concerne_eur
-            FROM audit.decision_gestionnaire d
-            JOIN ml.prediction p ON p.id = d.prediction_id
-            JOIN core.facture f   ON f.id = p.facture_id
-            GROUP BY 1
-            ORDER BY 1
-        """,
-    },
-    "Delai de traitement": {
-        "definition": "Delai moyen entre la prediction et la decision gestionnaire.",
-        "source": "ml.prediction",
-        "frequence": " continue",
-        "sql": """
-            SELECT p.created_at::date AS jour,
-                   ROUND(AVG(EXTRACT(EPOCH FROM (p.decided_at - p.created_at))), 1)
-                       AS delai_moyen_secondes,
-                   COUNT(*)      AS nb_dossiers_traites
-            FROM ml.prediction p
-            WHERE p.decided_at IS NOT NULL
-            GROUP BY 1
-            ORDER BY 1
-        """,
-    },
-    "Faux positifs et faux negatifs": {
-        "definition": (
-            "Croisement entre la prediction du modele et la decision humaine. "
-            "Un faux positif est une alerte sur une facture reellee non "
-            "frauduleuse ; c'est l'indicateur qui justifie le seuil retenu."
-        ),
-        "source": "ml.prediction + audit.decision_gestionnaire",
-        "frequence": " a chaque decision gestionnaire",
-        "sql": """
-            SELECT p.is_fraud                      AS prediction_fraude,
-                   d.decision                      AS decision_gestionnaire,
-                   COUNT(*)                        AS nb_dossiers
-            FROM ml.prediction p
-            LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
-            GROUP BY 1, 2
-            ORDER BY 1, 2
-        """,
-    },
-}
-
 #: Nom de la connexion telle qu'elle apparait dans l'interface Superset.
 NOM_CONNEXION = "PrediCare (lecture seule)"
 
+#: Datasets de pilotage : nom lisible -> nom de la vue physique dans `bi`.
+#:
+#: La definition, la source et la frequence sont reprises dans
+#: `db/bi/README.md` : la documentation des indicateurs (Phase 7.3) doit
+#: vivre dans le depot, pas dans un commentaire Python.
+#:
+#: `vide_jusqua` signale au script qu'un dataset sera vide tant qu'un certain
+#: maillon de la chaine ne tournera pas. Le tableau de bord affiche alors un
+#: etat, plutot que de laisser une absence passer pour un oubli.
+DATASETS: dict[str, dict[str, str | None]] = {
+    "Pilotage mensuel": {
+        "vue": "v_kpi_mensuel",
+        "definition": "Volume, montants, prevalence de la fraude et delai de traitement, par mois.",
+        "vide_jusqua": None,
+    },
+    "Detail factures": {
+        "vue": "v_factures_detail",
+        "definition": "Une ligne par facture, avec dimensions denormalisees et verite terrain.",
+        "vide_jusqua": None,
+    },
+    "Fraude par mecanisme": {
+        "vue": "v_fraude_par_type",
+        "definition": "Les mecanismes de fraude par mois, avec montant expose et part dans le volume.",
+        "vide_jusqua": None,
+    },
+    "Prestataires a risque": {
+        "vue": "v_prestataires_risque",
+        "definition": "Prestataires classes par montant expose, avec taux de fraude et convention.",
+        "vide_jusqua": None,
+    },
+    "Points de controle": {
+        "vue": "v_controle_points",
+        "definition": "Motifs de non-paiement : rejets metadataires et hors couverture.",
+        "vide_jusqua": None,
+    },
+    "Detection du modele": {
+        "vue": "v_detection_mensuel",
+        "definition": "Volume de predictions et taux d'alerte du modele, par mois.",
+        # `ml.prediction` est vide tant qu'aucun modele n'a ete execute.
+        "vide_jusqua": "premiere execution du modele de detection",
+    },
+    "Delai de decision": {
+        "vue": "v_delai_decision",
+        "definition": "Delai entre alerte du modele et decision gestionnaire (moyenne, mediane, p90).",
+        "vide_jusqua": "premiere decision gestionnaire enregistree",
+    },
+    "Montants economises": {
+        "vue": "v_montants_economises",
+        "definition": "Montant de fraude confirmee par un gestionnaire, par mois.",
+        "vide_jusqua": "premiere decision gestionnaire enregistree",
+    },
+    "Faux positifs": {
+        "vue": "v_faux_positifs",
+        "definition": "Matrice de confusion metier : prediction du modele contre decision humaine.",
+        "vide_jusqua": "premiere execution du modele et premiere decision gestionnaire",
+    },
+}
 
-def enregistrer(session: object) -> list[str]:
-    """Cree la connexion et les datasets s'ils n'existent pas deja.
+
+def enregistrer(session: object) -> tuple[list[str], list[str]]:
+    """Cree la connexion et enregistre les datasets sur les vues physiques.
 
     L'ecriture se fait par requete directe plutot que par un helper
     `get_or_create` : ces helpers ont disparu des versions majeures de
     Superset, alors que le modele `Database` est stable. Un script d'amorcage
     doit survivre a une montee de version.
 
-    Le job est idempotent : relancer ne duplique ni la connexion ni les
-    datasets, il se contente de remettre l'URI a jour.
+    Retourne le couple (crees, supprimes) pour que le journal du job dise ce
+    qui a reellement change.
     """
     from superset.connectors.sqla.models import SqlaTable
     from superset.models.core import Database
 
-    # La connexion de BI est celle declaree dans superset_config.py, donc en
-    # lecture seule. `allow_dml=False` ajoute une troisieme barriere : meme
-    # avec un role mal configure, SQL Lab ne peut pas ecrire.
     chaine = session.query(Database).filter_by(database_name=NOM_CONNEXION).one_or_none()
     if chaine is None:
         chaine = Database(
@@ -140,22 +125,49 @@ def enregistrer(session: object) -> list[str]:
         chaine.sqlalchemy_uri = session.info["ro_uri"]
         session.commit()
 
+    vues_attendues = {d["vue"] for d in DATASETS.values()}
+
+    # Les datasets virtuels de la premiere version sont supprimes : deux
+    # echouaient a l'execution, deux etaient vides, et le cinquieme portait un
+    # libelle en euros sur des montants en ariary. Les laisser afficherait
+    # des erreurs dans l'interface a cote des nouveaux.
+    supprimes: list[str] = []
+    for table in session.query(SqlaTable).filter_by(database_id=chaine.id).all():
+        # Une source virtuelle porte un SQL ; une vue physique n'en porte pas
+        # et se resout par `schema` + `table_name`.
+        if table.sql or (
+            (table.schema or "public") != "bi" or table.table_name not in vues_attendues
+        ):
+            supprimes.append(table.table_name)
+            session.delete(table)
+    if supprimes:
+        session.commit()
+
     crees: list[str] = []
-    for nom in DATASETS:
-        if session.query(SqlaTable).filter_by(table_name=f"v_{nom}").first():
+    for nom, spec in DATASETS.items():
+        vue = spec["vue"]
+        existant = session.query(SqlaTable).filter_by(
+            database_id=chaine.id, table_name=vue
+        ).first()
+        if existant is not None:
+            # Un dataset physique porte `sql = None` et se resout par
+            # `table_name`. Ne pas y remettre le SQL : il transformerait la
+            # vue physique en source virtuelle, ce que cette migration
+            # supprime justement.
             continue
         session.add(
             SqlaTable(
                 database=chaine,
-                table_name=f"v_{nom}",
-                sql=DATASETS[nom]["sql"].strip(),
-                is_sqllab_view=True,
+                table_name=vue,
+                schema="bi",
+                sql=None,
+                is_sqllab_view=False,
             )
         )
         session.commit()
         crees.append(nom)
 
-    return crees
+    return crees, supprimes
 
 
 def main() -> int:
@@ -175,23 +187,29 @@ def main() -> int:
         # Superset et doit donc rester accessible en ecriture.
         uri_bi = superset_config.PREDICARE_BI_DATABASE_URI
         if not uri_bi:
-            print(
-                "DB_CONNECTION_STRING absente : aucune source BI a enregistrer.",
-                file=sys.stderr,
-            )
+            print("DB_CONNECTION_STRING absente : aucune source BI a enregistrer.", file=sys.stderr)
             return 1
         superset_db.session.info["ro_uri"] = uri_bi
 
         try:
-            crees = enregistrer(superset_db.session)
+            crees, supprimes = enregistrer(superset_db.session)
         except Exception as exc:
             print(f"ECHEC de l'enregistrement des datasets : {exc}", file=sys.stderr)
             return 1
 
         print(f"Connexion « {NOM_CONNEXION} » en lecture seule.")
+        if supprimes:
+            print(f"Datasets virtuels supprimes : {len(supprimes)}")
+            for nom in supprimes:
+                print(f"  - {nom}")
         print(f"Datasets enregistres : {len(DATASETS)} (nouveaux : {len(crees)})")
-        for definition in DATASETS.values():
-            print(f"  - {definition['definition'][:70]}...")
+        for nom, spec in DATASETS.items():
+            etat = (
+                f"[vide jusqu'a {spec['vide_jusqua']}]"
+                if spec["vide_jusqua"]
+                else "[peuple]"
+            )
+            print(f"  - bi.{spec['vue']:28} {nom}  {etat}")
         return 0
 
 
