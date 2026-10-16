@@ -5,26 +5,37 @@ lance par le job `migrate`, qui doit aboutir AVANT que les API ne demarrent.
 
 ## Fichiers
 
-| Fichier | Role |
-| --- | --- |
-| `env.py` | Connexion depuis l'environnement, creation de l'extension et des schemas |
-| `versions/0001_initial_schema.py` | Referentiels, facturation, ML, audit, compte `predicare_ro` |
-| `versions/0002_superset_readonly.py` | Role SQL en lecture seule pour le tableau de bord BI |
-| `versions/0003_enrichissement_schema.py` | Grille tarifaire, contrat de groupe, garanties par formule, ordonnances en lignes |
-| `versions/0004_referentiels_et_labels.py` | Referentiel des actes et medicaments, formule du contrat, validite metier |
-| `script.py.mako` | Gabarit des migrations suivantes |
+| Fichier                                  | Role                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `env.py`                                 | Connexion depuis l'environnement, creation des schemas                                 |
+| `versions/0001_initial_schema.py`        | Referentiels, facturation, ML, audit, compte RO                                        |
+| `versions/0002_superset_readonly.py`     | Role SQL en lecture seule pour le tableau de bord BI                                   |
+| `versions/0003_enrichissement_schema.py` | Grille tarifaire, contrat de groupe, garanties par formule, ordonnances en lignes      |
+| `versions/0004_referentiels.py`          | Table `core.medicament`, colonnes `medicament_id`, supplement du referentiel des actes |
+| `script.py.mako`                         | Gabarit des migrations suivantes                                                       |
 
-La chaine est lineaire et sans branche : `0001` -> `0002` -> `0003` -> `0004`. Chaque
-revision declare son `down_revision`, donc `alembic downgrade -1` remonte d'un
-cran a chaque fois.
+La chaine est lineaire : `0001` -> `0002` -> `0003` -> `0004`.
+
+## Actes et medicaments : deux tables, une contrainte
+
+`0004` cree `core.medicament` a cote de `core.acte` et ajoute `medicament_id`
+sur `core.ligne_facture`, `core.ordonnance_ligne` et `core.grille_tarifaire`.
+`acte_id` devient facultatif, et une contrainte CHECK impose
+`(acte_id IS NOT NULL) <> (medicament_id IS NOT NULL)` sur chaque ligne.
+
+La raison est le jeu de donnees : `lignes_facture.csv` compte 61 476 lignes de
+type `MEDICAMENT` sur 123 270, et la grille tarifaire melange les deux natures
+sous la meme colonne `code`. Un seul tableau aurait porte deux'entites
+differentes, sans rien empecher de les confondre a l'ecriture. La contrainte
+rend l'erreur impossible plutot que improbable.
 
 ## Trois schemas
 
-| Schema | Contenu |
-| --- | --- |
-| `core` | Referentiels, assures pseudonymises, factures, documents vectorises |
-| `ml` | Predictions, explications SHAP, versions de modele, derive |
-| `audit` | Journal, decisions gestionnaire, parametres, version Alembic |
+| Schema  | Contenu                                                             |
+| ------- | ------------------------------------------------------------------- |
+| `core`  | Referentiels, assures pseudonymises, factures, documents vectorises |
+| `ml`    | Predictions, explications SHAP, versions de modele, derive          |
+| `audit` | Journal, decisions gestionnaire, parametres, version Alembic        |
 
 **La table de version est `audit.alembic_version`, pas `public.alembic_version`.**
 `env.py` fixe `version_table_schema="audit"`. La chercher dans `public` echoue
@@ -121,13 +132,12 @@ code en dur : ils viennent de `PREDICARE_DB_RO_PASSWORD` et
 `SUPERSET_DB_RO_PASSWORD`, et la migration echoue bruyamment si la variable est
 absente.
 
-| Role | Usage | Portee |
-| --- | --- | --- |
-| `predicare_ro` | agent RAG | `SELECT` sur `core` et `ml` |
-| `superset_ro` | tableau de bord BI | `SELECT` sur `core` et `ml`, **aucun acces a `audit`** |
+| Role           | Usage              | Portee                                                 |
+| -------------- | ------------------ | ------------------------------------------------------ |
+| `predicare_ro` | agent RAG          | `SELECT` sur `core` et `ml`                            |
+| `superset_ro`  | tableau de bord BI | `SELECT` sur `core` et `ml`, **aucun acces a `audit`** |
 
-Les deux benefit d'un `ALTER DEFAULT PRIVILEGES`, pose par les migrations 0001 et
-0002. C'est ce qui fait qu'une table creee par une migration ulterieure est
+Les deux benefit d'un `ALTER DEFAULT PRIVILEGES`, pose par les migrations 0001 et 0002. C'est ce qui fait qu'une table creee par une migration ulterieure est
 automatiquement lisible par les deux : sans lui, un simple
 `GRANT SELECT ON ALL TABLES` n'aurait couvert que les tables existantes a
 l'instant ou il s'execute.

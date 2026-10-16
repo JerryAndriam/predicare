@@ -1,29 +1,71 @@
 # Chargement initial des donnees
 
-Phase 1.2 du plan d'action. Job unique, execute au premier demarrage de la
-plateforme (compose depend de sa sortie reussie).
+Phases **1.2** (chargement) et **1.4** (qualite) du plan d'action. Job execute
+au premier demarrage de la plateforme (compose depend de sa sortie reussie).
+
+## Trois modules
+
+| Module | Role | Besoin d'une base ? |
+| --- | --- | --- |
+| `load_initial_data.py` | Chargement des 14 CSV en base (Phase 1.2) | **Oui** (PostgreSQL) |
+| `qualite_donnees.py` | Analyse, regles metier, rapport (Phase 1.4) | **Non** |
+| `validation.py` | Porte d'integrite avant toute ecriture | **Non** |
+
+`load_initial_data.py` enchaine les deux garde-fous avant d'ouvrir la moindre
+transaction : `validation.py` refuse un fichier douteux, `qualite_donnees.py`
+ecarte les factures invalides. Aucun ecrit n'a lieu si l'un des deux echoue.
+
+`validation.py` relit les CSV **par lui-meme**, sans passer par
+`qualite_donnees.lire_tous` : un controle qui partage le chemin de lecture du
+code qu'il controle ne peut pas attraper une erreur de ce chemin. Le cout est
+une seconde lecture des 44 Mo, soit quelques secondes.
 
 ## Fonctionnement
 
-1. Lit les CSV de `/data/raw` (dossier `./data/raw` sur l'hote).
-2. Charge les referentiels (actes, prestataires) puis les assures.
-3. Pseudonymise chaque assure avant ecriture : `core.assure` ne contient que
-   `pseudonyme`, `annee_naissance`, `sexe`, `commune_code`. Les identites
-   reelles sont chiffrees a part (Phase 1.3).
-4. Idempotent (`ON CONFLICT`) : le job peut etre rejoue sans risque.
+1. Lit les 14 CSV de `/data/raw` (dossier `./data/raw` sur l'hote).
+2. **Valide et nettoie** (Phase 1.4) : types, valeurs manquantes, doublons,
+   dates, integrite referentielle, puis les 10 regles de facture invalide.
+   Les factures invalides sont **ecartees et journalisees**, jamais chargees.
+3. Charge dans l'ordre des dependances : referentiels -> assures -> contrats
+   -> ordonnances -> factures -> lignes -> labels.
+4. Pseudonymise chaque assure (`core.assure`) ; les identites reelles sont
+   chiffrees a part dans `core.identite_chiffree` (Phase 1.3).
+5. Idempotent (`ON CONFLICT`) : le job peut etre rejoue sans risque.
 
-## Fichiers attendus
+## Fichiers attendus (jeu de l'encadrement)
 
-| Fichier | Colonnes minimales |
-| --- | --- |
-| `actes.csv` | `code_acte`, `libelle`, `prix_unitaire` |
-| `prestataires.csv` | `id`, `nom`, `specialite` |
-| `assures.csv` | `reference`, `date_naissance`, `sexe`, `commune` |
-| `contrats.csv` | `id`, `assure_ref`, `niveau`, `date_debut`, `date_fin` |
-| `factures.csv` | `id`, `assure_ref`, `prestataire_id`, `date`, `montant` |
-| `lignes_facture.csv` | `facture_id`, `code_acte`, `quantite`, `montant_unitaire` |
-| `ordonnances.csv` | `id`, `assure_ref`, `prestataire_id`, `code_acte`, `date` |
-| `fraudes.csv` | `facture_id`, `label` |
+Les 14 fichiers, a deposer dans `./data/raw` :
+
+`referentiel_actes.csv`, `referentiel_medicaments.csv`, `prestataires.csv`,
+`assures.csv`, `identites_pii.csv`, `contrats.csv`, `garanties.csv`,
+`grille_tarifaire.csv`, `ordonnances.csv`, `ordonnance_lignes.csv`,
+`factures.csv`, `lignes_facture.csv`, `labels_fraude.csv`,
+`labels_prestataires.csv`.
+
+Les deux fichiers de labels sont acceptes a la racine **ou** dans `labels/`.
+
+## Executer le controle de qualite seul (sans base)
+
+Depuis la racine du depot :
+
+```powershell
+$env:DATA_RAW_DIR="C:\chemin\vers\dataset"   # dossier des 14 CSV
+uv run --frozen --package predicare-seed python -m predicare_seed.qualite_donnees
+```
+
+Le rapport s'ecrit dans `reports/qualite_donnees_phase1_4.md`
+(surchargeable avec `$env:RAPPORT_DIR`).
+
+> Ne pas lancer les scripts avec le Python du systeme : ils ont besoin de
+> l'environnement du projet (`uv run`) et, pour le loader, d'une base en
+> marche. `python load_initial_data.py` echouerait sur
+> `ModuleNotFoundError: No module named 'sqlalchemy'`.
+
+## Charger en base
+
+```powershell
+make reload-data          # demarre la base puis lance le loader (Docker)
+```
 
 ## Sans donnees
 
@@ -31,14 +73,14 @@ Si `/data/raw` est vide ou absent, le job journalise un avertissement et
 **sort en succes**. La plateforme demarre normalement, avec une base vide :
 mieux vaut une base vide qu'une pile qui refuse de demarrer le jour J.
 
-## Brouillon / TODO
+## Choisi et justifie (Phase 1.4)
 
-- [ ] Charger `contrats.csv` et `ordonnances.csv`
-- [ ] Charger `factures.csv` + `lignes_facture.csv` et creer les predictions
-- [ ] Import des labels de `fraudes.csv` dans `ml.label_fraude`
-- [ ] **Generateur de donnees synthetiques** (24 mois, labels d'injection
-      de fraude) : a faire quand le jeu officiel n'est pas disponible
-- [ ] Controles de coherence a l'import : doublons, dates, types, valeurs
-      manquantes (Phase 1.4)
+- **Types** : une valeur non convertible n'est jamais inventee -> rejet.
+- **Manquants** : un vide *structurel* reste `NULL` (ex. `date_radiation`) ;
+  un vide *obligatoire* fait rejeter la facture ; sinon valeur par defaut.
+- **Doublons** : seuls les doublons *exacts* sont supprimes. Un doublon de
+  cle metier (`numero_facture`) est conserve : c'est le signal de la fraude.
+- **Dates** : on distingue l'*erreur* (date impossible -> rejet) du *signal de
+  fraude* (soin hors contrat, prestataire radie -> conserve tel quel).
 
 Proprietaire : Cherica
