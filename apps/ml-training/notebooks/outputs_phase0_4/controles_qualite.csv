@@ -1,0 +1,6 @@
+controle,nb_factures,part
+montant_total <= 0,0,0.0
+numero_facture duplique,553,0.00654
+soin apres la facture,0,0.0
+soin apres fin de convention,157,0.00186
+facture d'un prestataire radie,3063,0.03621
