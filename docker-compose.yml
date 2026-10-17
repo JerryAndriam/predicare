@@ -88,8 +88,20 @@ services:
       - max_connections=200
       - -c
       - shared_buffers=256MB
-    ports:
-      - "${POSTGRES_PORT:-55432}:5432"
+    # PAS de `ports:` ici, et c'est deliberé.
+    #
+    # Docker ne publie un port que si le conteneur est attache a au moins un
+    # reseau NON interne. `core` porte `internal: true` (voir plus bas), donc
+    # une declaration `ports:` ici est du code mort : Docker l'enregistre dans
+    # le conteneur mais ne cree aucune regle, et `NetworkSettings.Ports` vaut
+    # `null`. Symptome observe : la declaration existe, la connexion de l'hote
+    # echoue en `Connection refused`, ce qui fait perdre une demi-journee a
+    # chercher un bug qui n'existe pas.
+    #
+    # On ne rajoute pas `edge` a la liste de reseaux pour debloquer le port :
+    # cela donnerait a PostgreSQL une sortie Internet et le rendrait joignable
+    # par le web, la gateway et n8n. Pour acceder a la base depuis la machine,
+    # on passe par le reseau Docker : voir `make shell-db`.
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -118,8 +130,9 @@ services:
     container_name: predicare-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
-    ports:
-      - "${REDIS_PORT:-63790}:6379"
+    # Pas de `ports:` : meme raison que pour `db` -- `core` est interne, donc
+    # Docker n publierait pas ce port. Redis est un cache applicatif, il
+    # n'a aucune raison d'etre joignable depuis l'hote.
     volumes:
       - redisdata:/data
     networks:

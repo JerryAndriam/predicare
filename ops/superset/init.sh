@@ -28,6 +28,17 @@ log "Mise a jour du schema des metadonnees Superset..."
 superset db upgrade
 log "  schema a jour"
 
+# `superset init` synchronise les roles (Admin, Alpha, Gamma) ET leurs
+# permissions sur les vues declarees par l'application.
+#
+# Son absence ne rappelait sur rien au premier lancement : le compte admin
+# etait cree, l'interface s'ouvrait, et l'API repondait « Forbidden » sur
+# `/api/v1/dataset/` parce que le role Admin n'avait literally aucune
+# permission. Un role sans permission est indistinguishable d'un role
+# refuse, et rien dans les journaux du conteneur ne le signalait.
+superset init
+log "  roles et permissions synchronises"
+
 log "Creation du compte d'administration '${SUPERSET_ADMIN_USERNAME}'..."
 
 # Si le compte existe deja (relancement du job), on ne le recree pas : la

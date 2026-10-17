@@ -10,6 +10,7 @@ maintenant pour que Git les suive.
 | `exploitation/` | Guide d'exploitation : installation, sauvegarde, incidents | Phase 10.2 |
 | `utilisateur/` | Guide utilisateur, une section par role | Phase 10.1 |
 | `cadrage/` | Dossier PDF : TCO, ROI, RGPD, AI Act, equite, securite | Phase 10.3 |
+| `equipe.md` | Repartition du travail et rattachement aux phases | Evolue en continu |
 
 ## Decisions d'architecture deja figees
 

@@ -1,0 +1,15 @@
+table,lignes,colonnes
+lignes_facture,123270,9
+factures,84593,24
+labels_fraude,84593,6
+ordonnance_lignes,82175,6
+ordonnances,47804,8
+identites_pii,4459,10
+assures,4459,9
+grille_tarifaire,3242,3
+contrats,1500,12
+prestataires,251,20
+labels_prestataires,251,2
+referentiel_actes,58,12
+referentiel_medicaments,28,6
+garanties,27,11

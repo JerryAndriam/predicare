@@ -119,7 +119,6 @@ V[GRAFANA]="http://localhost:${GRAFANA_PORT:-3001}"
 V[MLFLOW]="http://localhost:${MLFLOW_PORT:-5000}"
 V[PROM]="http://localhost:${PROMETHEUS_PORT:-9090}"
 V[MAILPIT]="http://localhost:${MAILPIT_UI_PORT:-8025}"
-V[PGPORT]="${POSTGRES_PORT:-55432}"
 
 V[POSTGRES_PASSWORD]="$(valeur POSTGRES_PASSWORD)"
 V[RO_PASSWORD]="$(valeur PREDICARE_DB_RO_PASSWORD)"
@@ -202,11 +201,26 @@ Connexion locale :
 make shell-db
 ```
 
-ou, sans Docker :
+**Aucun port TCP n'est publié sur la machine.** Le réseau `core` du projet est
+`internal: true`, et Docker n'active la publication d'un port que si le
+conteneur est attaché à au moins un réseau **non** interne. Un `psql
+localhost:55432` échoue donc en `Connection refused` — ce n'est pas une panne.
+
+Pour parler au serveur SQL :
 
 ```bash
-psql "postgresql://predicare:{{POSTGRES_PASSWORD}}@localhost:{{PGPORT}}/predicare"
+make shell-db                                  # psql interactif
+make shell-db ROLE=predicare_ro                # en lecture seule
+make db-sql Q="SELECT count(*) FROM core.facture"
+make db-sql FILE=analyse.sql
+make db-status                                 # version du schema vs code
+make migrate                                   # appliquer les migrations en attente
 ```
+
+Un client graphique (DBeaver, pgAdmin) ne peut pas se connecter : aucun port
+n'est publie et aucun relais n'est prevu. Tout passe par `docker compose exec`.
+
+Bases annexes créées automatiquement : `n8n`, `superset`, `mlflow`.
 
 Bases annexes créées automatiquement : `n8n`, `superset`, `mlflow`.
 

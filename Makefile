@@ -23,11 +23,30 @@ COMPOSE_MLOPS = $(COMPOSE_CORE) -f docker-compose.mlops.yml
 COMPOSE_OPS   = $(COMPOSE_CORE) -f docker-compose.ops.yml
 COMPOSE_ALL   = $(COMPOSE) $(TOUS_PROFILS) -f docker-compose.yml -f docker-compose.ops.yml -f docker-compose.bi.yml -f docker-compose.observability.yml -f docker-compose.mlops.yml
 
-COMPOSE_WORKERS := $(COMPOSE) --profile workers -f docker-compose.yml
+  # Pile de demonstration : ce que lancent `make up` et `make start`.
+  #
+  # Volontairement differente de COMPOSE_ALL sur deux points :
+  #
+  #   - pas de `--profile '*'` : ce drapeau activerait aussi le profil
+  #     `email` et donc Mailpit, un bac a sable qui intercepte tout le
+  #     courrier sortant. Il resterait actif en permanence et masquerait un
+  #     envoi reel lors de la demonstration.
+  #   - pas de `docker-compose.ops.yml` : le service `backup` est un cron
+  #     quotidien, invisible pendant une soutenance et coute un conteneur en
+  #     plus. `make up-backup` le demarre a la demande.
+  #
+  # Les workers, eux, sont inclus : ils font partie du fonctionnement
+  # applicatif (ingestion et indexation), ce n'est pas un outillage de confort.
+  COMPOSE_STACK = $(COMPOSE) --profile workers -f docker-compose.yml -f docker-compose.bi.yml -f docker-compose.observability.yml -f docker-compose.mlops.yml
+
+  COMPOSE_WORKERS := $(COMPOSE) --profile workers -f docker-compose.yml
 COMPOSE_EMAIL   := $(COMPOSE) --profile email -f docker-compose.yml
 
 PY           := uv run --all-packages
-DOCKER_BUILD  := $(COMPOSE_CORE) build
+  # Superset et ses deux jobs d'init declarent un `build:` propre : les
+  # construire avec le seul `docker-compose.yml` echouerait sur une image
+  # manquante.
+  DOCKER_BUILD  := $(COMPOSE_STACK) build
 
 .PHONY: help
 help: ## Affiche cette aide
@@ -54,29 +73,59 @@ secrets: ## Regenere les secrets cryptographiques du .env
 	@scripts/bootstrap.sh --secrets-only
 
 .PHONY: up
-up: ## Demarre toute la plateforme (commande du jury)
+up: ## Demarre toute la plateforme, tooling de demonstration inclus
 	@scripts/bootstrap.sh
 	@$(MAKE) --no-print-directory build
-	# PAS de --remove-orphans ici : cette option supprime tout conteneur qui
-	# n'est pas dans le compose principal, donc les services des overlays
-	# (Superset, Prometheus, Grafana, MLflow) lancés par un `make up-*`.
-	# Les orphelins ne se nettoient que par `make down`.
-	@$(COMPOSE_CORE) up -d
+	# Une seule invocation `compose` pour le core ET les overlays. Avant, les
+	# overlays demarraient par des `make up-*` separes : leurs `depends_on`
+	# vers le core (superset -> db: service_healthy) ne pouvaient etre resolus
+	# que par le hasard de l'ordre de lancement. Ici Compose orchestre tout.
+	@$(COMPOSE_STACK) up -d db redis
+	# `migrate` passe par `run --rm` et non par `up -d`.
+	#
+	# `up -d` NE RELANCE PAS un one-shot deja sorti : Compose le reutilise tant
+	# que son `config-hash` correspond, et ce hash couvre la definition du
+	# service (YAML, image, environnement) -- pas le contenu de ./db/migrations,
+	# monte en lecture seule. Une migration ajoutee apres le premier demarrage
+	# restait donc jamais appliquee, sans erreur : `migrate` sortait en 0 et
+	# `make wait` concluait que tout allait bien sur un schema perime.
+	#
+	# `run --rm` cree un conteneur neuf a chaque fois : le bug ne peut plus
+	# revenir, et l'ordre reste garanti avant les API (qui dependent de
+	# `service_completed_successfully`).
+	@$(COMPOSE_STACK) run --rm migrate
+	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
+	@echo "  Superset   http://localhost:$${SUPERSET_PORT:-8088}"
+	@echo "  Grafana    http://localhost:$${GRAFANA_PORT:-3001}"
+	@echo "  Prometheus http://localhost:$${PROMETHEUS_PORT:-9090}"
+	@echo "  MLflow     http://localhost:$${MLFLOW_PORT:-5000}"
 
 .PHONY: start
 start: ## Demarre SANS reconstruire les images (apres un make down)
 	@echo "Images existantes reutilisees : aucune reconstruction."
 	@echo "Si tu as modifie du code, lance 'make up' pour reconstruire."
 	@scripts/bootstrap.sh
-	# PAS de --remove-orphans, pour la meme raison que `up` : cette option
-	# supprimerait les services des overlays (Superset, Grafana, MLflow).
-	@$(COMPOSE_CORE) up -d
+	@$(COMPOSE_STACK) up -d db redis
+	@$(COMPOSE_STACK) run --rm migrate
+	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
+
+.PHONY: up-light
+up-light: ## Demarre le NOYAU seul, sans Superset/Grafana/Prometheus/MLflow
+	@echo "Demarrage minimal (noyau applicatif uniquement)."
+	@echo "Si un service de demonstration manque, repasser par 'make start'."
+	@scripts/bootstrap.sh
+	@$(COMPOSE_CORE) up -d db redis
+	@$(COMPOSE_CORE) run --rm migrate
+	@$(COMPOSE_CORE) up -d
+	@$(MAKE) --no-print-directory wait
+	@echo ""
+	@echo "Noyau demarre : http://localhost:$${GATEWAY_PORT:-8080}"
 
 .PHONY: build
 build: ## Construit les images sans demarrer
@@ -139,7 +188,7 @@ up-email: ## Demarre la boite mail de developpement (~96 Mo)
 	@echo "Mailpit : http://localhost:$${MAILPIT_UI_PORT:-8025}"
 
 .PHONY: up-all
-up-all: ## Demarre la plateforme complete, profils compris
+up-all: ## Tout demarrer, bac a sable Mailpit et cron backup inclus
 	@$(COMPOSE_ALL) up -d --remove-orphans
 	@$(MAKE) --no-print-directory wait
 
@@ -182,7 +231,24 @@ export-requirements: ## Exporte les versions pip depuis uv.lock (non versionne)
 	@echo "requirements.lock ecrit. Ne pas le commiter : uv.lock reste la source de verite."
 
 .PHONY: check
-check: lint typecheck test ## Les trois verifications de la CI
+check: lint typecheck test readme bi ## Les verifications de la CI
+
+.PHONY: bi
+bi: ## Verifie que les vues de la couche semantique compilent
+	@for f in db/bi/views/*.sql; do \
+		docker compose exec -T db psql -v ON_ERROR_STOP=1 -q \
+			-U $${POSTGRES_USER:-predicare} -d $${POSTGRES_DB:-predicare} < "$$f" >/dev/null \
+			&& echo "  OK  $$f"; \
+	done
+	@echo "  Vues BI : $$(ls db/bi/views/*.sql | wc -l) fichier(s) applique(s)."
+
+.PHONY: bi-graphiques
+bi-graphiques: ## Verifie que chaque graphique rend une requete reussie
+	@uv run python ops/superset/verifier_graphiques.py
+
+.PHONY: readme
+readme: ## Verifie que le README documente exactement les commandes de make help
+	@python3 scripts/check_readme_commandes.py
 
 # =============================================================================
 # EXPLOITATION
@@ -220,17 +286,58 @@ backups: ## Liste les sauvegardes disponibles
 	@ls -lh backups/ 2>/dev/null || echo "Aucune sauvegarde (repertoire vide)"
 
 .PHONY: migrate
-migrate: ## Applique les migrations de base
+migrate: ## Applique les migrations en attente
 	@$(COMPOSE_CORE) run --rm migrate
 
+.PHONY: db-status
+db-status: ## Compare la version du schema en base et celle attendue par le code
+	@scripts/db-status.sh
+
 .PHONY: reload-data
-reload-data: ## Recharge les donnees depuis ./data/raw
+reload-data: ## Recharge les donnees depuis ./data/raw et reapplique la couche BI
 	@$(COMPOSE_CORE) up -d db
 	@$(COMPOSE_CORE) run --rm seed
+	@bash db/bi/load.sh
 
 .PHONY: shell-db
-shell-db: ## Ouvre psql sur la base PrediCare
-	@$(COMPOSE_CORE) exec db psql -U $${POSTGRES_USER:-predicare} -d $${POSTGRES_DB:-predicare}
+shell-db: ## Ouvre psql sur la base (ROLE=predicare_ro pour un acces lecture seule)
+	@$(COMPOSE_CORE) exec db psql -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}
+
+# Exécute une requête ou un fichier SQL.
+#
+#   make db-sql Q="SELECT count(*) FROM core.facture"
+#   make db-sql FILE=analyse.sql
+#   cat rapport.sql | make db-sql
+#
+# `Q=` et non un argument positionnel : Make prend le premier argument comme
+# un nom de cible, donc `make db-sql "SELECT 1"` echoue sur « Aucune règle pour
+# fabriquer la cible » apres avoir pourtant execute la requete.
+#
+# Le fichier est lu par l'HOST puis envoye sur l'entree standard, et non par
+# `psql -f` : le fichier est sur la machine du developpeur, pas dans le
+# conteneur, et `psql -f` le chercherait a l'interieur.
+#
+# `ON_ERROR_STOP=1` n'est pas décoratif : sans lui, psql émule le shell et
+# continue après une erreur en renvoyant 0. Un script à moitié appliqué
+# paraîtrait alors réussi.
+#
+# `ROLE=predicare_ro` bascule vers le compte en lecture seule, ce qui permet de
+# vérifier sur un cas réel que le moindre privilège s'applique bien.
+FILE ?=
+Q ?=
+ROLE ?=
+PSQL_DB = $(COMPOSE_CORE) exec -T db psql -v ON_ERROR_STOP=1 -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}
+
+.PHONY: db-sql
+db-sql: ## Execute une requete SQL (Q="...") ou un fichier (FILE=...), ou lit stdin
+	@if [ -n "$(FILE)" ]; then \
+		if [ ! -r "$(FILE)" ]; then echo "Fichier SQL introuvable : $(FILE)" >&2; exit 1; fi; \
+		$(PSQL_DB) < "$(FILE)"; \
+	elif [ -n "$(Q)" ]; then \
+		printf '%s\n' "$(Q)" | $(PSQL_DB); \
+	else \
+		$(PSQL_DB); \
+	fi
 
 # =============================================================================
 # MODELE
