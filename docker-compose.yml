@@ -430,10 +430,27 @@ services:
           memory: 96M
 
   n8n:
-    image: n8nio/n8n:latest
+    # Version EPINGLEE. Avec `latest`, deux machines clonees a des moments
+    # differents ne tournent pas la meme version, et un changement de
+    # comportement apparait sans qu'on puisse le dater.
+    image: n8nio/n8n:2.37.10
     container_name: predicare-n8n
     restart: unless-stopped
     environment:
+      # ------------------------------------------------------------------
+      # Authentification
+      # ------------------------------------------------------------------
+      # n8n >= 1.x a SUPPRIME l'authentification basique : les variables
+      # N8N_BASIC_AUTH_* ne sont plus lues du tout (verifie sur le binaire :
+      # zero occurrence de `basicAuth` dans le schema de configuration).
+      # Le compte proprietaire se cree au premier lancement de l'interface,
+      # avec l'email saisi par le visiteur. Chaque machine a donc son propre
+      # compte - voir `make n8n-compte`.
+      #
+      # Le PARTAGE des workflows n'existe pas dans l'edition Community, qui
+      # est la notre (aucune licence configuree) : il passe par Git, avec
+      # `make n8n-export` et `make n8n-import`.
+      # ------------------------------------------------------------------
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: db
       DB_POSTGRESDB_PORT: "5432"
@@ -443,9 +460,6 @@ services:
       # Stable : c'est elle qui permet de dechiffrer un export de
       # credentials restaure sur une machine vierge.
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change-me-n8n}
-      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin@predicare.local}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change-me}
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PORT: ${N8N_PORT:-5678}
       N8N_PROTOCOL: http
