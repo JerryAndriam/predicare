@@ -1,6 +1,6 @@
 # Rapport qualite des donnees — Phase 1.4
 
-Source : `data\raw`
+Source : `data/raw`
 
 ## 1. Volume
 

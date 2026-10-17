@@ -32,6 +32,12 @@ class ModelBundle:
     metrics: dict[str, float]
     data_fingerprint: str = ""
     loaded_at: datetime | None = None
+    #: Referentiels statiques, versionnes avec le modele. Sans eux, la
+    #: featurisation tournerait a vide et toutes les variables de tarification
+    #: retomberaient a leur valeur neutre : le modele noterait des factures
+    #: qu'il n'a jamais vues dans cet etat. `features.py` les consomme, et
+    #: `router.py` les passe a `build_features`.
+    referentiels: object = None
 
     @property
     def shap_base_value(self) -> float:
@@ -112,6 +118,20 @@ class ModelRegistry:
             metadata = (
                 json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
             )
+            # Les referentiels sont optionnels : un modele plus ancien peut ne
+            # pas en embarquer. La featurisation degrade alors vers ses valeurs
+            # neutres, ce qui est visible dans les journaux, plutot que de
+            # refuser de charger le modele.
+            ref_path = path / "referentiels.json"
+            referentiels = None
+            if ref_path.exists():
+                from predicare.features import charger_referentiels
+
+                referentiels = charger_referentiels(
+                    json.loads(ref_path.read_text(encoding="utf-8"))
+                )
+            else:
+                logger.warning("referentiels.absents", version=version)
 
         bundle = ModelBundle(
             version=version,
@@ -121,6 +141,7 @@ class ModelRegistry:
             metrics=metadata.get("metrics", {}),
             data_fingerprint=metadata.get("data_fingerprint", ""),
             loaded_at=datetime.now(UTC),
+            referentiels=referentiels,
         )
 
         with self._swap_lock:

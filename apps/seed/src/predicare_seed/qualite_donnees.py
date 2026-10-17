@@ -42,6 +42,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 #: Devise unique du jeu de donnees (dictionnaire : « Devise Ariary (MGA) »).
@@ -295,18 +296,21 @@ def valider_factures(
     lignes: pd.DataFrame,
     actes: pd.DataFrame,
     medicaments: pd.DataFrame,
-    assures: pd.DataFrame,
+    assurees: pd.DataFrame,
     prestataires: pd.DataFrame,
-    contrats: pd.DataFrame,
     date_reference: date | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Applique les 10 regles d'invalidite. Rend (factures valides, rejets).
 
     Chaque rejet porte le ou les motifs. On ne corrige jamais : une facture
     invalide est ecartee du chargement et journalisee.
+
+    Les regles sont evaluees par masques vectorises, jamais ligne a ligne :
+    une boucle `iterrows()` sur 84 593 factures prenait une trentaine de
+    secondes a chaque appel, pour un resultat identique.
     """
     codes_connus = set(actes["code_acte"]) | set(medicaments["code_medicament"])
-    assures_connus = set(assures["assure_id"])
+    assures_connus = set(assurees["assure_id"])
     prestataires_connus = set(prestataires["prestataire_id"])
 
     lignes_brutes = lignes.copy()
@@ -329,6 +333,15 @@ def valider_factures(
     f["soin_date"] = pd.to_datetime(f["date_soin"], errors="coerce", format="%Y-%m-%d")
     f = f.merge(agg, on="facture_id", how="left")
 
+    # Apres le merge gauche, une facture SANS ligne porte NaN dans les trois
+    # drapeaux ci-dessous. `bool(NaN)` vaut True en Python : sans ce
+    # neutralisation, une facture sans ligne etait rejetee a tort pour
+    # MONTANT_NEGATIF et CODE_ACTE_INCONNU en plus de FACTURE_SANS_LIGNE.
+    # Le cas n'apparait pas dans le jeu fourni (0 rejet) mais il est
+    # exactement celui d'une facture incomplete soumise le jour J.
+    for drapeau in ("ligne_negative", "quantite_negative", "code_inconnu"):
+        f[drapeau] = f[drapeau].fillna(False).astype(bool)
+
     # Reference temporelle : par defaut, le dernier jour present dans les
     # donnees (le jeu est un instantane). Sinon, la date du jour.
     if date_reference is None:
@@ -336,55 +349,62 @@ def valider_factures(
             f["soin_date"].max().date() if f["soin_date"].notna().any() else date.today()
         )
 
-    motifs: list[list[str]] = []
-    for _, r in f.iterrows():
-        m: list[str] = []
-        if (
-            (
-                r["montant_num"] is not None
-                and not pd.isna(r["montant_num"])
-                and r["montant_num"] < 0
-            )
-            or bool(r.get("ligne_negative", False))
-            or bool(r.get("quantite_negative", False))
-        ):
-            m.append("MONTANT_NEGATIF")
-        if bool(r.get("code_inconnu", False)):
-            m.append("CODE_ACTE_INCONNU")
-        if pd.isna(r["soin_date"]):
-            m.append("DATE_IMPOSSIBLE")
-        elif r["soin_date"].date() > date_reference:
-            m.append("DATE_FUTURE")
-        if _vide(r["assure_id"]) or _vide(r["prestataire_id"]) or _vide(r["facture_id"]):
-            m.append("CHAMP_OBLIGATOIRE_MANQUANT")
-        if (
-            not pd.isna(r["somme_lignes"])
-            and not pd.isna(r["montant_num"])
-            and abs(r["somme_lignes"] - r["montant_num"]) > 1
-        ):
-            m.append("TOTAL_INCOHERENT")
-        if r["prestataire_id"] not in prestataires_connus:
-            m.append("PRESTATAIRE_INCONNU")
-        if r["assure_id"] not in assures_connus:
-            m.append("ASSURE_INCONNU")
-        if r["devise"] != DEVISE_ATTENDUE:
-            m.append("DEVISE_INVALIDE")
-        if pd.isna(r.get("nb_lignes_calcule")):
-            m.append("FACTURE_SANS_LIGNE")
-        motifs.append(m)
+    def _obligatoire(colonne: str) -> pd.Series:
+        """Vide ou composed uniquement d'espaces."""
+        return f[colonne].isna() | (f[colonne].fillna("").astype(str).str.strip() == "")
+
+    soin_dans_le_passe = f["soin_date"].notna() & (f["soin_date"] > pd.Timestamp(date_reference))
+    ecart_total = (f["somme_lignes"] - f["montant_num"]).abs()
+
+    masques: dict[str, pd.Series] = {
+        "MONTANT_NEGATIF": ((f["montant_num"] < 0) | f["ligne_negative"] | f["quantite_negative"]),
+        "CODE_ACTE_INCONNU": f["code_inconnu"],
+        "DATE_IMPOSSIBLE": f["soin_date"].isna(),
+        "DATE_FUTURE": soin_dans_le_passe,
+        "CHAMP_OBLIGATOIRE_MANQUANT": (
+            _obligatoire("assure_id") | _obligatoire("prestataire_id") | _obligatoire("facture_id")
+        ),
+        "TOTAL_INCOHERENT": (
+            f["somme_lignes"].notna() & f["montant_num"].notna() & (ecart_total > 1)
+        ),
+        "PRESTATAIRE_INCONNU": ~f["prestataire_id"].isin(prestataires_connus),
+        "ASSURE_INCONNU": ~f["assure_id"].isin(assures_connus),
+        "DEVISE_INVALIDE": f["devise"] != DEVISE_ATTENDUE,
+        "FACTURE_SANS_LIGNE": f["nb_lignes_calcule"].isna(),
+    }
+    # Les motifs sont concatenes dans l'ordre de MOTIFS_INVALIDITE : la
+    # chaine produite est donc deterministe d'un appel a l'autre.
+    assert set(masques) == set(MOTIFS_INVALIDITE), " masque incomplet "
+    motifs: list[list[str]] = [
+        [nom for nom, present in zip(MOTIFS_INVALIDITE, drapeaux, strict=True) if present]
+        for drapeaux in zip(*(masques[nom] for nom in MOTIFS_INVALIDITE), strict=True)
+    ]
 
     f["motifs"] = motifs
-    rejets = f[f["motifs"].map(len) > 0][["facture_id", "motifs"]].copy()
-    rejets["motifs"] = rejets["motifs"].map(lambda ms: "|".join(ms))
-    return factures[~factures["facture_id"].isin(rejets["facture_id"])].copy(), rejets
+    rejete = np.array([len(m) > 0 for m in motifs])
+    rejets = f.loc[rejete, ["facture_id"]].copy()
+    rejets["motifs"] = [
+        "|".join(m) for m, est_rejete in zip(motifs, rejete, strict=True) if est_rejete
+    ]
+    valides = factures[~factures["facture_id"].isin(rejets["facture_id"])].copy()
+    return valides, rejets
 
 
 # ---------------------------------------------------------------------------
 # Rapport et point d'entree
 # ---------------------------------------------------------------------------
-def rapport(dossier: Path, sortie: Path | None = None) -> str:
-    """Construit le rapport markdown de la Phase 1.4."""
-    donnees = lire_tous(dossier)
+def rapport(
+    dossier: Path,
+    sortie: Path | None = None,
+    donnees: dict[str, pd.DataFrame] | None = None,
+) -> str:
+    """Construit le rapport markdown de la Phase 1.4.
+
+    `donnees` permet de reutiliser un jeu deja lu : sans lui, la fonction
+    relit les 14 CSV (~44 Mo), ce que faisaient deux fois `main()` et le
+    chargement initial.
+    """
+    donnees = lire_tous(dossier) if donnees is None else donnees
     lignes_md: list[str] = ["# Rapport qualite des donnees — Phase 1.4\n"]
     lignes_md.append(f"Source : `{dossier}`\n")
 
@@ -446,7 +466,6 @@ def rapport(dossier: Path, sortie: Path | None = None) -> str:
         donnees["medicaments"],
         donnees["assures"],
         donnees["prestataires"],
-        donnees["contrats"],
     )
     lignes_md.append(f"- factures valides : {len(valides)}")
     lignes_md.append(f"- factures rejetees : {len(rejets)}")

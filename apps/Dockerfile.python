@@ -5,6 +5,13 @@
 # racine du depot : le meme `uv.lock` et le meme environnement virtuel pour
 # tous, donc aucune divergence de version entre l'entrainement et l'inference.
 #
+# `apps/ml-training` est dans l'image pour cette raison PRECISEMENT : le job
+# d'entrainement et le service d'inference doivent tourner avec le MEME
+# XGBoost, la MEME version de SHAP et la MEME version de pandas. Deux
+# environnements distincts finiraient un jour par diverger, et le symptomome
+# serait un modele qui s'entraine sans erreur puis refuse de predire en
+# service.
+#
 # Choix : UNE image partagee, pas une image par service.
 # Chaque service reste un conteneur distinct avec sa propre commande et son
 # propre cycle de vie ; seul l'image est mutualisee. Le gain est concret :
@@ -32,6 +39,7 @@ COPY packages/predicare-core/pyproject.toml packages/predicare-core/
 COPY apps/api-core/pyproject.toml apps/api-core/
 COPY apps/api-inference/pyproject.toml apps/api-inference/
 COPY apps/api-rag/pyproject.toml apps/api-rag/
+COPY apps/ml-training/pyproject.toml apps/ml-training/
 COPY apps/seed/pyproject.toml apps/seed/
 
 # --no-install-project : installe les dependances sans encore builder les
@@ -46,6 +54,7 @@ COPY packages/predicare-core/src packages/predicare-core/src
 COPY apps/api-core/src apps/api-core/src
 COPY apps/api-inference/src apps/api-inference/src
 COPY apps/api-rag/src apps/api-rag/src
+COPY apps/ml-training/src apps/ml-training/src
 COPY apps/seed/src apps/seed/src
 
 # --no-editable : les projets du workspace sont INSTALLES dans levenv, pas

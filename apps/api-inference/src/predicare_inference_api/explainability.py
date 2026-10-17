@@ -15,21 +15,44 @@ from predicare.schemas import ShapContribution
 #: Libelles metier. Le nom technique de la variable n'est jamais presente
 #: tel quel dans une alerte : un gestionnaire ne connait pas `ratio_montant_mois`.
 LIBELLES: dict[str, str] = {
+    # --- Structure -----------------------------------------------------------
     "montant_total": "montant total de la facture",
+    "log1p_montant_total": "niveau de montant de la facture",
     "montant_moyen_ligne": "montant moyen par ligne",
     "montant_max_ligne": "montant de la ligne la plus elevee",
     "nb_lignes": "nombre de lignes",
     "quantite_totale": "quantite totale facturee",
-    "actes_du_mois": "nombre d'actes deja realises ce mois-ci pour cet assure",
-    "actes_meme_jour": "nombre d'actes realises le meme jour par ce prestataire",
-    "montant_mois_assure": "montant deja rembourse ce mois-ci a cet assure",
-    "ratio_montant_mois": "part du plafond mensuel mensuel deja atteinte",
-    "depassement_plafond_acte": "depassement du plafond d'actes mensuel",
-    "depassement_plafond_prestataire": "depassement du quota quotidien du prestataire",
-    "doublon_ordonnance": "doublon d'ordonnance detecte",
-    "ecart_prescription_acte": "ecart entre prescription et actes realises",
     "diversification_actes": "variete des actes factures",
+    "nb_categories": "variete des categories d'acte",
+    "categorie_dominante_code": "categorie d'acte principale",
+    "part_actes_specialises": "part des actes specialises",
     "ratio_quantite": "quantite moyenne par ligne",
+    # --- Tarification --------------------------------------------------------
+    "ratio_prix_grille_max": "ecart au tarif de la grille du prestataire",
+    "ratio_prix_grille_moyen": "ecart moyen au tarif de la grille",
+    "ecart_prix_grille_max": "montant de l'ecart au tarif de la grille",
+    "ratio_prix_reference_max": "ecart au tarif de reference du referentiel",
+    "depasse_tarif_max": "depassement du tarif maximal autorise",
+    "produit_non_remboursable": "presence d'un produit non remboursable",
+    # --- Prescription -------------------------------------------------------
+    "taux_lignes_non_prescrites": "lignes facturees absentes de l'ordonnance",
+    "ordonnance_absente_requis": "ordonnance obligatoire manquante",
+    "ordonnance_expiree": "ordonnance expiree a la date du soin",
+    "delai_prescription_jours": "delai entre prescription et soin",
+    "prescripteur_different": "prescription emise par un autre praticien",
+    # --- Coherence profil ---------------------------------------------------
+    "incompatibilite_sexe": "acte incompatible avec le sexe de l'assure",
+    "incompatibilite_age": "acte incompatible avec l'age de l'assure",
+    # --- Prestataire et horaires --------------------------------------------
+    "prestataire_radie": "soin par un prestataire radie",
+    "hors_convention": "soin hors periode de conventionnement",
+    "soin_jour_ferme": "soin realise un jour de fermeture",
+    "soin_hors_horaire": "soin realise hors des horaires d'ouverture",
+    "prestataire_niveau_tarif_eleve": "prestataire a niveau tarifaire eleve",
+    # --- Garantie et couverture ---------------------------------------------
+    "montant_vs_plafond_garantie": "montant rapport au plafond de la garantie",
+    "hors_periode_contrat": "soin hors periode de couverture du contrat",
+    "taux_actes_exclus": "part des actes exclus par la formule",
 }
 
 

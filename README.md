@@ -182,11 +182,53 @@ même requête aboutit en `predicare` et se voit refuser sur le schéma `audit`.
 
 ### Modèle
 
+Un modèle s'entraîne une fois, se sert en continu : les commandes ci-dessous
+sont des **jobs**, jamais lancés au démarrage de la pile. Elles s'exécutent dans
+la même image Docker que les services, donc avec le même XGBoost, la même
+version de SHAP et le même pandas — aucune divergence possible entre ce qui
+s'entraîne et ce qui sert.
+
 | Commande | Effet |
 | --- | --- |
+| `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts + rapports). |
+| `make evaluate` | Compare SMOTE / `scale_pos_weight` / aucun traitement et produit l'audit d'équité. |
 | `make model-state` | Version active du modèle et seuil courant. |
+| `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
+| `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
 | `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
-| `make train VERSION=2` | **Cible réservée.** Elle ne lance encore aucun entraînement et renvoie vers [`apps/ml-training/README.md`](apps/ml-training/README.md). |
+
+L'entraînement écrit quatre fichiers par version :
+
+```
+models/<version>/
+├── model.joblib        modèle XGBoost sérialisé
+├── features.json       ordre des 32 variables, versionné avec le modèle
+├── metadata.json       métriques, seuil, empreinte des données d'entraînement
+└── referentiels.json   grilles tarifaires et référentiels, versionnés avec le modèle
+```
+
+Le quatrième fichier est ce qui garantit que l'inférence note avec **la même
+grille tarifaire** que celle utilisée à l'entraînement : un changement de
+tarif impose un ré-entraînement, explicite, plutôt qu'un modèle qui dérive en
+silence.
+
+Résultats du modèle v1 sur le jeu de test (10 086 factures, la période la plus
+récente lue une seule fois) :
+
+| Métrique | Valeur |
+| --- | --- |
+| ROC-AUC | 0,950 |
+| PR-AUC | 0,891 |
+| Rappel au seuil retenu | 0,870 |
+| Précision au seuil retenu | 0,597 |
+| Seuil appliqué | 0,2876 |
+
+Le seuil est **calculé, pas choisi** : il minimise le coût métier sous
+contrainte de rappel ≥ 90 % (exigence du Module 2). Le seuil historique de 0,8
+a été abandonné — avec 8,7 % de fraude dans la population, il laissait passer
+une part importante des vraies fraudes. Le détail de l'arbitrage est dans
+[`reports/modele_v1.md`](reports/modele_v1.md) et l'audit d'équité dans
+[`reports/equite_v1.md`](reports/equite_v1.md).
 
 ### n8n
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from predicare import metrics
 from predicare.config import get_settings
 from predicare.logging_config import get_logger
+from predicare_inference_api.context import resolve_context
 from predicare_inference_api.drift import DriftReport
 from predicare_inference_api.explainability import build_shap_report, shap_to_contributions
 from predicare_inference_api.features import build_features
@@ -44,8 +45,22 @@ def predict(payload: dict, request: Request) -> dict:
     bundle = registry.active
     seuil = registry.threshold
 
-    features = build_features(invoice)
+    features = build_features(
+        invoice,
+        bundle.referentiels,
+        **resolve_context(invoice, bundle.referentiels),
+    )
     row = features.as_row(bundle.feature_names)
+
+    if features.references_manquantes:
+        # Signale, pas bloque : une facture dont une reference est absente doit
+        # etre NOTEE. Mais l'echec de resolution doit rester visible, sinon on
+        # ne verrait jamais que le referentiel est incomplet.
+        logger.info(
+            "references.manquantes",
+            facture_id=invoice.facture_id,
+            references=features.references_manquantes[:10],
+        )
 
     import numpy as np
 

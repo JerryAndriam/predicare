@@ -43,6 +43,18 @@ COMPOSE_ALL   = $(COMPOSE) $(TOUS_PROFILS) -f docker-compose.yml -f docker-compo
 COMPOSE_EMAIL   := $(COMPOSE) --profile email -f docker-compose.yml
 
 PY           := uv run --all-packages
+
+# Dossier des 14 CSV de l'encadrement, monte en lecture seule dans le job
+# d'entrainement. Il n'est volontairement pas versionne : 44 Mo de donnees de
+# sante ne doivent pas entrer dans l'historique Git.
+DATA_DIR     ?= ./data/raw
+
+# Les jobs qui ecrivent dans un bind mount (entrainement, rapports) doivent
+# tourner avec l'uid de l'utilisateur courant, sinon l'utilisateur non root
+# de l'image ne peut pas creer les fichiers et le job echoue en
+# `Permission denied`. Exporte dans l'environnement lu par compose.
+export HOST_UID := $(shell id -u 2>/dev/null || echo 1000)
+export HOST_GID := $(shell id -g 2>/dev/null || echo 1000)
   # Superset et ses deux jobs d'init declarent un `build:` propre : les
   # construire avec le seul `docker-compose.yml` echouerait sur une image
   # manquante.
@@ -354,8 +366,36 @@ threshold: ## Change le seuil d'alerte (make threshold VALEUR=0.75)
 		-d '{"seuil": $(VALEUR), "motif": "changement manuel (make threshold)"}' | $(PY) python -m json.tool
 
 .PHONY: train
-train: ## Lance l'entrainement du modele (make train VERSION=2)
-	@echo "Entrainement du modele version $(or $(VERSION),2) - voir apps/ml-training/README.md"
+train: ## Entraine le modele et ecrit models/$(VERSION) (make train VERSION=2)
+	@if [ ! -f "$(DATA_DIR)/factures.csv" ]; then \
+		echo "Donnees absentes dans $(DATA_DIR)/."; \
+		echo "Copiez les 14 CSV de l'encadrement, puis relancez : make train VERSION=$${VERSION:-1}"; \
+		exit 1; \
+	fi
+	@$(COMPOSE_CORE) run --rm -e MODEL_VERSION=$(or $(VERSION),1) train
+	@echo "Modele ecrit dans models/$(or $(VERSION),1)"
+	@echo "Activez-le sans redemarrage : make model-promote VERSION=$(or $(VERSION),1)"
+
+.PHONY: evaluate
+evaluate: ## Compare SMOTE / scale_pos_weight et produit l'audit d'equite (make evaluate)
+	@if [ ! -f "$(DATA_DIR)/factures.csv" ]; then \
+		echo "Donnees absentes dans $(DATA_DIR)/."; \
+		echo "Copiez les 14 CSV de l'encadrement, puis relancez : make evaluate"; \
+		exit 1; \
+	fi
+	@$(COMPOSE_CORE) run --rm evaluate
+
+.PHONY: model-promote
+model-promote: ## Bascule la version N en service (make model-promote VERSION=2)
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/modele/candidat?version=$(VERSION)" \
+		| $(PY) python -m json.tool
+	@curl -fsS -X POST http://localhost:$${API_INFERENCE_PORT:-8002}/modele/bascule \
+		| $(PY) python -m json.tool
+
+.PHONY: model-rollback
+model-rollback: ## Revient a la version N (make model-rollback VERSION=1)
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/modele/retour-arriere?version=$(VERSION)" \
+		| $(PY) python -m json.tool
 
 # =============================================================================
 # N8N
