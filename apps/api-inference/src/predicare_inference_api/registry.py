@@ -17,6 +17,7 @@ from pathlib import Path
 
 from predicare.errors import ModelNotReadyError
 from predicare.logging_config import get_logger
+from predicare.persistance_ml import SEUIL_PAR_DEFAUT, activer_version
 
 logger = get_logger("api-inference.registry")
 
@@ -60,9 +61,19 @@ class ModelRegistry:
     prennent qu'une reference, donc une bascule ne les bloque jamais.
     """
 
-    def __init__(self, model_dir: Path, threshold: float) -> None:
+    def __init__(self, model_dir: Path, threshold: float | None = None) -> None:
         self.model_dir = model_dir
-        self._threshold = threshold
+        #: Seuil impose par l'exploitation (`FRAUD_ALERT_THRESHOLD`). Il gagne
+        #: sur tout le reste : un administrateur qui fixe un seuil le fait
+        #: deliberement.
+        self._threshold_impose = threshold
+        #: Seuil arbitre par le modele (`metadata.json`, Phase 2.5). C'est le
+        #: defaut : laisser le modele arriver avec son seuil calcule, sinon
+        #: l'arbitrage cout/rappel reste sur l'etagere et le service alerte à
+        #: 0.8 alors que le modele a ete cale pour 0.29.
+        self._threshold_modele: float | None = None
+        #: Seuil pose a chaud via `/seuil` (ecran d'administration).
+        self._threshold_manuel: float | None = None
         self._active: ModelBundle | None = None
         self._candidate: ModelBundle | None = None
         self._load_lock = threading.Lock()
@@ -82,18 +93,30 @@ class ModelRegistry:
         return self._candidate
 
     @property
+    def seuil_impose(self) -> float | None:
+        """Seuil venu de l'environnement, s'il a ete fixe explicitement."""
+        return self._threshold_impose
+
+    @property
     def threshold(self) -> float:
-        return self._threshold
+        """Seuil effectif, par ordre de priorite : manuel, impose, modele."""
+        if self._threshold_manuel is not None:
+            return self._threshold_manuel
+        if self._threshold_impose is not None:
+            return self._threshold_impose
+        if self._threshold_modele is not None:
+            return self._threshold_modele
+        return SEUIL_PAR_DEFAUT
 
     def set_threshold(self, seuil: float) -> float:
         """Seuil d'alerte, modifiable a chaud depuis l'ecran d'administration."""
         if not 0.0 <= seuil <= 1.0:
             raise ValueError("Le seuil doit etre compris entre 0 et 1.")
         with self._swap_lock:
-            previous = self._threshold
-            self._threshold = seuil
+            previous = self.threshold
+            self._threshold_manuel = seuil
         logger.info("seuil.change", ancien=previous, nouveau=seuil)
-        return self._threshold
+        return seuil
 
     # ---------------------------------------------------------------- chargement
     def load_version(self, version: str, *, as_candidate: bool = False) -> ModelBundle:
@@ -133,11 +156,18 @@ class ModelRegistry:
             else:
                 logger.warning("referentiels.absents", version=version)
 
+            # Seuil arbitre par le modele (Phase 2.5). Lu ici et non a la
+            # construction du registre : c'est l'artefact qui le porte, pas la
+            # configuration.
+            seuil_modele = metadata.get("seuil")
+            if isinstance(seuil_modele, (int, float)) and 0.0 < float(seuil_modele) <= 1.0:
+                self._threshold_modele = float(seuil_modele)
+
         bundle = ModelBundle(
             version=version,
             estimator=estimator,
             feature_names=list(features),
-            threshold=self._threshold,
+            threshold=self.threshold,
             metrics=metadata.get("metrics", {}),
             data_fingerprint=metadata.get("data_fingerprint", ""),
             loaded_at=datetime.now(UTC),
@@ -163,11 +193,18 @@ class ModelRegistry:
             self._active = promotee
             self._candidate = None
         logger.info("modele.bascule", version=promotee.version)
+        # Le registre de la plateforme suit la bascule : sans cet appel,
+        # `ml.modele_version` resterait sur « candidat » et l'ecran
+        # d'administration annoncerait une version differente de celle qui
+        # repond. Best-effort : la bascule en memoire a deja eu lieu.
+        activer_version(promotee.version)
         return promotee.version
 
     def rollback(self, version: str) -> str:
         """Retour arriere vers une version precedente, deja presente sur le volume."""
-        return self.load_version(version, as_candidate=False).version
+        retour = self.load_version(version, as_candidate=False).version
+        activer_version(retour)
+        return retour
 
     def available_versions(self) -> list[str]:
         """Versions presentes sur le volume, de la plus recente a la plus ancienne."""
@@ -188,7 +225,7 @@ class ModelRegistry:
                 if self._active and self._active.loaded_at
                 else None
             ),
-            "threshold": self._threshold,
+            "threshold": self.threshold,
             "metrics": self._active.metrics if self._active else {},
             "available_versions": self.available_versions(),
         }

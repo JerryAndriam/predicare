@@ -108,6 +108,10 @@ up: ## Demarre toute la plateforme, tooling de demonstration inclus
 	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
+	# Amorçage n8n : installe les workflows absents sans jamais remplacer
+	# ceux deja presents dans l'interface. Sans proprietaire (tout premier
+	# demarrage), le script l'explique et rend la main sans erreur.
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
 	@echo "  Superset   http://localhost:$${SUPERSET_PORT:-8088}"
@@ -124,6 +128,7 @@ start: ## Demarre SANS reconstruire les images (apres un make down)
 	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
 
@@ -136,6 +141,7 @@ up-light: ## Demarre le NOYAU seul, sans Superset/Grafana/Prometheus/MLflow
 	@$(COMPOSE_CORE) run --rm migrate
 	@$(COMPOSE_CORE) up -d
 	@$(MAKE) --no-print-directory wait
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Noyau demarre : http://localhost:$${GATEWAY_PORT:-8080}"
 
@@ -182,7 +188,10 @@ up-observability: ## Demarre Prometheus et Grafana (~450 Mo)
 
 .PHONY: up-mlops
 up-mlops: ## Demarre MLflow (~640 Mo)
-	@$(COMPOSE_MLOPS) up -d mlflow minio-init
+	# `minio-init` n'est plus demande : les artefacts MLflow vivent sur le
+	# volume local `./artifacts/mlflow` (`--default-artifact-root`), pas dans un
+	# stockage objet. Citer un service inexistant faisait echouer la cible.
+	@$(COMPOSE_MLOPS) up -d mlflow
 	@echo "MLflow : http://localhost:$${MLFLOW_PORT:-5000}"
 
 .PHONY: up-backup
@@ -356,7 +365,7 @@ db-sql: ## Execute une requete SQL (Q="...") ou un fichier (FILE=...), ou lit st
 # =============================================================================
 .PHONY: model-state
 model-state: ## Affiche la version active et le seuil courant
-	@curl -fsS http://localhost:$${API_INFERENCE_PORT:-8002}/modele | $(PY) python -m json.tool
+	@curl -fsS http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele | $(PY) python -m json.tool
 
 .PHONY: threshold
 threshold: ## Change le seuil d'alerte (make threshold VALEUR=0.75)
@@ -387,14 +396,14 @@ evaluate: ## Compare SMOTE / scale_pos_weight et produit l'audit d'equite (make 
 
 .PHONY: model-promote
 model-promote: ## Bascule la version N en service (make model-promote VERSION=2)
-	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/modele/candidat?version=$(VERSION)" \
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/candidat?version=$(VERSION)" \
 		| $(PY) python -m json.tool
-	@curl -fsS -X POST http://localhost:$${API_INFERENCE_PORT:-8002}/modele/bascule \
+	@curl -fsS -X POST http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/bascule \
 		| $(PY) python -m json.tool
 
 .PHONY: model-rollback
 model-rollback: ## Revient a la version N (make model-rollback VERSION=1)
-	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/modele/retour-arriere?version=$(VERSION)" \
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/retour-arriere?version=$(VERSION)" \
 		| $(PY) python -m json.tool
 
 # =============================================================================

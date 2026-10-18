@@ -6,13 +6,13 @@ Jeu de test : 10086 factures dont 878 frauduleuses. Seuil arbitre sur la VALIDAT
 |---|---:|---:|---:|---:|---:|---:|---:|
 | aucun traitement | 0.05 | 0.9440 | 0.8768 | 0.8747 | 0.4344 | 0.5805 | 6 300 000 |
 | scale_pos_weight=10.4 | 0.32 | 0.9459 | 0.8755 | 0.8827 | 0.4158 | 0.5653 | 6 357 000 |
-| SMOTE | 0.29 | 0.9432 | 0.8641 | 0.8804 | 0.4352 | 0.5825 | 6 159 000 |
+| SMOTE | 0.29 | 0.9437 | 0.8657 | 0.8872 | 0.4181 | 0.5684 | 6 222 000 |
 
 **Retenu** : `SMOTE` (cout metier le plus faible).
 
 ## Ce que dit cette comparaison
 
-**Le choix importe peu, et il faut le dire.** Les trois strategies presentent des PR-AUC entre 0.864 et 0.877, et des couts metiers ecartes de 0.2 M ariary. SMOTE est donc retenu parce qu'il est le moins cher, de peu, et parce que le Module 2 du cursus demande de le maitriser : autant etre exact sur la part qui revient a la conformite plutot que d'inventer une superiorite technique que les chiffres ne montrent pas.
+**Le choix importe peu, et il faut le dire.** Les trois strategies presentent des PR-AUC entre 0.866 et 0.877, et des couts metiers ecartes de 0.1 M ariary. SMOTE est donc retenu parce qu'il est le moins cher, de peu, et parce que le Module 2 du cursus demande de le maitriser : autant etre exact sur la part qui revient a la conformite plutot que d'inventer une superiorite technique que les chiffres ne montrent pas.
 
 Trois lectures a assumer devant le jury :
 

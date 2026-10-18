@@ -10,12 +10,25 @@
 # L'API REST reste utile, et elle est tentee quand elle est configuree : elle
 # seule permet de remplacer un workflow existant et de l'activer. Sans elle,
 # le script n'ecrase rien et le dit explicitement.
+#
+# Option --if-missing : mode amorcage, utilise automatiquement par `make up`,
+# `make up-light` et `make start`. Il n'installe QUE les workflows absents,
+# ne supprime ni ne remplace jamais rien (meme si une cle API est presente)
+# et ne publie que les workflows qu'il vient d'installer : il ne peut donc
+# pas ecraser une modification faite dans l'interface.
 # =============================================================================
 
 set -uo pipefail
 
 RACINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RACINE"
+
+MODE_IF_MISSING=0
+case "${1:-}" in
+    --if-missing) MODE_IF_MISSING=1 ;;
+    "") ;;
+    *) printf 'Option inconnue : %s (options : --if-missing)\n' "$1" >&2; exit 1 ;;
+esac
 
 [ -f .env ] && set -a && source .env && set +a
 
@@ -76,7 +89,11 @@ fi
 API=0
 if api_Disponible; then
     API=1
-    log "API n8n configuree : mise a jour et activation possibles."
+    if [ "$MODE_IF_MISSING" -eq 1 ]; then
+        log "Mode --if-missing : seuls les workflows absents seront installes."
+    else
+        log "API n8n configuree : mise a jour et activation possibles."
+    fi
 else
     warn "Pas de cle API n8n (Settings > n8n API). Les workflows deja"
     warn "presents seront conserves, pas remplaces. C'est volontaire :"
@@ -103,9 +120,11 @@ if [ "$COPIES" -eq 0 ]; then
 fi
 
 # Noms deja installes : on ne les reimporte pas si l'API n'est pas
-# disponible, sinon chaque relance creerait un doublon.
+# disponible, sinon chaque relance creerait un doublon. En mode
+# --if-missing, cette liste sert toujours : le but est justement de
+# ne jamais remplacer un workflow existant.
 EXISTANTS=""
-if [ "$API" -eq 0 ]; then
+if [ "$API" -eq 0 ] || [ "$MODE_IF_MISSING" -eq 1 ]; then
     # `n8n list:workflow` sort au format `id|nom`. La premiere ligne est un
     # avertissement PostgreSQL : on ne garde que les lignes contenant un
     # separateur, sinon le nom lu serait en realite l'identifiant.
@@ -116,6 +135,7 @@ fi
 IMPORTES=0
 IGNORES=0
 ACTIVES=0
+NOMS_IMPORTES=""
 
 # On ne copie que les fichiers reellement a installer : `n8n import:workflow`
 # travaille sur un repertoire et n'a pas de suppression, donc re-importer
@@ -128,7 +148,7 @@ while IFS= read -r fichier; do
     log "Workflow : ${nom_workflow}"
 
     # --- Cas API disponible : remplacement propre ---
-    if [ "$API" -eq 1 ]; then
+    if [ "$API" -eq 1 ] && [ "$MODE_IF_MISSING" -eq 0 ]; then
         ID_EXISTANT=$(curl -fsS --max-time 6 \
             -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
             --get --data-urlencode "name=${nom_workflow}" \
@@ -151,15 +171,21 @@ except Exception:
             fi
         fi
     else
-        # --- Cas CLI seule : on ne touche a rien si le nom existe ---
+        # --- Cas CLI seule (ou mode --if-missing) : on ne touche a rien ---
         if printf '%s\n' "$EXISTANTS" | grep -Fxq "$nom_workflow"; then
-            warn "  deja installe (aucune cle API pour le remplacer)"
+            if [ "$MODE_IF_MISSING" -eq 1 ]; then
+                log "  deja installe (mode --if-missing : rien a faire)"
+            else
+                warn "  deja installe (aucune cle API pour le remplacer)"
+            fi
             IGNORES=$((IGNORES + 1))
             continue
         fi
     fi
 
     A_IMPORTER="${A_IMPORTER} ${DANS_CONTENEUR}/${nom_fichier}"
+    NOMS_IMPORTES="${NOMS_IMPORTES}${nom_workflow}
+"
     IMPORTES=$((IMPORTES + 1))
 done < <(find "$SOURCE" -name '*.json' -type f | sort)
 
@@ -173,6 +199,15 @@ else
     SORTIE=$(docker exec "$CONTENEUR" n8n import:workflow --separate --input="$DANS_CONTENEUR" 2>&1)
     if printf '%s' "$SORTIE" | grep -qi "successfully imported"; then
         log "  ${IMPORTES} workflow(s) installe(s)"
+    elif printf '%s' "$SORTIE" | grep -qi "failed to find owner"; then
+        # Premier demarrage sur une machine vierge : n8n refuse tout import
+        # tant que le compte proprietaire n'existe pas (l'import CLI doit
+        # etre rattache a un projet personnel).
+        warn "Aucun compte n8n n'existe encore : l'import ne peut pas etre"
+        warn "rattache a un proprietaire. C'est normal au tout premier demarrage."
+        warn "Ouvrez ${N8N_URL}, creez votre compte, puis relancez :"
+        warn "  make n8n-import          (ou simplement make start)"
+        exit 0
     else
         err "L'import a echoue :"
         printf '%s\n' "$SORTIE" | tail -4 >&2
@@ -184,7 +219,34 @@ fi
 # La CLI importe toujours des workflows INACTIFS. Sans activation, aucune
 # alerte ne part : c'est le piege le plus discret de cette brique.
 if [ "$IMPORTES" -gt 0 ]; then
-    if [ "$API" -eq 1 ]; then
+    if [ "$MODE_IF_MISSING" -eq 1 ]; then
+        # Mode amorcage : publier UNIQUEMENT les workflows tout juste
+        # installes. Republier ceux deja presents reviendrait a defaire un
+        # choix fait dans l'interface (workflow volontairement en brouillon).
+        log "Publication des nouveaux workflows uniquement"
+        while IFS='|' read -r id_brut nom_brut; do
+            id="$(printf '%s' "$id_brut" | tr -d '[:space:]')"
+            nom="$(printf '%s' "$nom_brut" | sed 's/^ *//; s/ *$//')"
+            printf '%s' "$id" | grep -Eq '^[A-Za-z0-9]{16}$' || continue
+            printf '%s\n' "$NOMS_IMPORTES" | grep -Fxq "$nom" || continue
+            if [ "$API" -eq 1 ]; then
+                if curl -fsS --max-time 6 -X PATCH \
+                    -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
+                    -H "Content-Type: application/json" \
+                    "${N8N_URL}/api/v1/workflows/${id}" -d '{"active": true}' >/dev/null 2>&1; then
+                    ACTIVES=$((ACTIVES + 1))
+                else
+                    warn "  publication impossible (id ${id})"
+                fi
+            else
+                if docker exec "$CONTENEUR" n8n publish:workflow --id="$id" >/dev/null 2>&1; then
+                    ACTIVES=$((ACTIVES + 1))
+                else
+                    warn "  publication impossible (id ${id})"
+                fi
+            fi
+        done < <(docker exec "$CONTENEUR" n8n list:workflow 2>/dev/null | grep '|' || true)
+    elif [ "$API" -eq 1 ]; then
         log "Activation via l'API n8n"
         LISTE=$(curl -fsS --max-time 8 \
             -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
@@ -231,7 +293,7 @@ log "Termine : ${IMPORTES} installe(s), ${IGNORES} deja present(s), ${ACTIVES} a
 log "Interface : ${N8N_URL} (menu Workflows)"
 log "Credentials Slack / SMTP / LLM : apps/n8n/credentials/README.md"
 
-if [ "$IGNORES" -gt 0 ]; then
+if [ "$IGNORES" -gt 0 ] && [ "$MODE_IF_MISSING" -eq 0 ]; then
     log ""
     log "Pour remplacer un workflow existant, creez une cle API n8n"
     log "(Settings > n8n API), mettez-la dans N8N_API_KEY du .env,"

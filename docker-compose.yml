@@ -33,7 +33,9 @@ x-env-common: &env-common
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
   JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
   IDENTITY_ENCRYPTION_KEY: ${IDENTITY_ENCRYPTION_KEY:-}
-  FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-0.8}
+  # Vide = « adopter le seuil arbitre par le modele » (Phase 2.5, lu dans
+  # metadata.json). Une valeur explicite prime et sert l'ecran d'administration.
+  FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-}
   FRAUD_MIN_RECALL: ${FRAUD_MIN_RECALL:-0.90}
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
   MODEL_DIR: ${MODEL_DIR:-/models}
@@ -210,6 +212,11 @@ services:
       dockerfile: apps/Dockerfile.python
     container_name: predicare-train
     restart: "no"
+    # Profil `jobs` : un entrainement dure une vingtaine de minutes et ne doit
+    # PAS partir a chaque `docker compose up` (la condition « Deployable » du
+    # jury serait intenable). `make train` cible le service explicitement, et
+    # `docker compose run` ignore les profils.
+    profiles: ["jobs"]
     # La version se passe par l'environnement `MODEL_VERSION` et non en argument :
 # `docker compose run train 2` tenterait d'executer `2` comme un programme.
     command: ["python", "-m", "predicare_ml_training.train"]
@@ -221,11 +228,14 @@ services:
       MODEL_VERSION: "1"
       # MLflow est facultatif : sans serveur joignable, l'entrainement
       # aboutit quand meme et n'est simplement pas journalise.
-      # MLflow reste facultatif : variable vide => le job n'essaie meme pas de
-      # le joindre, et n'a pas besoin du paquet `mlflow` dans l'image. C'est
-      # coherent avec ADR-004 (MLflow hors du chemin d'inference) et avec le
-      # fait qu'un entrainement doit aboutir sans le profil `mlops` demarre.
-      MLFLOW_TRACKING_URI: ""
+      # La valeur vient de l'hote (voir `.env.example`, section MLflow) :
+      # vide => le job n'essaie meme pas de le joindre. L'overlay
+      # `docker-compose.mlops.yml` la renseigne quand le profil `mlops` est
+      # utilise. La journalisation passe par l'API REST de MLflow (httpx,
+      # deja dans le socle) : l'image n'a pas besoin du paquet `mlflow`.
+      # C'est coherent avec ADR-004 (MLflow hors du chemin d'inference) et
+      # avec le fait qu'un entrainement doit aboutir sans le profil demarre.
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
     # Les jobs qui ecrivent dans un bind mount doivent posseder les droits du
     # dossier HOTE : l'utilisateur non root de l'image (uid 999) ne peut pas
     # ecrire dans un repertoire cree par l'utilisateur de la machine (uid 1000).
@@ -251,6 +261,8 @@ services:
       dockerfile: apps/Dockerfile.python
     container_name: predicare-evaluate
     restart: "no"
+    # Meme raison que `train` : c'est un job, jamais un service de la pile.
+    profiles: ["jobs"]
     command: ["python", "-m", "predicare_ml_training.evaluate"]
     environment:
       <<: *env-common

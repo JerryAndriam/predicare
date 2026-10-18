@@ -14,9 +14,26 @@
 # service tiers pour lire un modele.
 #
 # Memoire : environ 640 Mo.
+#
+# Pourquoi UN SEUL worker gunicorn : le defaut de MLflow en lance cinq, chacun
+# important l'application complete. Cinq workers depassent la limite de 640 Mo
+# de ce conteneur, et le noyau les tue un par un (WORKER TIMEOUT puis
+# SIGKILL) : le serveur repond aux premieres requetes puis meurt. Un seul
+# worker suffit tres largement pour une interface de suivi consultee par une
+# personne, et tient dans le budget memoire annonce.
 # =============================================================================
 
 services:
+  # Le job d'entrainement journalise dans le MLflow LOCAL quand le profil est
+  # present : c'est la raison d'etre du profil. Le defaut du coeur de la pile
+  # reste vide (`MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}`), pour qu'un
+  # `make up-light` suivi de `make train` n'essaie jamais de joindre un serveur
+  # absent. `make train` (cible = noyau seul) utilise en revanche la valeur de
+  # l'hote, d'ou `.env` / `.env.example`.
+  train:
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+
   mlflow:
     image: predicare-mlflow:latest
     build:
@@ -30,6 +47,8 @@ services:
       --backend-store-uri postgresql://${POSTGRES_USER:-predicare}:${POSTGRES_PASSWORD:-predicare}@db:5432/${MLFLOW_DB_NAME:-mlflow}
       --default-artifact-root /mlflow/artifacts
       --serve-artifacts
+      --workers 1
+      --gunicorn-opts "--timeout 120"
     environment:
       MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
     volumes:

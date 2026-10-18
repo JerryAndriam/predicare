@@ -17,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from predicare.auth import TokenPayload, decode_access_token
 from predicare.config import get_settings
 from predicare.errors import UnauthorizedError
+from predicare.persistance_ml import SEUIL_PAR_DEFAUT, lire_seuil_effectif
 from predicare.rbac import Role, ensure_permission, ensure_role
 
 _bearer = HTTPBearer(auto_error=False, description="Jeton d'acces issued par /auth/login")
@@ -72,5 +73,17 @@ def get_service_info(request: Request) -> dict[str, str]:
 
 
 def get_threshold() -> float:
-    """Seuil d'alerte courant. Modifiable a chaud depuis l'ecran d'admin."""
-    return get_settings().fraud_alert_threshold
+    """Seuil d'alerte effectif de la plateforme.
+
+    Ordre de priorite : le seuil enregistre par un administrateur
+    (`audit.parametre`, ecrit par l'ecran d'administration), puis la
+    configuration (`FRAUD_ALERT_THRESHOLD`), puis le seuil par defaut. Lire la
+    base a chaque appel est volontaire : c'est ce qui fait qu'un changement de
+    seuil s'applique a la file du gestionnaire sans redemarrage, et qu'api-core
+    ne filtre pas a 0.8 des alertes emises a 0.29 par le modele.
+    """
+    seuil = lire_seuil_effectif()
+    if seuil is not None:
+        return seuil
+    configure = get_settings().fraud_alert_threshold
+    return configure if configure is not None else SEUIL_PAR_DEFAUT

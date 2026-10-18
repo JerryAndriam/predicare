@@ -68,7 +68,7 @@ demande comme livrable :
 | Acteur | Commandes |
 | --- | --- |
 | Celui qui modifie un workflow | `make n8n-export` puis `git add apps/n8n && git commit && git push` |
-| Jerry, Cherica, Mirado | `make n8n-import` |
+| Jerry, Cherica, Mirado | Rien a faire apres un `git pull` : `make up` / `make start` installe les workflows absents (ou `make n8n-import` a la main) |
 
 L'échange via Git plutôt que via n8n apporte trois choses que le
 partage interne n'aurait pas données : l'historique Git montre **qui** a
@@ -85,21 +85,50 @@ au compte propriétaire — on créerait des conflits pour un gain nul.
 d'entree, controle du montant, appel de l'API d'inference, comparaison au
 seuil, rapport SHAP, notification Slack, journalisation.
 
+## Amorcage automatique
+
+`make up`, `make up-light` et `make start` installent automatiquement les
+workflows **absents** de `workflows/` : le script tourne en mode
+`--if-missing` juste apres le demarrage des services. Il ne supprime ni ne
+remplace jamais rien, meme si `N8N_API_KEY` est configuree — une
+modification faite dans l'interface (workflow renomme, desactive) n'est pas
+écrasée par un redemarrage.
+
+| Situation | Ce qui se passe |
+| --- | --- |
+| Machine avec compte deja cree | Les workflows absents sont installes et publies ; ceux deja presents sont laisses tels quels |
+| Machine vierge (aucun compte) | n8n cree un proprietaire « shell » (sans mot de passe) : l'import et la publication reussissent ; a la premiere visite, le formulaire de creation de compte s'affiche et **revendique ce shell** — le workflow apparait alors dans l'Overview, deja publie |
+| Relance (`make restart`) | Idempotent : « 0 installe, deja present », rien n'est modifie |
+
+## Persistance
+
+Compte, session et workflows vivent dans **PostgreSQL** (base `n8n`, volume
+des donnees), pas dans le volume `n8ndata` (config et logs seulement).
+
+- `make down` / `make start` / redemarrage : tout est conserve, on reste
+  connecte.
+- `make clean` (volumes supprimes) : tout est efface ; la premiere visite
+  recrée le compte. C'est le seul cas « repartir de zero ».
+
 ## Synchronisation avec Git
 
 ```bash
 make n8n-export   # exporte les workflows dans apps/n8n/workflows/ (a commiter)
-make n8n-import   # restaure et publie les workflows apres un down/up
+make n8n-import   # restaure et publie les workflows apres un pull (manuel)
 ```
 
 Les deux scripts passent par la **CLI n8n**, pas son API REST : l'API exige
 une cle creee a la main dans l'interface, ce qui rend l'installation
-impossible a automatiser sur une machine vierge.
+impossible a automatiser sur une machine vierge. Le seul point d'entree qui
+importe, c'est donc `apps/n8n/workflows/` versionne par Git.
 
-Consequence assumee : sans cle API, `make n8n-import` ne **remplace** pas un
-workflow deja present (n8n 2.x n'expose aucune suppression en CLI) et le
+`make n8n-import` reste utile pour une remise a niveau explicite (ou une
+machine ou le compte vient d'etre cree). Sans cle API il ne **remplace** pas
+un workflow deja present (n8n 2.x n'expose aucune suppression en CLI) et le
 signale plutot que de creer un doublon. Avec `N8N_API_KEY` renseignee dans
-le `.env`, le remplacement et l'activation se font par l'API.
+le `.env`, le remplacement et l'activation se font par l'API — c'est le seul
+mode qui ecrase un workflow existant, et il n'est jamais lance
+automatiquement.
 
 - `workflows/` est **versionne** : c'est le livrable « workflows n8n
   importables (.json) » exige par le CDC.

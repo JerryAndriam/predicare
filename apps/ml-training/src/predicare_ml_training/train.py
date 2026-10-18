@@ -2,8 +2,11 @@
 
 Point d'entree : `python -m predicare_ml_training.train`.
 
-Ce job n'ecoute rien et n'ecrit jamais dans la base : il produit un dossier
-`models/<version>/` que le service d'inference charge au demarrage. Le
+Ce job n'ecoute rien : il produit un dossier `models/<version>/` que le service
+d'inference charge au demarrage, et l'inscrit au registre `ml.modele_version`
+de la plateforme en statut « candidat ». Cette inscription est la SEULE
+ecriture en base, elle est best-effort, et elle porte ce que le CDC exige du
+versionnage : version, empreinte des donnees d'entrainement, metriques. Le
 decoupage est TEMPOREL (jamais aleatoire), le desequilibre est traite sur le
 SEUL jeu d'entrainement, et le test n'est lu qu'une fois, apres que le choix
 du modele et du seuil soit fige.
@@ -27,7 +30,9 @@ from sklearn.metrics import roc_auc_score
 
 from predicare.features import NOMS_FEATURES, referentiels_vers_dict
 from predicare.logging_config import configure_logging, get_logger
+from predicare.persistance_ml import declarer_version
 from predicare_ml_training.dataset import charger_jeu, decouper_temporel
+from predicare_ml_training.mlflow_rest import journaliser
 from predicare_ml_training.model import (
     COUT_FAUX_NEGATIF,
     COUT_FAUX_POSITIF,
@@ -174,24 +179,44 @@ def _journaliser_mlflow(version: str, artefact: ArtefactModele) -> bool:
         logger.info("mlflow.ignore", raison="MLFLOW_TRACKING_URI absent")
         return False
     try:
-        import mlflow
-
-        mlflow.set_tracking_uri(uri)
-        with mlflow.start_run(run_name=f"modele-v{version}"):
-            mlflow.log_param("version", version)
-            mlflow.log_param("seuil", artefact.seuil)
-            mlflow.log_param("empreinte_donnees", artefact.empreinte_donnees)
-            for nom, valeur in artefact.metadata()["metrics"].items():
-                if isinstance(valeur, (int, float)):
-                    mlflow.log_metric(nom, float(valeur))
-            for nom, valeur in artefact.hyperparametres.items():
-                mlflow.log_param(f"hp.{nom}", valeur)
-        logger.info("mlflow.journalise", version=version)
+        params: dict[str, object] = {
+            "version": version,
+            "seuil": artefact.seuil,
+            "empreinte_donnees": artefact.empreinte_donnees,
+            **{f"hp.{nom}": valeur for nom, valeur in artefact.hyperparametres.items()},
+        }
+        metrics = {
+            nom: float(valeur)
+            for nom, valeur in artefact.metadata()["metrics"].items()
+            if isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+        }
+        run_id = journaliser(uri, f"modele-v{version}", params, metrics)
+        logger.info("mlflow.journalise", version=version, run_id=run_id)
         return True
     except Exception as exc:
         # Un tracking qui tombe ne doit pas faire tomber l'entrainement.
         logger.warning("mlflow.indisponible", erreur=str(exc))
         return False
+
+
+def _declarer_version(version: str, dossier: Path, artefact: ArtefactModele) -> bool:
+    """Inscrit la version au registre `ml.modele_version` de la plateforme.
+
+    Statut « candidat » : une version fraichement entrainee n'a pas ete
+    validee par l'exploitation. C'est `promote` (ou `retour-arriere`) du
+    service d'inference qui la marque « promu », et qui archive celle qu'elle
+    remplace : le registre suit ainsi ce qui repond reellement, ce que la
+    condition « Maintenable » du jury demande de pouvoir montrer.
+
+    Best-effort : les artefacts du volume suffisent a servir le modele, une
+    base injoignable ne doit pas faire echouer un entrainement complet.
+    """
+    return declarer_version(
+        version=version,
+        artefact_path=str(dossier),
+        empreinte_donnees=artefact.empreinte_donnees,
+        metriques=artefact.metadata().get("metrics", {}),
+    )
 
 
 def _ecrire_artefacts(
@@ -420,9 +445,10 @@ def _audit_equite(
         "Consequence operationnelle : ce rappel ne s'ameliorera pas en "
         "reentrainant. La detection des doublons de soumission doit passer par "
         "une **regle deterministe** sur `numero_facture` a la reception, "
-        "independamment du modele. C'est d'ailleurs l'une des dix regles "
-        "d'invalidite deja implementees dans `predicare_seed.qualite_donnees` : "
-        "elles s'appliquent a la soumission, le modele a l'analyse.",
+        "independamment du modele. Le socle de controle des donnees du projet "
+        "(`predicare_seed.qualite_donnees`) compte deja dix regles d'invalidite "
+        "de ce type, appliquees a la soumission : la regle anti-doublon viendra "
+        "s'y ajouter, le modele restant sur l'analyse.",
         "",
         "Les autres familles sont a des rappels de 0,78 a 1,00. Le modele couvre "
         "donc les 13 mecanismes observables ; le quatorzieme n'est pas "
@@ -569,6 +595,11 @@ def main(argv: list[str] | None = None) -> int:
         artefact=artefact,
         referentiels_brut=referentiels_vers_dict(jeu.referentiels),
     )
+
+    # Registre de la plateforme : ce que le service pourra promouvoir et ce que
+    # l'ecran d'administration affichera.
+    if _declarer_version(version, dossier_modeles, artefact):
+        logger.info("version.declaree", version=version, statut="candidat")
 
     _ecrire_rapport(
         dossier_rapports / f"modele_v{version}.md",
