@@ -1,24 +1,41 @@
-"""Featurisation : d'une facture brute aux variables du modele.
+"""Featurisation d'une facture soumise aux variables du modele.
 
-Phase 2.2 du plan d'action. Les agregations par assure, prestataire et acte
-sont calculees ici et nowhere ailleurs : le service d'inference est le seul
-autorise a transformer une facture en vecteur, ce qui garantit que
-l'entrainement et la production appliquent exactement la meme fonction.
+Ce module est un ADAPTATEUR, pas une implementation. La transformation
+facture -> variables vit dans `predicare.features`, dans le socle partage :
+l'entrainement (`apps/ml-training`) appelle exactement la meme fonction.
+
+C'est la seule facon de garantir la parite entre ce que le modele a appris et
+ce qu'il note en production. Une variable calculee ici et la, meme formule,
+diverge un jour : c'est le piege classique du "on refait la featurisation dans
+le notebook". Il n'y a donc plus de code de calcul dans ce fichier, seulement
+la traduction entre le schema de l'API et le type attendu par le socle.
+
+Les quatre agregations d'historique (actes du mois, montant du mois, actes du
+jour, reutilisation d'ordonnance) introduit en Phase 2.2 appartiennent a la
+version 2 du modele : elles exigent une requete d'historique a l'inference.
+Tant que cette requete n'existe pas, aucun historique n'entre dans le
+vecteur : mieux vaut des variables absentes qu'un historique envoye a zero,
+qui ferait diverger l'entrainement et la production sans que rien ne le
+signale.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 import pandas as pd
 
+from predicare.features import (
+    Contrat,
+    FactureBrute,
+    LigneFacture,
+    Ordonnance,
+    Prestataire,
+    Referentiels,
+    calculer_features,
+)
 from predicare.schemas import InvoiceSubmission
-
-#: Plafonds "sains" retenus a l'entrainement. Une valeur superieure signale
-#: une surconsommation ; c'est ce que le modele doit apprendre a detecter.
-PLAFFOND_MENSUEL_PAR_ACTE = 4
-PLAFFOND_MENSUEL_ASSURE = 2_000.0
-PLAFFOND_PAR_PRESTATAIRE_JOUR = 50
 
 
 @dataclass(slots=True)
@@ -26,6 +43,10 @@ class InvoiceFeatures:
     """Vecteur de variables d'une facture, aligne sur le modele."""
 
     values: dict[str, float] = field(default_factory=dict)
+    #: References introuvables : signalees au gestionnaire plutot que cachees.
+    #: Une facture qui glisse entre les mailles du referentiel doit pouvoir
+    #: l'etre, sinon la qualite du referentiel se degrade en silence.
+    references_manquantes: list[str] = field(default_factory=list)
 
     def as_row(self, feature_names: list[str]) -> list[float]:
         """Aligne sur l'ordre attendu par le modele.
@@ -39,52 +60,57 @@ class InvoiceFeatures:
         return pd.DataFrame([self.values])
 
 
+def _jour(valeur: datetime | date | None) -> date | None:
+    if isinstance(valeur, datetime):
+        return valeur.date()
+    return valeur
+
+
 def build_features(
     invoice: InvoiceSubmission,
+    referentiels: Referentiels | None = None,
     *,
-    actes_du_mois: int = 0,
-    montant_mois_assure: float = 0.0,
-    actes_meme_jour: int = 1,
-    actes_meme_couple_acte_ordonnance: int = 0,
+    ordonnance: Ordonnance | None = None,
+    contrat: Contrat | None = None,
+    prestataire: Prestataire | None = None,
+    assure_annee_naissance: int | None = None,
+    assure_sexe: str = "",
 ) -> InvoiceFeatures:
     """Construit les variables d'une facture.
 
-    Les quatre agregations fournies par l'appelant viennent de requetes SQL
-    d'historique. Ce choix garde la fonction pure et testable : elle ne fait
-    jamais d'appel base elle-meme, donc un test unitaire ne necessite pas de
-    PostgreSQL.
+    `referentiels` vient du modele charge (`referentiels.json`). Les elements
+    de contexte facultatifs (ordonnance, contrat, prestataire, profil assure)
+    sont resolus par l'appelant : ici, on ne fait aucun appel base, ce qui
+    garde cette fonction testable sans PostgreSQL.
+
+    Tous les arguments de contexte sont OPTIONNELS et leur defaut est neutre.
+    Une facture resoumise avec un pseudonyme inconnu, une prescription
+    introuvable ou un prestataire absent de la table est donc NOTEE quand
+    meme, avec les variables correspondantes a leur valeur neutre. C'est le
+    comportement attendu du jour J : le jury soumet 20 factures inedites,
+    dont certaines referencent des entites absentes de la base.
     """
-    montant_total = invoice.montant_total
-    nb_lignes = len(invoice.lignes)
-    quantite_totale = sum(ligne.quantite for ligne in invoice.lignes)
-    montant_moyen = montant_total / nb_lignes if nb_lignes else 0.0
-    montant_max = max(
-        (ligne.quantite * ligne.montant_unitaire for ligne in invoice.lignes), default=0.0
-    )
-
-    ecart_prescription = max(0, actes_meme_couple_acte_ordonnance - actes_du_mois)
-
-    values: dict[str, float] = {
-        # Volume et structure
-        "montant_total": montant_total,
-        "montant_moyen_ligne": montant_moyen,
-        "montant_max_ligne": montant_max,
-        "nb_lignes": float(nb_lignes),
-        "quantite_totale": float(quantite_totale),
-        # Surconsommation
-        "actes_du_mois": float(actes_du_mois),
-        "actes_meme_jour": float(actes_meme_jour),
-        "montant_mois_assure": montant_mois_assure,
-        "ratio_montant_mois": (
-            montant_mois_assure / PLAFFOND_MENSUEL_ASSURE if PLAFFOND_MENSUEL_ASSURE else 0.0
+    facture = FactureBrute(
+        montant_total=invoice.montant_total,
+        date_facture=_jour(invoice.date_facture),
+        lignes=tuple(
+            LigneFacture(
+                code=ligne.code_acte,
+                quantite=ligne.quantite,
+                montant_unitaire=ligne.montant_unitaire,
+                date_acte=ligne.date_acte,
+            )
+            for ligne in invoice.lignes
         ),
-        "depassement_plafond_acte": float(actes_du_mois - PLAFFOND_MENSUEL_PAR_ACTE),
-        "depassement_plafond_prestataire": float(actes_meme_jour - PLAFFOND_PAR_PRESTATAIRE_JOUR),
-        # Coherence prescription / maladie
-        "doublon_ordonnance": float(actes_meme_couple_acte_ordonnance),
-        "ecart_prescription_acte": float(ecart_prescription),
-        # Divers
-        "diversification_actes": float(len({ligne.code_acte for ligne in invoice.lignes})),
-        "ratio_quantite": (quantite_totale / nb_lignes) if nb_lignes else 0.0,
-    }
-    return InvoiceFeatures(values=values)
+        ordonnance=ordonnance,
+        contrat=contrat,
+        prestataire=prestataire,
+        assure_annee_naissance=assure_annee_naissance,
+        assure_sexe=assure_sexe,
+        prestataire_id=invoice.prestataire_id,
+    )
+    valeurs = calculer_features(facture, referentiels or Referentiels())
+    return InvoiceFeatures(
+        values=valeurs,
+        references_manquantes=list(facture.references_manquantes),
+    )

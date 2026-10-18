@@ -20,6 +20,7 @@ members = [
     "apps/api-core",
     "apps/api-inference",
     "apps/api-rag",
+    "apps/ml-training",
     "apps/seed",
 ]
 
@@ -75,10 +76,13 @@ ignore = [
 # Les fixtures pytest non utilisees dans un test restent une signature
 # explicite : c'est ce qui documente ce que le test recoit.
 "tests/**" = ["ARG001", "ARG005"]
+# ML : `X` et `y` sont les noms universels d'une matrice de variables et d'un
+# vecteur de cible. Les renommer rendrait le code moins lisible, pas plus.
+"apps/ml-training/**" = ["N803", "N806"]
 "**/__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["predicare", "predicare_core_api", "predicare_inference_api", "predicare_rag_api"]
+known-first-party = ["predicare", "predicare_core_api", "predicare_inference_api", "predicare_rag_api", "predicare_ml_training", "predicare_seed"]
 
 [tool.mypy]
 python_version = "3.12"

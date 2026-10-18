@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from predicare import metrics
 from predicare.config import get_settings
 from predicare.logging_config import get_logger
+from predicare.persistance_ml import persister_prediction
+from predicare_inference_api.context import resolve_context
 from predicare_inference_api.drift import DriftReport
 from predicare_inference_api.explainability import build_shap_report, shap_to_contributions
 from predicare_inference_api.features import build_features
@@ -44,8 +46,22 @@ def predict(payload: dict, request: Request) -> dict:
     bundle = registry.active
     seuil = registry.threshold
 
-    features = build_features(invoice)
+    features = build_features(
+        invoice,
+        bundle.referentiels,
+        **resolve_context(invoice, bundle.referentiels),
+    )
     row = features.as_row(bundle.feature_names)
+
+    if features.references_manquantes:
+        # Signale, pas bloque : une facture dont une reference est absente doit
+        # etre NOTEE. Mais l'echec de resolution doit rester visible, sinon on
+        # ne verrait jamais que le referentiel est incomplet.
+        logger.info(
+            "references.manquantes",
+            facture_id=invoice.facture_id,
+            references=features.references_manquantes[:10],
+        )
 
     import numpy as np
 
@@ -81,6 +97,20 @@ def predict(payload: dict, request: Request) -> dict:
         "predicted_at": datetime.now(UTC),
         "rapport_shap": build_shap_report(contributions, score, seuil),
     }
+
+    # Stockage de la transaction (Flux 1), AVANT la notification n8n : une
+    # alerte notifiee mais absente de la base serait introuvable dans la file
+    # du gestionnaire. Best-effort : une base indisponible ne doit pas priver
+    # le demandeur de son score.
+    if invoice.facture_id:
+        persister_prediction(
+            reference=invoice.facture_id,
+            model_version=bundle.version,
+            score=score,
+            seuil=seuil,
+            is_fraud=is_fraud,
+            contributions=contributions,
+        )
 
     if is_fraud:
         logger.info(
@@ -151,10 +181,16 @@ def drift(request: Request) -> dict:
 
 @router.get("/seuil")
 def read_threshold(request: Request) -> dict:
-    """Seuil courant, utilise par api-core et par le workflow n8n."""
+    """Seuil courant, utilise par api-core et par le workflow n8n.
+
+    `seuil` est le seuil EFFECTIF : celui qui decide de l'alerte. Un appelant
+    n'a pas a savoir s'il vient du modele, de l'administration ou de
+    l'environnement ; `seuil_impose` expose la valeur d'exploitation pour
+    l'ecran d'administration.
+    """
     return {
-        "seuil": get_settings().fraud_alert_threshold,
-        "seuil_reel": request.app.state.registry.threshold,
+        "seuil": request.app.state.registry.threshold,
+        "seuil_impose": get_settings().fraud_alert_threshold,
     }
 
 

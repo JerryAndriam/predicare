@@ -19,6 +19,7 @@ from predicare.http import (
 )
 from predicare.logging_config import configure_logging, get_logger
 from predicare.metrics import publish_build
+from predicare.persistance_ml import amorcer_seuil_effectif, lire_seuil_effectif
 from predicare_inference_api import SERVICE_NAME, __version__
 from predicare_inference_api.registry import ModelRegistry
 from predicare_inference_api.router import router as inference_router
@@ -35,6 +36,26 @@ def create_app(*, worker: bool = False) -> FastAPI:
     configure_logging(SERVICE_NAME, settings.log_level, settings.log_format)
     logger = get_logger(SERVICE_NAME)
 
+    def _restaurer_seuil(registre: ModelRegistry) -> None:
+        """Le seuil en vigueur survit au redemarrage du service.
+
+        Deux sens : un seuil deja choisi par un administrateur est reapplique
+        (sans quoi un redemarrage annulerait silencieusement son reglage),
+        sinon le seuil du modele est inscrit en base pour que la file du
+        gestionnaire et l'ecran d'administration affichent le meme chiffre que
+        le service d'inference.
+        """
+        if registre.seuil_impose is not None:
+            # L'exploitation a fixe le seuil : il prime sur ce qui est
+            # enregistre, et devient la valeur de reference de la plateforme.
+            amorcer_seuil_effectif(registre.threshold)
+            return
+        enregistre = lire_seuil_effectif()
+        if enregistre is not None:
+            registre.set_threshold(enregistre)
+        else:
+            amorcer_seuil_effectif(registre.threshold)
+
     registry = ModelRegistry(
         model_dir=Path(os.getenv("MODEL_DIR", settings.model_dir)),
         threshold=settings.fraud_alert_threshold,
@@ -50,6 +71,8 @@ def create_app(*, worker: bool = False) -> FastAPI:
             # c'est preferable a un conteneur qui refuse de demarrer pendant
             # qu'un modele est entrainement.
             logger.warning("modele.non_charge", erreur=str(exc))
+        else:
+            _restaurer_seuil(registry)
 
         if worker:
             logger.info("worker.demarrage", mode="ingestion_et_derive")

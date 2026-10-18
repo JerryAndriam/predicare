@@ -33,7 +33,9 @@ x-env-common: &env-common
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
   JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
   IDENTITY_ENCRYPTION_KEY: ${IDENTITY_ENCRYPTION_KEY:-}
-  FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-0.8}
+  # Vide = « adopter le seuil arbitre par le modele » (Phase 2.5, lu dans
+  # metadata.json). Une valeur explicite prime et sert l'ecran d'administration.
+  FRAUD_ALERT_THRESHOLD: ${FRAUD_ALERT_THRESHOLD:-}
   FRAUD_MIN_RECALL: ${FRAUD_MIN_RECALL:-0.90}
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
   MODEL_DIR: ${MODEL_DIR:-/models}
@@ -198,6 +200,85 @@ services:
       - core
     logging: *default-logging
 
+  # Job d'entrainement : code de job, pas un service. Il n'ecoute sur aucun
+  # port et n'est jamais lance au demarrage de la pile — un modele s'entraine
+  # une fois, se sert en continu. `restart: "no"` et l'absence de ports le
+  # distinguent des services : `docker ps` ne doit pas les montrer comme
+  # faisant partie de la plateforme au repos.
+  train:
+    <<: *build-python
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.python
+    container_name: predicare-train
+    restart: "no"
+    # Profil `jobs` : un entrainement dure une vingtaine de minutes et ne doit
+    # PAS partir a chaque `docker compose up` (la condition « Deployable » du
+    # jury serait intenable). `make train` cible le service explicitement, et
+    # `docker compose run` ignore les profils.
+    profiles: ["jobs"]
+    # La version se passe par l'environnement `MODEL_VERSION` et non en argument :
+# `docker compose run train 2` tenterait d'executer `2` comme un programme.
+    command: ["python", "-m", "predicare_ml_training.train"]
+    environment:
+      <<: *env-common
+      DATA_RAW_DIR: /data/raw
+      MODEL_DIR: /models
+      RAPPORT_DIR: /reports
+      MODEL_VERSION: "1"
+      # MLflow est facultatif : sans serveur joignable, l'entrainement
+      # aboutit quand meme et n'est simplement pas journalise.
+      # La valeur vient de l'hote (voir `.env.example`, section MLflow) :
+      # vide => le job n'essaie meme pas de le joindre. L'overlay
+      # `docker-compose.mlops.yml` la renseigne quand le profil `mlops` est
+      # utilise. La journalisation passe par l'API REST de MLflow (httpx,
+      # deja dans le socle) : l'image n'a pas besoin du paquet `mlflow`.
+      # C'est coherent avec ADR-004 (MLflow hors du chemin d'inference) et
+      # avec le fait qu'un entrainement doit aboutir sans le profil demarre.
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+    # Les jobs qui ecrivent dans un bind mount doivent posseder les droits du
+    # dossier HOTE : l'utilisateur non root de l'image (uid 999) ne peut pas
+    # ecrire dans un repertoire cree par l'utilisateur de la machine (uid 1000).
+    # On aligne donc l'uid du job sur celui de l'hote, ce qui evite aussi que
+    # les artefacts produits appartiennent a `root` et ne soient plus
+    # modifiables ensuite. Sur Docker Desktop (Windows, macOS) l'uid est ignore
+    # et le montage est toujours accessible.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./data:/data:ro
+      - ./models:/models
+      - ./reports:/reports
+    networks:
+      - core
+    logging: *default-logging
+
+  # Comparaison des strategies de desequilibre et audit d'equite (Phase 2 et
+  # 9.4). Meme image, aucun artefact de modele ecrit : c'est un rapport.
+  evaluate:
+    <<: *build-python
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.python
+    container_name: predicare-evaluate
+    restart: "no"
+    # Meme raison que `train` : c'est un job, jamais un service de la pile.
+    profiles: ["jobs"]
+    command: ["python", "-m", "predicare_ml_training.evaluate"]
+    environment:
+      <<: *env-common
+      DATA_RAW_DIR: /data/raw
+      MODEL_DIR: /models
+      RAPPORT_DIR: /reports
+      MODEL_VERSION: "1"
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./data:/data:ro
+      - ./models:/models
+      - ./reports:/reports
+    networks:
+      - core
+    logging: *default-logging
+
   # =======================================================================
   # FLUX 3 + SOCLE : identites, factures, decisions, administration
   # =======================================================================
@@ -247,7 +328,14 @@ services:
     ports:
       - "${API_INFERENCE_PORT:-8002}:8002"
     volumes:
-      - models:/models:ro
+      # Bind mount comme pour le job `make train`, et NON un volume Docker
+      # nomme. Avec `models:/models:ro`, le bind mount `./models` du job et
+      # le volume etaient deux emplacements distincts : le service voyait un
+      # dossier vide et `/health` annonçait `modele_charge: false` alors que
+      # le modele etait bel et bien entrainé. Le partage passe par l'hote, ce
+      # qui rend aussi les artefacts inspectables sans `docker exec`.
+      # Lecture seule cote service : seul `make train` ecrit dans ce dossier.
+      - ./models:/models:ro
     depends_on:
       db:
         condition: service_healthy
@@ -321,7 +409,10 @@ services:
     environment:
       <<: *env-common
     volumes:
-      - models:/models:ro
+      # Meme bind mount que `api-inference` : le worker doit voir le meme
+      # dossier de modeles, sinon il suivrait une derive d'un modele que le
+      # service ne sert pas.
+      - ./models:/models:ro
     depends_on:
       db:
         condition: service_healthy

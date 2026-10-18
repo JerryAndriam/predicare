@@ -17,7 +17,7 @@ from sqlalchemy import text
 
 from predicare.config import get_settings
 from predicare.db import session_scope
-from predicare.dependencies import require_permission
+from predicare.dependencies import get_threshold, require_permission
 from predicare.logging_config import get_logger
 from predicare.schemas import ModelVersionInfo
 
@@ -98,7 +98,7 @@ def _propagate_threshold(request: Request, seuil: float) -> str:
 @router.get("/seuil")
 def read_threshold(_admin: AdminUser) -> dict[str, float]:
     """Seuil courant, lu par l'ecran d'administration et par n8n."""
-    return {"seuil": get_settings().fraud_alert_threshold}
+    return {"seuil": get_threshold()}
 
 
 @router.get("/canaux", response_model=list[NotificationChannel])
@@ -133,7 +133,7 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
         logger.warning("admin.modele_injoignable", erreur=str(exc))
         return ModelVersionInfo(
             active_version=str(get_settings().model_active_version),
-            threshold=get_settings().fraud_alert_threshold,
+            threshold=get_threshold(),
         )
 
 
@@ -144,7 +144,7 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
     return {
         "service": request.app.state.service,
         "version": request.app.state.version,
-        "seuil": settings.fraud_alert_threshold,
+        "seuil": get_threshold(),
         "secrets_manquants": settings.missing_secrets(),
         "timestamp": datetime.now(UTC).isoformat(),
     }

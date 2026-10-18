@@ -501,7 +501,6 @@ def charger_factures(
         d["medicaments"],
         d["assures"],
         d["prestataires"],
-        d["contrats"],
     )
     if len(rejets):
         logger.warning("factures.rejetees", nombre=len(rejets))
@@ -663,7 +662,7 @@ def main() -> int:
     logger.info("donnees.detectees", domaines=len(donnees))
 
     # Rapport de qualite (Phase 1.4), ecrit hors du volume en lecture seule.
-    rapport(DATA_RAW_DIR, sortie=RAPPORT_DIR / "rapport_qualite_phase1_4.md")
+    rapport(DATA_RAW_DIR, sortie=RAPPORT_DIR / "rapport_qualite_phase1_4.md", donnees=donnees)
 
     with session_scope() as session:
         resultat = charger_tout(session, donnees)

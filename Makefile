@@ -43,6 +43,18 @@ COMPOSE_ALL   = $(COMPOSE) $(TOUS_PROFILS) -f docker-compose.yml -f docker-compo
 COMPOSE_EMAIL   := $(COMPOSE) --profile email -f docker-compose.yml
 
 PY           := uv run --all-packages
+
+# Dossier des 14 CSV de l'encadrement, monte en lecture seule dans le job
+# d'entrainement. Il n'est volontairement pas versionne : 44 Mo de donnees de
+# sante ne doivent pas entrer dans l'historique Git.
+DATA_DIR     ?= ./data/raw
+
+# Les jobs qui ecrivent dans un bind mount (entrainement, rapports) doivent
+# tourner avec l'uid de l'utilisateur courant, sinon l'utilisateur non root
+# de l'image ne peut pas creer les fichiers et le job echoue en
+# `Permission denied`. Exporte dans l'environnement lu par compose.
+export HOST_UID := $(shell id -u 2>/dev/null || echo 1000)
+export HOST_GID := $(shell id -g 2>/dev/null || echo 1000)
   # Superset et ses deux jobs d'init declarent un `build:` propre : les
   # construire avec le seul `docker-compose.yml` echouerait sur une image
   # manquante.
@@ -96,6 +108,10 @@ up: ## Demarre toute la plateforme, tooling de demonstration inclus
 	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
+	# Amorçage n8n : installe les workflows absents sans jamais remplacer
+	# ceux deja presents dans l'interface. Sans proprietaire (tout premier
+	# demarrage), le script l'explique et rend la main sans erreur.
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
 	@echo "  Superset   http://localhost:$${SUPERSET_PORT:-8088}"
@@ -112,6 +128,7 @@ start: ## Demarre SANS reconstruire les images (apres un make down)
 	@$(COMPOSE_STACK) run --rm migrate
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Plateforme demarree : http://localhost:$${GATEWAY_PORT:-8080}"
 
@@ -124,6 +141,7 @@ up-light: ## Demarre le NOYAU seul, sans Superset/Grafana/Prometheus/MLflow
 	@$(COMPOSE_CORE) run --rm migrate
 	@$(COMPOSE_CORE) up -d
 	@$(MAKE) --no-print-directory wait
+	@bash scripts/n8n-import.sh --if-missing
 	@echo ""
 	@echo "Noyau demarre : http://localhost:$${GATEWAY_PORT:-8080}"
 
@@ -170,7 +188,10 @@ up-observability: ## Demarre Prometheus et Grafana (~450 Mo)
 
 .PHONY: up-mlops
 up-mlops: ## Demarre MLflow (~640 Mo)
-	@$(COMPOSE_MLOPS) up -d mlflow minio-init
+	# `minio-init` n'est plus demande : les artefacts MLflow vivent sur le
+	# volume local `./artifacts/mlflow` (`--default-artifact-root`), pas dans un
+	# stockage objet. Citer un service inexistant faisait echouer la cible.
+	@$(COMPOSE_MLOPS) up -d mlflow
 	@echo "MLflow : http://localhost:$${MLFLOW_PORT:-5000}"
 
 .PHONY: up-backup
@@ -344,7 +365,7 @@ db-sql: ## Execute une requete SQL (Q="...") ou un fichier (FILE=...), ou lit st
 # =============================================================================
 .PHONY: model-state
 model-state: ## Affiche la version active et le seuil courant
-	@curl -fsS http://localhost:$${API_INFERENCE_PORT:-8002}/modele | $(PY) python -m json.tool
+	@curl -fsS http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele | $(PY) python -m json.tool
 
 .PHONY: threshold
 threshold: ## Change le seuil d'alerte (make threshold VALEUR=0.75)
@@ -354,8 +375,36 @@ threshold: ## Change le seuil d'alerte (make threshold VALEUR=0.75)
 		-d '{"seuil": $(VALEUR), "motif": "changement manuel (make threshold)"}' | $(PY) python -m json.tool
 
 .PHONY: train
-train: ## Lance l'entrainement du modele (make train VERSION=2)
-	@echo "Entrainement du modele version $(or $(VERSION),2) - voir apps/ml-training/README.md"
+train: ## Entraine le modele et ecrit models/$(VERSION) (make train VERSION=2)
+	@if [ ! -f "$(DATA_DIR)/factures.csv" ]; then \
+		echo "Donnees absentes dans $(DATA_DIR)/."; \
+		echo "Copiez les 14 CSV de l'encadrement, puis relancez : make train VERSION=$${VERSION:-1}"; \
+		exit 1; \
+	fi
+	@$(COMPOSE_CORE) run --rm -e MODEL_VERSION=$(or $(VERSION),1) train
+	@echo "Modele ecrit dans models/$(or $(VERSION),1)"
+	@echo "Activez-le sans redemarrage : make model-promote VERSION=$(or $(VERSION),1)"
+
+.PHONY: evaluate
+evaluate: ## Compare SMOTE / scale_pos_weight et produit l'audit d'equite (make evaluate)
+	@if [ ! -f "$(DATA_DIR)/factures.csv" ]; then \
+		echo "Donnees absentes dans $(DATA_DIR)/."; \
+		echo "Copiez les 14 CSV de l'encadrement, puis relancez : make evaluate"; \
+		exit 1; \
+	fi
+	@$(COMPOSE_CORE) run --rm evaluate
+
+.PHONY: model-promote
+model-promote: ## Bascule la version N en service (make model-promote VERSION=2)
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/candidat?version=$(VERSION)" \
+		| $(PY) python -m json.tool
+	@curl -fsS -X POST http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/bascule \
+		| $(PY) python -m json.tool
+
+.PHONY: model-rollback
+model-rollback: ## Revient a la version N (make model-rollback VERSION=1)
+	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/retour-arriere?version=$(VERSION)" \
+		| $(PY) python -m json.tool
 
 # =============================================================================
 # N8N

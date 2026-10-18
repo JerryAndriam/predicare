@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     identity_encryption_key: str = ""
 
     # Metier
-    fraud_alert_threshold: float = 0.80
+    #: Seuil d'alerte. `None` (variable vide) signifie « adopter le seuil
+    #: arbitre par le modele » (Phase 2.5) : le service lit `metadata.json` au
+    #: chargement. Une valeur explicite reste prioritaire et sert l'ecran
+    #: d'administration, qui doit pouvoir imposer un seuil sans reentrainer.
+    fraud_alert_threshold: float | None = None
     fraud_min_recall: float = 0.90
     cors_origins: str = "http://localhost:8080"
 
@@ -90,14 +94,15 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: str) -> str:
         return value.upper()
 
-    @field_validator("model_candidate_version", mode="before")
+    @field_validator("model_candidate_version", "fraud_alert_threshold", mode="before")
     @classmethod
     def _vide_vers_none(cls, value: object) -> object:
-        """`MODEL_CANDIDATE_VERSION=` dans un .env signifie « aucune ».
+        """Une variable vide dans un `.env` signifie « aucune » / « par defaut ».
 
-        Sans ce convertisseur, pydantic refuse la chaine vide et le service
-        ne demarre pas. Or c'est exactement ce qu'ecrit un administrateur
-        lorsqu'il vide un champ avant de le remplir.
+        `MODEL_CANDIDATE_VERSION=` : aucune candidate. `FRAUD_ALERT_THRESHOLD=` :
+        adopter le seuil du modele. Sans ce convertisseur, pydantic refuse la
+        chaine vide et le service ne demarre pas. Or c'est exactement ce
+        qu'ecrit un administrateur lorsqu'il vide un champ avant de le remplir.
         """
         if value is None or (isinstance(value, str) and not value.strip()):
             return None
