@@ -575,9 +575,27 @@ services:
       # Variables lues par les workflows via $env dans l'interface n8n.
       # Elles sont injectees ici pour que le workflow versionne reste
       # independant de la machine sur laquelle il est importe.
+      # n8n 2.x interdit `$env` dans les expressions par DEFaut (defense
+      # contre l'exfiltration de secrets via une expression affichee dans
+      # l'editeur). Or tout notre workflow lit ses seuils et ses adresses
+      # dans l'environnement : sans ce deblocage, CHAQUE noeud echoue sur
+      # « access to env vars denied » et le webhook repond 500.
+      #
+      # Ce n'est pas une faille de securite dans notre contexte : les
+      # variables exposees sont des seuils et des adresses, pas des secrets,
+      # et elles sont deja dans le `.env` de la machine. Les secrets
+      # sensibles (Slack, SMTP, LLM) restent dans les CREDENTIALS n8n, que
+      # ce reglage n'atteint pas.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       PREDICARE_API_URL: http://api-inference:8002
+      # Seuil de DETECTION : celui de l'API. Il sert au workflow pour
+      # afficher dans l'alerte a quel seuil la facture a ete retenue.
       SEUIL_ALERTE: ${FRAUD_ALERT_THRESHOLD:-0.8}
-      PLAFOND_ALERTE: ${N8N_PLAFOND_MONTANT:-1000}
+      # Seuil de NOTIFICATION : c'est celui-ci qui declenche Slack et l'email.
+      # Distinct du precedent, exige par le CDC (Flux 1 : « Si Score > 0.8
+      # -> Notification Slack »). Voir .env.example pour le pourquoi.
+      SEUIL_NOTIFICATION_SLACK: ${SEUIL_NOTIFICATION_SLACK:-0.8}
+      SMTP_GESTIONNAIRE: ${SMTP_GESTIONNAIRE:-gestionnaire@predicare.local}
       SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       SMTP_HOST: mailpit

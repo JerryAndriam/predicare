@@ -13,57 +13,11 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        -380,
+        -320,
         0
       ],
-      "webhookId": "predicare-alerte-fraude"
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "lignes",
-        "options": {}
-      },
-      "id": "a1000000-0000-4000-8000-000000000002",
-      "name": "Eclater les lignes",
-      "type": "n8n-nodes-base.splitOut",
-      "typeVersion": 1,
-      "position": [
-        -160,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 2
-          },
-          "conditions": [
-            {
-              "id": "score-superieur-au-seuil",
-              "leftValue": "={{ $json.montant_total }}",
-              "rightValue": "={{ $env.PLAFOND_ALERTE }}",
-              "operator": {
-                "type": "number",
-                "operation": "gte"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "a1000000-0000-4000-8000-000000000003",
-      "name": "Montant au-dessus du seuil",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [
-        80,
-        0
-      ]
+      "webhookId": "predicare-alerte-fraude",
+      "notes": "Declencheur unique de la chaine. L'ecran de gestion (ou le lot de 20 factures du jury) POST la facture brute ici ; c'est le workflow qui appelle l'API d'inference."
     },
     {
       "parameters": {
@@ -81,20 +35,29 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ facture_id: $json.facture_id, assure_pseudonyme: $json.assure_pseudonyme, prestataire_id: $json.prestataire_id, date_facture: $json.date_facture, montant_total: $json.montant_total, lignes: $json.lignes }) }}",
-        "options": {}
+        "body": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
       },
       "id": "a1000000-0000-4000-8000-000000000004",
       "name": "Invoquer l'API d'inference",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        320,
-        -120
+        -80,
+        0
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "notes": "Corps = `$json.body`. n8n place le payload recu sous `body` et y ajoute ses propres cles (`headers`, `params`, `query`, `webhookUrl`) a la racine. Envoyer `$json` entier ferait refuser la requete : `InvoiceSubmission` est `extra: forbid`. 3 tentatives espacees de 2 s : l'API peut etre en cours de redemarrage au moment d'une soumission.",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -109,7 +72,7 @@
             {
               "id": "score-fraude-eleve",
               "leftValue": "={{ $json.score_fraude }}",
-              "rightValue": "={{ $env.SEUIL_ALERTE }}",
+              "rightValue": "={{ Number($env.SEUIL_NOTIFICATION_SLACK) }}",
               "operator": {
                 "type": "number",
                 "operation": "gte"
@@ -121,71 +84,67 @@
         "options": {}
       },
       "id": "a1000000-0000-4000-8000-000000000005",
-      "name": "Score superieur au seuil",
+      "name": "Score au-dessus du seuil de notification",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
+      "typeVersion": 2.3,
       "position": [
-        520,
-        -120
-      ]
-    },
-    {
-      "parameters": {
-        "select": "fields",
-        "fieldValues": "={{ 'Facture ' + $json.facture_id + ' — score ' + $json.score_fraude + ' (seuil ' + $json.seuil_applique + ')\\n\\n' + $json.rapport_shap }}",
-        "options": {}
-      },
-      "id": "a1000000-0000-4000-8000-000000000006",
-      "name": "Composer le rapport SHAP",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        760,
-        -200
-      ]
+        180,
+        0
+      ],
+      "notes": "SEUIL DE NOTIFICATION (0.8), exige par le CDC : une alerte Slack est une interruption humaine, donc seulement pour les cas tres nets. Le SEUIL DE DETECTION (0.2876, dans FRAUD_ALERT_THRESHOLD) reste regi par l'API : toute facture au-dessus entre dans la file du gestionnaire, qu'elle soit notifiee ou non."
     },
     {
       "parameters": {
         "chatType": "channel",
         "select": "channel",
         "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
-        "text": "={{ $json.rapport_shap }}",
+        "text": "={{ '🚨 *Alerte fraude — ' + $json.facture_id + '*\\nScore *' + $json.score_fraude + '* (seuil de notification ' + $env.SEUIL_NOTIFICATION_SLACK + ')\\n\\n' + $json.rapport_shap + '\\n\\n_Modèle ' + $json.model_version + ' · seuil de détection ' + $json.seuil_applique + '_' }}",
         "otherOptions": {}
       },
       "id": "a1000000-0000-4000-8000-000000000007",
       "name": "Notifier Slack",
       "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.2,
+      "typeVersion": 2.7,
       "position": [
-        1000,
-        -200
+        700,
+        -120
       ],
-      "notes": "La credential Slack se cree dans l'interface n8n : aucun webhook n'est versionne dans ce fichier."
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "EXIGE une credential Slack creee dans l'interface n8n : aucun webhook n'est versionne dans ce fichier, c'est un choix de securite. `onError: continueRegularOutput` rend l'echec non bloquant — sur une machine ou la credential n'est pas encore creee, l'execution continue et l'e-mail part quand meme."
     },
     {
       "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM }}",
+        "toEmail": "={{ $env.SMTP_GESTIONNAIRE }}",
+        "subject": "={{ '🚨 Alerte fraude — ' + $json.facture_id }}",
+        "emailFormat": "text",
+        "message": "={{ $json.rapport_shap }}",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000008",
-      "name": "Journaliser en base",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
+      "id": "a1000000-0000-4000-8000-00000000000a",
+      "name": "Notifier par e-mail",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
       "position": [
-        1000,
-        40
+        700,
+        -320
       ],
-      "notes": "Ecrit l'alerte dans ml.prediction pour alimenter le tableau de bord."
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Option demandee par le plan d'action. EXIGE une credential SMTP creee dans l'interface n8n (Settings > Credentials > SMTP), meme vers Mailpit qui n demande aucun mot de passe. Sans elle le noeud echoue — `onError` le rend non bloquant, mais rien n'est envoye : c'est le seul noeud qui ne peut pas fonctionner sans configuration prealable."
     },
     {
       "parameters": {},
       "id": "a1000000-0000-4000-8000-000000000009",
-      "name": "Aucune anomalie",
+      "name": "Sous le seuil de notification",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        760,
-        40
-      ]
+        440,
+        120
+      ],
+      "notes": "Pas d'interruption humaine, mais la prediction EST deja ecrite dans ml.prediction par l'API : la facture reste dans la file du gestionnaire, consultable au tableau de bord."
     }
   ],
   "connections": {
@@ -193,36 +152,7 @@
       "main": [
         [
           {
-            "node": "Eclater les lignes",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Eclater les lignes": {
-      "main": [
-        [
-          {
-            "node": "Montant au-dessus du seuil",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Montant au-dessus du seuil": {
-      "main": [
-        [
-          {
             "node": "Invoquer l'API d'inference",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Aucune anomalie",
             "type": "main",
             "index": 0
           }
@@ -233,41 +163,36 @@
       "main": [
         [
           {
-            "node": "Score superieur au seuil",
+            "node": "Score au-dessus du seuil de notification",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Score superieur au seuil": {
-      "main": [
-        [
-          {
-            "node": "Composer le rapport SHAP",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Aucune anomalie",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Composer le rapport SHAP": {
+    "Score au-dessus du seuil de notification": {
       "main": [
         [
           {
             "node": "Notifier Slack",
             "type": "main",
             "index": 0
-          },
+          }
+        ],
+        [
           {
-            "node": "Journaliser en base",
+            "node": "Sous le seuil de notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier Slack": {
+      "main": [
+        [
+          {
+            "node": "Notifier par e-mail",
             "type": "main",
             "index": 0
           }
