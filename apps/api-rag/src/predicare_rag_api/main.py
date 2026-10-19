@@ -204,6 +204,9 @@ def ask(
             resultat.sources,
             scope=scope,
             latency_ms=resultat.latency_ms,
+            # Cout reel de l'appel : il alimente `cout_evite_eur` du cache,
+            # qui mesure l'economie au lieu de l'estimer.
+            cout_eur=resultat.cout_estime_eur,
             succes=resultat.succes,
         )
     # Seule une vraie reponse entre dans l'historique : un message de

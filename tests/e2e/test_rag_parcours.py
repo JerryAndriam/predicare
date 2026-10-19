@@ -2,7 +2,7 @@
 
 Ces tests ne tournent que si `PREDICARE_E2E=1` : ils exigent api-core,
 api-rag, PostgreSQL, Redis et le fournisseur LLM. Ils couvrent le parcours
-assure, pas le jeu d'evaluation complet (27 questions) : connexion, garantie
+assure, pas le jeu d'evaluation complet (30 questions) : connexion, garantie
 sourcee, historique SQL, suivi de session, injection refusee et cache.
 
 Le mot de passe de demonstration vient de `DEMO_PASSWORD` : il n'est code en

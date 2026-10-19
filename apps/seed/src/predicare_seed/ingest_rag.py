@@ -51,6 +51,11 @@ TAILLE_CIBLE = 450  # caracteres approximatifs par segment generique
 TAILLE_ARTICLE = 800  # plafond demande pour les articles des CG
 CHEVAUCHEMENT = 50
 
+#: Nom du contrat tel qu'il apparait dans les citations. Une seule chaine :
+#: deux orthographes casseraient le regroupement par contrat et les sources
+#: citees par l'assure.
+CONTRAT_CG = "Conditions Generales"
+
 CATEGORIES_ARTICLE_5 = (
     "Consultation",
     "Pharmacie",
@@ -383,7 +388,7 @@ def _segments_article_par_type(chemin: Path, formule: str, article: Article) -> 
         return []
 
     titre = f"Article {article.numero} - {article.titre}"[:128]
-    contrat = f"Conditions générales {formule}"
+    contrat = f"{CONTRAT_CG} {formule}"
     segments: list[Segment] = []
 
     generales = [ligne for ligne in [*avant, *apres] if ligne.strip()]
@@ -448,7 +453,7 @@ def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Se
 
     segments: list[Segment] = [
         Segment(
-            contrat=f"Conditions Generales {formule}",
+            contrat=f"{CONTRAT_CG} {formule}",
             contrat_id=None,
             article="Article 5 - Tableau des garanties (vue globale)",
             garantie="Global",
@@ -485,7 +490,7 @@ def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Se
         )
         segments.append(
             Segment(
-                contrat=f"Conditions Generales {formule}",
+                contrat=f"{CONTRAT_CG} {formule}",
                 contrat_id=None,
                 article="Article 5 - Tableau des garanties",
                 garantie=categorie,
@@ -534,7 +539,7 @@ def _segment_article_6_synthese(
         else:
             lignes.append(f"- {libelle} : {carence}.")
     return Segment(
-        contrat=f"Conditions Generales {formule}",
+        contrat=f"{CONTRAT_CG} {formule}",
         contrat_id=None,
         article=titre,
         garantie="-",
@@ -575,7 +580,7 @@ def _segments_conditions_generales(chemin: Path, pages: list[tuple[int, str]]) -
                 continue
             segments.append(
                 Segment(
-                    contrat=f"Conditions Generales {formule}",
+                    contrat=f"{CONTRAT_CG} {formule}",
                     contrat_id=None,
                     article=titre,
                     garantie="-",
@@ -624,7 +629,7 @@ def _segments_conditions_particulieres(chemin: Path, pages: list[tuple[int, str]
             f"Prime annuelle : {prime}",
             f"Plafond annuel global par bénéficiaire : {plafond}",
             "Les garanties, exclusions et procedures sont celles des "
-            f"Conditions Generales de la formule {formule}.",
+            f"{CONTRAT_CG} de la formule {formule}.",
         ]
     )
 
