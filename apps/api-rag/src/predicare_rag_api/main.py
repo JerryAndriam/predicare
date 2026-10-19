@@ -21,6 +21,7 @@ from predicare.http import (
 )
 from predicare.logging_config import configure_logging, get_logger
 from predicare.metrics import publish_build
+from predicare.rbac import ensure_permission
 from predicare_rag_api import SERVICE_NAME, __version__
 from predicare_rag_api.agent import RagAgent
 from predicare_rag_api.guardrails import sanitize_question
@@ -60,7 +61,11 @@ def porteuse(authorization: str = Header(default="")) -> str | None:
     """
     if not authorization.startswith("Bearer "):
         raise UnauthorizedError("Jeton d'acces requis pour interroger l'assistant.")
-    return decode_access_token(authorization.removeprefix("Bearer ").strip()).insured_id
+    payload = decode_access_token(authorization.removeprefix("Bearer ").strip())
+    # Un profil de sante n'a pas la permission `rag:interroger` : sans ce
+    # controle, la route serait ouverte a un role que la matrice exclut.
+    ensure_permission(payload.role, "rag:interroger")
+    return payload.insured_id
 
 
 @router.post("/question", response_model=AskResponse)
