@@ -58,6 +58,13 @@ LLM_CALL_LATENCY = Histogram(
     buckets=(0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0),
 )
 
+# Cout LLM estime : la somme des couts comptes alimente la courbe FinOps.
+LLM_COST_USD = Counter(
+    "predicare_llm_cost_usd",
+    "Cout LLM estime en USD (prix configurable par sens)",
+    ["service", "model"],
+)
+
 # Semantic caching : gain demontre devant le jury
 CACHE_EVENTS = Counter(
     "predicare_semantic_cache_total",

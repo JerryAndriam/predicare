@@ -19,6 +19,7 @@ from pydantic import SecretStr
 from predicare import metrics
 from predicare.config import get_settings
 from predicare.logging_config import get_logger
+from predicare_rag_api.finops import estimer_cout
 from predicare_rag_api.guardrails import SYSTEM_PROMPT, build_user_context_block
 from predicare_rag_api.retriever import ContractRetriever, Source
 from predicare_rag_api.sql_tool import InsuredHistoryTool
@@ -32,10 +33,53 @@ SERVICE = "api-rag"
 #: etapes de l'agent et retarder une reponse deja disponible.
 MAX_APPELS_SQL = 2
 
+#: Nombre maximal de tours de session reinjectes dans le prompt. Chaque tour
+#: coute des tokens : la borne est aussi une mesure FinOps.
+MAX_TOURS_HISTORIQUE = 6
+
 
 def _sql_attempt_allowed(count: int) -> bool:
     """Vrai tant que le quota d'appels SQL de la question n'est pas epuise."""
     return count < MAX_APPELS_SQL
+
+
+def _historique_messages(history: list[dict] | None) -> list:
+    """Convertit les tours de session en messages Human/AI.
+
+    Seuls la question et la reponse sont rejouees : les sources precedentes
+    ne sont pas reinjectees, car le contexte de contrat de la question
+    courante est reconstruit par le retriever. Rejouer d'anciennes sources
+    ferait citer des passages hors sujet.
+    """
+    messages: list = []
+    for tour in (history or [])[-MAX_TOURS_HISTORIQUE:]:
+        question = tour.get("question")
+        reponse = tour.get("answer")
+        if not question or not reponse:
+            continue
+        messages.append(HumanMessage(content=str(question)))
+        messages.append(AIMessage(content=str(reponse)))
+    return messages
+
+
+def _merge_sources(*groupes: list[Source]) -> list[Source]:
+    """Fusionne des listes de sources en supprimant les doublons.
+
+    L'identite d'une source est (contrat, article, extrait) : deux passages
+    differents du meme article restent distincts, mais le meme extrait
+    remonte par la recherche initiale et par l'outil n'est cite qu'une fois.
+    Le premier groupe conserve la primaute de l'ordre.
+    """
+    fusionnees: list[Source] = []
+    vues: set[tuple[str, str, str]] = set()
+    for groupe in groupes:
+        for source in groupe:
+            identite = (source.contrat, source.article, source.extrait)
+            if identite in vues:
+                continue
+            vues.add(identite)
+            fusionnees.append(source)
+    return fusionnees
 
 
 class RagAnswer:
@@ -44,6 +88,8 @@ class RagAnswer:
     __slots__ = (
         "answer",
         "cached",
+        "cout_estime_eur",
+        "cout_estime_usd",
         "latency_ms",
         "limite_atteinte",
         "sources",
@@ -64,6 +110,8 @@ class RagAnswer:
         limite_atteinte: bool = False,
         tokens_entree: int = 0,
         tokens_sortie: int = 0,
+        cout_estime_usd: float = 0.0,
+        cout_estime_eur: float = 0.0,
     ) -> None:
         self.answer = answer
         self.sources = sources
@@ -76,6 +124,8 @@ class RagAnswer:
         # part « prompt », qui n'est pas mince sur un agent a outils.
         self.tokens_entree = tokens_entree
         self.tokens_sortie = tokens_sortie
+        self.cout_estime_usd = cout_estime_usd
+        self.cout_estime_eur = cout_estime_eur
 
     def to_dict(self) -> dict:
         return {
@@ -86,6 +136,8 @@ class RagAnswer:
             "tokens": self.tokens,
             "tokens_entree": self.tokens_entree,
             "tokens_sortie": self.tokens_sortie,
+            "cout_estime_usd": self.cout_estime_usd,
+            "cout_estime_eur": self.cout_estime_eur,
             "cache_semantique": self.cached,
             "limite_atteinte": self.limite_atteinte,
         }
@@ -115,9 +167,14 @@ class RagAgent:
             max_completion_tokens=settings.llm_max_tokens,
         )
 
-    def _tools(self, assure_id: str) -> list[BaseTool]:
+    def _tools(self, assure_id: str, sources_outils: list[Source]) -> list[BaseTool]:
         def _rechercher(question: str) -> str:
-            return self._retriever.format_sources(self._retriever.search(question))
+            trouvees = self._retriever.search(question)
+            # Les sources remontees par l'outil doivent apparaitre dans la
+            # reponse finale : c'est la condition pour que le modele puisse
+            # citer un passage qu'il a lui-meme demande.
+            sources_outils.extend(trouvees)
+            return self._retriever.format_sources(trouvees)
 
         def _consulter(requete_sql: str) -> str:
             return self._history.run_agent(requete_sql, assure_id=assure_id)
@@ -141,8 +198,19 @@ class RagAgent:
         )
         return [search_documents, read_history]
 
-    def ask(self, question: str, *, assure_id: str | None) -> RagAnswer:
-        """Repond a une question d'assure en citant ses sources."""
+    def ask(
+        self,
+        question: str,
+        *,
+        assure_id: str | None,
+        history: list[dict] | None = None,
+    ) -> RagAnswer:
+        """Repond a une question d'assure en citant ses sources.
+
+        `history` porte les tours precedents de la meme session (deja bornes
+        au scope de l'assure par l'appelant). Les sources precedentes ne sont
+        pas reinjectees : seul le fil de la conversation l'est.
+        """
         started = time.perf_counter()
 
         message = HumanMessage(content=build_user_context_block(question, assure_id))
@@ -154,13 +222,15 @@ class RagAgent:
             {"outil": "rechercher_contrats", "sources": len(sources), "resultat": "ok"}
         ]
 
-        tools = self._tools(assure_id or "")
+        sources_outils: list[Source] = []
+        tools = self._tools(assure_id or "", sources_outils)
         tool_map = {tool.name: tool for tool in tools}
         llm_avec_outils = self._llm.bind_tools(tools)
 
         messages: list = [
             SystemMessage(content=SYSTEM_PROMPT),
             SystemMessage(content=contexte),
+            *_historique_messages(history),
             message,
         ]
 
@@ -268,15 +338,24 @@ class RagAgent:
             )
 
         latency_ms = (time.perf_counter() - started) * 1000
+        cout = estimer_cout(
+            tokens_entree,
+            tokens_sortie,
+            prix_entree_par_million_usd=self._settings.llm_input_cost_per_million_usd,
+            prix_sortie_par_million_usd=self._settings.llm_output_cost_per_million_usd,
+            taux_usd_eur=self._settings.taux_usd_eur,
+        )
         metrics.LLM_TOKENS.labels(SERVICE, self._model_name, "prompt").inc(tokens_entree)
         metrics.LLM_TOKENS.labels(SERVICE, self._model_name, "completion").inc(tokens_sortie)
+        metrics.LLM_COST_USD.labels(SERVICE, self._model_name).inc(cout["cout_total_usd"])
         metrics.LLM_CALL_LATENCY.labels(SERVICE, self._model_name, "ok").observe(
             time.perf_counter() - started
         )
 
+        sources_finales = _merge_sources(sources, sources_outils)
         return RagAnswer(
             answer=texte,
-            sources=[source.to_dict() for source in sources],
+            sources=[source.to_dict() for source in sources_finales],
             steps=steps,
             latency_ms=round(latency_ms, 2),
             tokens=tokens_entree + tokens_sortie,
@@ -284,6 +363,8 @@ class RagAgent:
             limite_atteinte=limite_atteinte,
             tokens_entree=tokens_entree,
             tokens_sortie=tokens_sortie,
+            cout_estime_usd=cout["cout_total_usd"],
+            cout_estime_eur=cout["cout_total_eur"],
         )
 
 

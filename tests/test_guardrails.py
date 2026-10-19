@@ -236,3 +236,18 @@ def test_prompt_systeme_corrige_les_faux_premisses() -> None:
 
 def test_prompt_systeme_cite_le_fichier_source() -> None:
     assert "source_fichier" in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_impose_la_devise_ariary() -> None:
+    """Les contrats sont libelles en MGA : une conversion en euros serait
+    une invention de montant, deja interdite par ailleurs."""
+    assert "Ariary (MGA)" in SYSTEM_PROMPT
+    assert "Ne convertis jamais en euros" in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_interdit_de_deviner_la_formule() -> None:
+    """Sans formule precisee, le modele doit citer les valeurs par formule
+    plutot que d'en choisir une au hasard."""
+    assert "ne choisis pas une formule au hasard" in SYSTEM_PROMPT
+    assert "le taux depend de la formule" in SYSTEM_PROMPT
+    assert "formules presentes dans les sources" in SYSTEM_PROMPT

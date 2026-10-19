@@ -75,6 +75,19 @@ class Settings(BaseSettings):
     semantic_cache_threshold: float = 0.95
     semantic_cache_ttl_seconds: int = 86400
 
+    # Memoire de session (Phase C). Le TTL et le nombre de tours sont bornes
+    # par defaut : une conversation n'a pas besoin de rejouer tout un
+    # historique, et chaque tour supplementaire coute des tokens de prompt.
+    session_ttl_seconds: int = 3600
+    session_max_turns: int = 6
+
+    # FinOps (Phase F) : tarifs LLM configurable, en USD par million de
+    # tokens, et taux de conversion indicatif. Les valeurs par defaut
+    # correspondent a un petit modele ; elles doivent suivre la grille reelle.
+    llm_input_cost_per_million_usd: float = 0.15
+    llm_output_cost_per_million_usd: float = 0.60
+    taux_usd_eur: float = 0.92
+
     # LLM (jamais en clair dans le code)
     llm_api_base: str = ""
     llm_api_key: str = ""

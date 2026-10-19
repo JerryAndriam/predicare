@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from predicare import db
 from predicare.auth import decode_access_token
-from predicare.config import get_settings
+from predicare.config import Settings, get_settings
 from predicare.errors import PrediCareError, UnauthorizedError
 from predicare.http import (
     ObservabilityMiddleware,
@@ -27,6 +28,11 @@ from predicare_rag_api.agent import RagAgent
 from predicare_rag_api.guardrails import sanitize_question
 from predicare_rag_api.retriever import ContractRetriever, PgVectorContractStore
 from predicare_rag_api.semantic_cache import SemanticCache
+from predicare_rag_api.session import (
+    InMemorySessionStore,
+    RedisSessionStore,
+    SessionStore,
+)
 from predicare_rag_api.sql_tool import InsuredHistoryTool
 
 logger = get_logger(SERVICE_NAME)
@@ -38,6 +44,9 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(min_length=1, max_length=1000)
+    #: Identifiant de conversation choisi par le client. Facultatif : sans
+    #: lui, l'assistant repond sans memoire, comme avant.
+    session_id: str | None = Field(default=None, max_length=64)
 
 
 class AskResponse(BaseModel):
@@ -54,6 +63,19 @@ class AskResponse(BaseModel):
     # chiffrer separement le prompt et la completion.
     tokens_entree: int = 0
     tokens_sortie: int = 0
+    # Estimation FinOps. Nulle sur un succes de cache : aucun LLM n'a ete appele.
+    cout_estime_usd: float = 0.0
+    cout_estime_eur: float = 0.0
+
+
+def _tour(question: str, answer: str, sources: list[dict]) -> dict:
+    """Un tour de session, serialisable en JSON."""
+    return {
+        "question": question,
+        "answer": answer,
+        "sources": list(sources),
+        "timestamp": time.time(),
+    }
 
 
 def porteuse(authorization: str = Header(default="")) -> str | None:
@@ -92,23 +114,51 @@ def ask(
 
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
+    sessions: SessionStore = request.app.state.sessions
     if not x_rag_no_cache:
         entree = cache.get(question, scope=scope)
         if entree is not None:
             logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))
+            # Un succes de cache est une reponse valide pour cette session :
+            # le tour est memorise, avec un cout nul.
+            if payload.session_id:
+                sessions.append(
+                    scope,
+                    payload.session_id,
+                    _tour(question, entree.answer, entree.sources),
+                )
             return AskResponse(
                 reponse=entree.answer,
                 sources=entree.sources,
                 etapes_agent=[{"outil": "cache_semantique", "resultat": "hit"}],
                 latence_ms=0.0,
                 tokens=0,
+                tokens_entree=0,
+                tokens_sortie=0,
+                cout_estime_usd=0.0,
+                cout_estime_eur=0.0,
                 cache_semantique=True,
                 limite_atteinte=False,
             )
 
-    resultat = agent.ask(question, assure_id=assure_id)
+    # L'historique est lu uniquement dans le scope du jeton : une session
+    # identique appartenant a un autre assure reste invisible.
+    historique = sessions.get(scope, payload.session_id) if payload.session_id is not None else []
+    resultat = agent.ask(question, assure_id=assure_id, history=historique)
     if not x_rag_no_cache:
-        cache.put(question, resultat.answer, resultat.sources, scope=scope)
+        cache.put(
+            question,
+            resultat.answer,
+            resultat.sources,
+            scope=scope,
+            latency_ms=resultat.latency_ms,
+        )
+    if payload.session_id:
+        sessions.append(
+            scope,
+            payload.session_id,
+            _tour(question, resultat.answer, resultat.sources),
+        )
     return AskResponse(**resultat.to_dict())
 
 
@@ -131,6 +181,27 @@ def security_posture() -> dict:
     }
 
 
+def _creer_session_store(settings: Settings) -> SessionStore:
+    """Redis si disponible, memoire locale sinon.
+
+    Une panne de Redis au demarrage ne doit pas empecher le service de
+    repondre : on degrade la memoire de session, pas l'assistant.
+    """
+    redis_store = RedisSessionStore(
+        settings.redis_url,
+        ttl_seconds=settings.session_ttl_seconds,
+        max_turns=settings.session_max_turns,
+    )
+    if redis_store.ping():
+        logger.info("session.redis_pret", url=settings.redis_url)
+        return redis_store
+    logger.warning("session.repli_memoire", url=settings.redis_url)
+    return InMemorySessionStore(
+        ttl_seconds=settings.session_ttl_seconds,
+        max_turns=settings.session_max_turns,
+    )
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(SERVICE_NAME, settings.log_level, settings.log_format)
@@ -138,6 +209,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         publish_build(SERVICE_NAME, __version__)
+        app.state.sessions = _creer_session_store(settings)
         try:
             store = PgVectorContractStore(settings.db_url)
             retriever = ContractRetriever(
@@ -172,6 +244,12 @@ def create_app() -> FastAPI:
     )
     app.state.service = SERVICE_NAME
     app.state.version = __version__
+    # Valeur par defaut utilisable hors lifespan (tests unitaires de la
+    # route) : le lifespan la remplace par Redis ou un repli memoire.
+    app.state.sessions = InMemorySessionStore(
+        ttl_seconds=settings.session_ttl_seconds,
+        max_turns=settings.session_max_turns,
+    )
 
     app.add_middleware(
         CORSMiddleware,

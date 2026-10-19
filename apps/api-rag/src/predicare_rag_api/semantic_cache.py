@@ -47,6 +47,9 @@ class CacheHit:
     created_at: float = 0.0
     vector: list[float] | None = None
     scope: str = ""
+    #: Latence (ms) de l'appel LLM d'origine. Elle est rejouee en negatif
+    #: dans les statistiques : c'est le temps que le cache a evite.
+    latency_ms: float = 0.0
 
 
 class SemanticCache:
@@ -64,6 +67,7 @@ class SemanticCache:
         threshold: float = 0.95,
         ttl_seconds: int = 86400,
         max_entries: int = 500,
+        cout_moyen_appel_eur: float = 0.002,
     ) -> None:
         if not 0.0 < threshold <= 1.0:
             raise ValueError("Le seuil du cache semantique doit etre dans ]0, 1].")
@@ -71,8 +75,13 @@ class SemanticCache:
         self._threshold = threshold
         self._ttl = ttl_seconds
         self._max_entries = max_entries
+        self._cout_moyen_appel_eur = cout_moyen_appel_eur
         self._entries: dict[str, CacheHit] = {}
         self._order: list[str] = []
+        # Gains cumules mesures sur les succes : latence epargnee et nombre
+        # d'appels LLM evites. Ce sont des mesures, pas des projections.
+        self._latence_evitee_ms = 0.0
+        self._nombre_appels_evites = 0
 
     # ------------------------------------------------------------------ API
     def get(self, question: str, *, scope: str | None = None) -> CacheHit | None:
@@ -109,8 +118,11 @@ class SemanticCache:
 
         if best_key is not None and best_score >= self._threshold:
             metrics.CACHE_EVENTS.labels(SERVICE, "hit").inc()
+            entry = self._entries[best_key]
+            self._latence_evitee_ms += entry.latency_ms
+            self._nombre_appels_evites += 1
             logger.info("cache.succes", similarite=round(best_score, 4), question_cle=best_key)
-            return self._entries[best_key]
+            return entry
 
         metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
         return None
@@ -122,11 +134,13 @@ class SemanticCache:
         sources: list[dict] | None = None,
         *,
         scope: str | None = None,
+        latency_ms: float = 0.0,
     ) -> None:
         """Memorise une reponse repetee au-dela du seuil de similarite.
 
         La cle inclut le `scope` : deux assures ne peuvent pas ecraser ni
         relire l'entree l'un de l'autre, meme sur une question identique.
+        `latency_ms` est la latence de l'appel LLM evite par ce succes.
         """
         scope_cle = scope or ""
         key = hashlib.sha256(f"{scope_cle}|{question}".encode()).hexdigest()[:16]
@@ -147,6 +161,7 @@ class SemanticCache:
             created_at=time.time(),
             vector=vecteur,
             scope=scope_cle,
+            latency_ms=max(0.0, float(latency_ms)),
         )
         self._order.append(key)
         metrics.CACHE_EVENTS.labels(SERVICE, "ecriture").inc()
@@ -158,15 +173,27 @@ class SemanticCache:
         appele = total + miss
         return {
             "entrees": len(self._entries),
+            # `taille` et `entrees` sont la meme mesure, mais la premiere est
+            # le nom attendu par l'ecran d'administration.
+            "taille": len(self._entries),
             "seuil_similarite": self._threshold,
             "hits": total,
             "miss": miss,
             "taux_de_reutilisation": (total / appele) if appele else 0.0,
+            # Gain mesure : latence des appels evites et cout correspondant,
+            # estime avec un cout moyen par appel (donc une ESTIMATION).
+            "latence_evitee_ms": round(self._latence_evitee_ms, 2),
+            "nombre_appels_evites": self._nombre_appels_evites,
+            "cout_evite_eur": round(self._nombre_appels_evites * self._cout_moyen_appel_eur, 6),
+            "cout_moyen_appel_eur": self._cout_moyen_appel_eur,
+            "estimation": True,
         }
 
     def clear(self) -> None:
         self._entries.clear()
         self._order.clear()
+        self._latence_evitee_ms = 0.0
+        self._nombre_appels_evites = 0
 
     def _purge_expired(self) -> None:
         """Retire les entrees plus anciennes que la duree de vie configuree."""

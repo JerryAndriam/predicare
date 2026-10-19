@@ -79,7 +79,7 @@ ignore = [
 "apps/*/src/*/router.py" = ["ARG001", "ARG005"]
 # Les fixtures pytest non utilisees dans un test restent une signature
 # explicite : c'est ce qui documente ce que le test recoit.
-"tests/**" = ["ARG001", "ARG005"]
+"tests/**" = ["ARG001", "ARG002", "ARG005"]
 # ML : `X` et `y` sont les noms universels d'une matrice de variables et d'un
 # vecteur de cible. Les renommer rendrait le code moins lisible, pas plus.
 "apps/ml-training/**" = ["N803", "N806"]

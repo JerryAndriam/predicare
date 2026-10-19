@@ -309,3 +309,63 @@ def test_entree_expose_le_scope(cache: SemanticCache) -> None:
 
     assert entree is not None
     assert entree.scope == "assure-A"
+
+
+# --------------------------------------------------------------- latence et cout
+
+
+def test_succes_cumule_la_latence_evitee(cache: SemanticCache) -> None:
+    cache.put("Question ?", "Reponse.", latency_ms=1250.0)
+
+    cache.get("Question ?")
+    cache.get("Question ?")
+
+    stats = cache.stats()
+
+    assert stats["latence_evitee_ms"] == pytest.approx(2500.0)
+    assert stats["nombre_appels_evites"] == 2
+
+
+def test_cout_evite_est_une_estimation_configurable(embedder: EmbedderFictif) -> None:
+    cache = SemanticCache(embedder, threshold=0.95, cout_moyen_appel_eur=0.01)
+    cache.put("Question ?", "Reponse.", latency_ms=10.0)
+
+    cache.get("Question ?")
+
+    stats = cache.stats()
+
+    assert stats["cout_evite_eur"] == pytest.approx(0.01)
+    assert stats["cout_moyen_appel_eur"] == pytest.approx(0.01)
+    assert stats["estimation"] is True
+
+
+def test_stats_conserve_les_cles_attendues(cache: SemanticCache) -> None:
+    cache.put("Question ?", "Reponse.")
+    cache.get("Question ?")
+
+    stats = cache.stats()
+
+    for cle in (
+        "entrees",
+        "seuil_similarite",
+        "hits",
+        "miss",
+        "taux_de_reutilisation",
+        "taille",
+        "latence_evitee_ms",
+        "cout_evite_eur",
+    ):
+        assert cle in stats
+    assert stats["taille"] == stats["entrees"]
+
+
+def test_vidage_reinitialise_les_gains(cache: SemanticCache) -> None:
+    cache.put("Question ?", "Reponse.", latency_ms=50.0)
+    cache.get("Question ?")
+
+    cache.clear()
+
+    stats = cache.stats()
+    assert stats["latence_evitee_ms"] == 0.0
+    assert stats["nombre_appels_evites"] == 0
+    assert stats["cout_evite_eur"] == 0.0
