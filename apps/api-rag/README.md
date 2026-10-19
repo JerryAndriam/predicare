@@ -334,10 +334,11 @@ efficace — au prix de la précision de la recherche.
 
 ### Dernière évaluation
 
-Quatrième exécution versionnée : [`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json),
-après le segmentage de l'article 7 par type de soins. La cinquième
-([`reports/eval_rag_2026-10-19_5.json`](../../reports/eval_rag_2026-10-19_5.json))
-confirme les mêmes scores après les correctifs de revue.
+Cinquième exécution versionnée : [`reports/eval_rag_2026-10-19_5.json`](../../reports/eval_rag_2026-10-19_5.json).
+Elle suit le segmentage de l'article 7 par type de soins (quatrième exécution,
+[`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json))
+et les correctifs de revue : elle est la première dont les citations portent
+l'orthographe unique du contrat.
 
 | Mesure | Valeur |
 | --- | --- |

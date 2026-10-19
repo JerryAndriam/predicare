@@ -345,7 +345,7 @@ class InsuredHistoryTool:
 
         Le LLM doit pouvoir lire `type_erreur`, `forme_attendue` et
         `exemple` pour corriger sa requete, au lieu de recevoir une simple
-        chaine d'erreur qu'il risque de répéter a l'identique.
+        chaine d'erreur qu'il risque de repeter a l'identique.
 
         Une panne du service d'historique porte un `type_erreur`
         `indisponible` et un conseil different : rejouer la requete ne
