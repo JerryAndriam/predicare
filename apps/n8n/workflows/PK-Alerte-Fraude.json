@@ -95,32 +95,43 @@
     },
     {
       "parameters": {
-        "chatType": "channel",
-        "select": "channel",
-        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
-        "text": "={{ '🚨 *Alerte fraude — ' + $json.facture_id + '*\\nScore *' + $json.score_fraude + '* (seuil de notification ' + $env.SEUIL_NOTIFICATION_SLACK + ')\\n\\n' + $json.rapport_shap + '\\n\\n_Modèle ' + $json.model_version + ' · seuil de détection ' + $json.seuil_applique + '_' }}",
-        "otherOptions": {}
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: '🚨 *Alerte fraude — ' + $json.facture_id + '*\\nScore *' + $json.score_fraude + '* (seuil de notification ' + $env.SEUIL_NOTIFICATION_SLACK + ')\\n\\n' + $json.rapport_shap + '\\n\\n_Modèle ' + $json.model_version + ' · seuil de détection ' + $json.seuil_applique + '_' }) }}",
+        "options": {}
       },
       "id": "a1000000-0000-4000-8000-000000000007",
       "name": "Notifier Slack",
-      "type": "n8n-nodes-base.slack",
-      "typeVersion": 2.7,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         700,
         -120
       ],
       "onError": "continueRegularOutput",
       "alwaysOutputData": true,
-      "notes": "EXIGE une credential Slack creee dans l'interface n8n : aucun webhook n'est versionne dans ce fichier, c'est un choix de securite. `onError: continueRegularOutput` rend l'echec non bloquant — sur une machine ou la credential n'est pas encore creee, l'execution continue et l'e-mail part quand meme."
+      "notes": "Notification par WEBHOOK ENTRANT Slack (`SLACK_WEBHOOK_URL`) et non par credential OAuth : le webhook entrant ne demande aucun scope et ne peut pas etre bloque par une application Slack mal configuree. Il est lie au salon choisi lors de sa creation, donc `SLACK_CHANNEL_ID` ne sert plus ici. Le corps est un objet `{ text }`, format attendu par Slack. `onError` rend l'echec non bloquant : une panne Slack ne doit pas empecher l'e-mail de partir ni l'API d'avoir deja ecrit la prediction."
     },
     {
       "parameters": {
         "fromEmail": "={{ $env.SMTP_FROM }}",
         "toEmail": "={{ $env.SMTP_GESTIONNAIRE }}",
-        "subject": "={{ '🚨 Alerte fraude — ' + $json.facture_id }}",
+        "subject": "={{ '🚨 Alerte fraude — ' + $(\"Invoquer l'API d'inference\").first().json.facture_id + ' (score ' + $(\"Invoquer l'API d'inference\").first().json.score_fraude + ')' }}",
         "emailFormat": "text",
-        "message": "={{ $json.rapport_shap }}",
-        "options": {}
+        "options": {},
+        "text": "={{ $(\"Invoquer l'API d'inference\").first().json.rapport_shap }}"
       },
       "id": "a1000000-0000-4000-8000-00000000000a",
       "name": "Notifier par e-mail",
@@ -132,7 +143,13 @@
       ],
       "onError": "continueRegularOutput",
       "alwaysOutputData": true,
-      "notes": "Option demandee par le plan d'action. EXIGE une credential SMTP creee dans l'interface n8n (Settings > Credentials > SMTP), meme vers Mailpit qui n demande aucun mot de passe. Sans elle le noeud echoue — `onError` le rend non bloquant, mais rien n'est envoye : c'est le seul noeud qui ne peut pas fonctionner sans configuration prealable."
+      "notes": "Le noeud lit la reponse de l'API par son NOM (`$(\"Invoquer l'API d'inference\")`), pas `$json` : le noeud precedent est Slack, donc `$json` ne contient que `{ data: \"ok\" }`. C'est le piege qui faisait afficher « undefined » dans le sujet.",
+      "credentials": {
+        "smtp": {
+          "id": "MailpitDev000001",
+          "name": "Mailpit (dev)"
+        }
+      }
     },
     {
       "parameters": {},
