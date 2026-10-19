@@ -53,7 +53,6 @@ DATA_RAW_DIR = Path(os.environ.get("DATA_RAW_DIR", "/data/raw"))
 #: Dossier du rapport de qualite (le volume des donnees est monte en lecture seule).
 RAPPORT_DIR = Path(os.environ.get("RAPPORT_DIR", "/tmp"))
 
-
 def _relire_brut(dossier: Path) -> dict[str, pd.DataFrame]:
     """Relit les CSV sans interpretation, pour la porte d'integrite.
 
