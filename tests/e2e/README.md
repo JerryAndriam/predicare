@@ -55,17 +55,29 @@ défini : la suite `pytest` reste verte sans la pile démarrée.
 PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
 ```
 
+Le mot de passe de démonstration vient de `DEMO_PASSWORD` : il n'est codé en
+dur nulle part dans le dépôt. `make comptes` en génère un aléatoire et
+l'affiche **une seule fois** — sans cette variable, le parcours est ignoré
+avec le message qui indique la commande à lancer :
+
+```sh
+DEMO_PASSWORD='<mot-de-passe>' make comptes   # ou notez celui affiché
+DEMO_PASSWORD='<mot-de-passe>' PREDICARE_E2E=1 \
+  uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
+```
+
 Le même parcours existe sous forme de script autonome, utile pour un jury
 qui veut voir la trace des vérifications sans pytest :
 
 ```sh
-scripts/e2e_rag.sh
+DEMO_PASSWORD='<mot-de-passe>' scripts/e2e_rag.sh
 ```
 
 Le script sort en erreur dès qu'une vérification échoue et affiche un résumé
-(`11 réussites, 0 échec(s)`). Il ne code en dur aucun secret : le mot de passe
-de démonstration vient de `DEMO_PASSWORD` (avec une valeur par défaut pour la
-pile locale).
+(`11 réussites, 0 échec(s)`). Il ne code en dur aucun secret : sans
+`DEMO_PASSWORD`, il s'arrête avant toute requête avec le message
+`DEMO_PASSWORD non defini. Lancez : DEMO_PASSWORD='<mot-de-passe>' make comptes (le mot de passe est affiché une seule fois)`.
+Le mot de passe n'est jamais imprimé dans la sortie.
 
 ## Brouillon / TODO
 

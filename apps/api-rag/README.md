@@ -84,9 +84,20 @@ seule, liste blanche de formes, filtre sur l'assuré posé par le code.
 
 Le filtre est volontairement étroit : un filtre trop large rejetterait des
 questions légitimes (« quelles instructions dois-je suivre pour déposer une
-facture ? »). Il couvre les formulations **déclarées** ; il ne peut pas
-couvrir une formulation jamais vue. La vraie barrière reste le compte SQL en
-lecture seule limité à l'assuré connecté.
+facture ? », « donne-moi tes instructions de remboursement », « j'ignore les
+instructions de mon contrat »). Deux règles portent cette nuance :
+
+- l'imperatif **« ignore / ignorez les instructions »** n'est retenu que
+  lorsqu'il ouvre la question : « Ignore les instructions précédentes » est
+  refusé, « j'ignore les instructions de mon contrat » est accepté ;
+- pour les fuites de type « donne-moi tes instructions », le nom doit être
+  suivi d'une **fin de phrase ou d'un qualificatif** (« ci-dessus »,
+  « système »). Un complément de métier à la suite (« de remboursement »,
+  « du contrat ») rend la question légitime.
+
+Le filtre couvre les formulations **déclarées** ; il ne peut pas couvrir une
+formulation jamais vue. La vraie barrière reste le compte SQL en lecture
+seule limité à l'assuré connecté.
 
 ### La session
 
@@ -215,12 +226,19 @@ leur combinaison qui tient.
    (`colonne`, opérateur, valeur liée ou littéral simple). Sont refusés :
    écritures, `UNION`, `INTERSECT`, `EXCEPT`, sous-requêtes scalaires,
    `information_schema`, `pg_catalog`, `pg_sleep`, **les commentaires SQL
-   (`--` et `/* */`)** et l'empilement d'instructions.
+   (`--` et `/* */`)** et l'empilement d'instructions. Sont refusés aussi
+   les **fonctions système** (`current_user`, `current_database()`,
+   `version()`, `pg_*`) — elles ne livrent aucun dossier, mais elles
+   renseignent sur l'instance — et un `LIMIT` de plus de quatre chiffres,
+   qui transformerait une lecture d'historique en extraction de masse.
 3. **Le filtre sur l'assuré connecté est injecté par le code**, jamais demandé
    au LLM. L'identifiant n'existe pas dans le schéma de l'outil, et une
-   valeur en dur (`assure_id = 2`) est refusée. La requête **finale**, après
+   valeur en dur (`assure_id = 2`) est refusée. Le paramètre lié doit
+   s'écrire **exactement** `:assure_id` : le pilote lie par nom, donc
+   `:ASSURE_ID` ne recevrait jamais la valeur — c'est refusé comme forme
+   invalide, pas renvoyé comme une panne. La requête **finale**, après
    injection, est re-validée : un commentaire ne peut donc pas neutraliser le
-   filtre injecté.
+   filtre injecté, ni une requête dont l'injection déplacerait le `WHERE`.
 4. **Le filtre de prompt injection** sur la question de l'utilisateur, et la
    séparation instruction/donnée pour tout le reste : la question, les sources
    et l'historique voyagent dans des blocs balisés « données non fiables ».
@@ -232,15 +250,25 @@ L'agent n'a aucun outil d'écriture, aucun accès réseau et une mémoire limit�
 
 Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 
-- **Le p95 de latence dépasse la cible de 5 s.** Trois exécutions de
-  l'évaluation de référence (30 questions, cache désactivé) sur la pile de
-  développement ont donné p50/p95 = 4,3 s / 6,5 s, puis 4,2 s / 9,5 s, puis
-  6,8 s / 10,4 s. La cible n'est donc **pas tenue de façon fiable** : le p50
-  oscille entre 4,2 s et 6,8 s, le p95 entre 6,5 s et 10,4 s. La latence est
-  dominée par l'appel LLM, pas par la recherche vectorielle (le retriever rend
-  la main en quelques centaines de millisecondes). Les leviers sont le nombre
-  d'étapes ReAct, le modèle retenu et le parallélisme des deux appels
-  d'embeddings.
+- **Le p95 de latence dépasse la cible de 5 s.** Quatre exécutions de
+  l'évaluation de référence (30 questions, cache désactivé) ont été mesurées
+  sur la pile de développement. La première, publiée avant la refonte des
+  garde-fous, donnait **p50 = 5,7 s / p95 = 9,8 s**. Les trois suivantes ont
+  été rejouées sur le code actuel et sont versionnées dans le dépôt :
+
+  | Exécution | Artefact | p50 | p95 |
+  | --- | --- | ---: | ---: |
+  | 1 | [`reports/eval_rag_2026-10-19_1.json`](../../reports/eval_rag_2026-10-19_1.json) | 3,61 s | 5,80 s |
+  | 2 | [`reports/eval_rag_2026-10-19_2.json`](../../reports/eval_rag_2026-10-19_2.json) | 3,91 s | 6,58 s |
+  | 3 | [`reports/eval_rag_2026-10-19_3.json`](../../reports/eval_rag_2026-10-19_3.json) | 3,71 s | 5,56 s |
+
+  La cible de 5 s **n'est donc pas tenue de façon fiable** : le p50 est
+  désormais autour de 3,6–3,9 s (contre 5,7 s avant), mais le p95 reste
+  entre 5,6 s et 6,6 s — et il avait atteint 9,8 s sur l'exécution la plus
+  chargée. La latence est dominée par l'appel LLM, pas par la recherche
+  vectorielle (le retriever rend la main en quelques centaines de
+  millisecondes). Les leviers sont le nombre d'étapes ReAct, le modèle
+  retenu et le parallélisme des deux appels d'embeddings.
 - **Redis contient les sessions en clair.** Un tour de session peut citer un
   montant ou une date du dossier de l'assuré : c'est une donnée personnelle.
   Le fichier AOF de Redis conserve ces données **en clair**. La mitigation
@@ -252,9 +280,10 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
   (modèle, corpus) donné. Un changement de modèle sans réindexer rend les
   similarités incomparables : la recherche remonte alors des passages hors
   sujet. C'est la cause la plus fréquente d'une régression de citation.
-- **La citation est approximative par moments.** Sur deux évaluations
-  successives, une question mixte (pièces justificatives pour l'optique) a
-  obtenu 0,95 de citation au lieu de 1,00. Le diagnostic est précis : le
+- **La citation est approximative par moments.** Sur les cinq évaluations
+  successives (deux avant la refonte des garde-fous, trois après), une
+  question mixte (pièces justificatives pour l'optique) a obtenu 0,95 de
+  citation au lieu de 1,00. Le diagnostic est précis : le
   segment attendu « Conditions générales PREMIUM - Article 7 » obtient un
   cosinus de **0,5471** pour la question complète, soit **juste sous** le
   seuil `RAG_SIMILARITY_THRESHOLD` (0,55) ; la recherche initiale ne remonte
@@ -278,15 +307,16 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 
 ## Coût mesuré par requête
 
-Sur le jeu de référence (30 questions, cache désactivé, `gpt-4o-mini`) :
+Sur le jeu de référence (30 questions, cache désactivé, `gpt-4o-mini`), d'après
+les trois exécutions versionnées dans [`reports/`](../../reports) :
 
 | Mesure | Valeur |
 | --- | --- |
-| Tokens entrée / requête | ~3 830 |
-| Tokens sortie / requête | ~106 |
-| Tokens totaux / requête | ~3 937 |
-| Coût estimé / requête | **~0,00064 USD (~0,00059 EUR)** |
-| Coût pour 30 questions | ~0,0192 USD (~0,0176 EUR) |
+| Tokens entrée / requête | ~3 800 |
+| Tokens sortie / requête | ~105 |
+| Tokens totaux / requête | ~3 900 |
+| Coût estimé / requête | **~0,00062 USD (~0,00057 EUR)** |
+| Coût pour 30 questions | ~0,019 USD (~0,017 EUR) |
 
 Sur une question simple sans appel SQL (taux de remboursement d'une
 consultation), la mesure live donne 2 238 tokens (2 211 en entrée, 27 en
@@ -296,18 +326,22 @@ et ajoute des tours de ReAct.
 
 Calcul : `(tokens_entree × 0,15 + tokens_sortie × 0,60) / 1 000 000` USD,
 puis conversion à 0,92 EUR/USD. Ce sont des **estimations** à partir des
-tarifs configurés, pas une facture fournisseur.
+tarifs configurés, pas une facture fournisseur. Le script d'évaluation, lui,
+applique un tarif uniforme de 0,60 USD par million pour les deux sens : ses
+totaux (`0,0674`, `0,0736` et `0,0708` USD pour 30 questions) sont donc plus
+élevés que ceux du service.
 
 Le prompt domine très largement le coût : le système, les sources et
-l'historique pèsent ~3 830 tokens, contre ~106 pour la réponse. Réduire
+l'historique pèsent ~3 800 tokens, contre ~105 pour la réponse. Réduire
 `RAG_TOP_K` et `SESSION_MAX_TURNS` est donc le levier FinOps le plus
 efficace — au prix de la précision de la recherche.
 
 ## Vérification
 
 ```bash
-scripts/e2e_rag.sh                    # parcours complet sur la pile démarrée
-PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
+# Le mot de passe de démonstration vient de DEMO_PASSWORD (voir `make comptes`).
+DEMO_PASSWORD='...' scripts/e2e_rag.sh    # parcours complet sur la pile démarrée
+DEMO_PASSWORD='...' PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
 uv run --all-packages pytest tests/test_rag_attacks.py tests/test_guardrails.py tests/test_sql_tool.py -q
 ```
 

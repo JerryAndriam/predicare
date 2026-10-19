@@ -153,8 +153,15 @@ l'interface, avec l'email saisi par le visiteur, et **le mot de passe n'est
 | Commande | Effet |
 | --- | --- |
 | `make reload-data` | Recharge `data/raw/` : purge puis 14 tables, en une transaction. |
+| `make seed-rag` | Indexe le corpus de contrats PDF dans pgvector (`core.document_vectorise`). Sans effet si l'index existe déjà ; reconstruire avec `ingest_rag --apply --force` (voir `db/seeds/README.md`). |
+| `make comptes` | Crée les quatre comptes de démonstration (assuré, professionnel, gestionnaire, admin). Le mot de passe vient de `DEMO_PASSWORD` ; sinon il est généré au hasard et **affiché une seule fois**. |
 | `make migrate` | Applique les migrations en attente. |
 | `make db-status` | Compare la version du schéma en base et celle attendue par le code. |
+
+`make comptes` est l'étape qui rend l'interface utilisable : après les
+migrations, `core.utilisateur` est vide et **aucun mot de passe n'est codé en
+dur dans le dépôt**. Le mot de passe généré n'est affiché qu'une fois — notez-le,
+ou fixez-le avec `DEMO_PASSWORD` dans `.env` avant de relancer la commande.
 
 `make db-status` est le garde-fou le plus utile du projet. Le job `migrate`
 étant un one-shot, Compose ne le relance pas spontanément : sans ce contrôle,

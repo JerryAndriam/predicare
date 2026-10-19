@@ -5,9 +5,14 @@ api-rag, PostgreSQL, Redis et le fournisseur LLM. Ils couvrent le parcours
 assure, pas le jeu d'evaluation complet (27 questions) : connexion, garantie
 sourcee, historique SQL, suivi de session, injection refusee et cache.
 
+Le mot de passe de demonstration vient de `DEMO_PASSWORD` : il n'est code en
+dur nulle part. `make comptes` en genere un aleatoire et l'affiche UNE fois ;
+sans cette variable, le parcours est ignore avec le message qui indique la
+commande a lancer.
+
 Usage :
-    PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
-    DEMO_PASSWORD='...' PREDICARE_E2E=1 pytest tests/e2e/test_rag_parcours.py -q
+    DEMO_PASSWORD='...' PREDICARE_E2E=1 \\
+        uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
 """
 
 from __future__ import annotations
@@ -23,8 +28,14 @@ pytestmark = pytest.mark.e2e
 API_CORE_URL = os.getenv("API_CORE_URL", "http://localhost:8001").rstrip("/")
 RAG_URL = os.getenv("RAG_URL", "http://localhost:8003").rstrip("/")
 DEMO_EMAIL = os.getenv("DEMO_EMAIL", "assure@predicare.local")
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "hLz6uKbDZdRA+YOwh5fcGYLU")
 TIMEOUT = float(os.getenv("E2E_TIMEOUT", "120"))
+
+#: Message repris de `scripts/e2e_rag.sh` : les deux chemins d'acces au
+#: parcours doivent dire la meme chose.
+MESSAGE_MOT_DE_PASSE = (
+    "DEMO_PASSWORD non defini. Lancez : DEMO_PASSWORD='<mot-de-passe>' "
+    "make comptes (le mot de passe est affiche une seule fois)"
+)
 
 
 @pytest.fixture(scope="module")
@@ -32,10 +43,14 @@ def client() -> httpx.Client:
     if os.getenv("PREDICARE_E2E") != "1":
         pytest.skip("PREDICARE_E2E=1 requis pour interroger la pile reelle.")
 
+    mot_de_passe = os.getenv("DEMO_PASSWORD", "").strip()
+    if not mot_de_passe:
+        pytest.skip(MESSAGE_MOT_DE_PASSE)
+
     with httpx.Client(timeout=TIMEOUT) as http:
         reponse = http.post(
             f"{API_CORE_URL}/api/core/auth/login",
-            json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD},
+            json={"email": DEMO_EMAIL, "password": mot_de_passe},
         )
         assert reponse.status_code == 200, reponse.text
         http.headers["Authorization"] = f"Bearer {reponse.json()['access_token']}"

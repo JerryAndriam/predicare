@@ -313,3 +313,99 @@ def test_une_requete_legitime_reste_acceptee(outil: InsuredHistoryTool) -> None:
 
     assert outil._validate(requete) == requete
     assert outil._injecter_filtre(requete) == requete
+
+
+def test_la_requete_finale_est_revalidee(outil: InsuredHistoryTool) -> None:
+    """Verrou de regression : la requete finale est re-validee apres injection.
+
+    `run()` enchaine `_validate` puis `_injecter_filtre` puis `_validate` de
+    nouveau. Sans cette re-validation, une requete dont l'injection deplace
+    le WHERE (`SELECT id order by 1 FROM core.facture`) partirait telle quelle
+    vers PostgreSQL : le `WHERE` se retrouverait apres le `ORDER BY`, et la
+    requete serait executee sans filtre d'assure.
+    """
+    requete = "SELECT id order by 1 FROM core.facture"
+
+    with pytest.raises(DataAccessError) as err:
+        outil.run(requete, assure_id="1")
+
+    assert err.value.details["type_erreur"] == "forme_refusee"
+
+
+# ------------------------------------------------- forme du parametre lie (M1)
+
+
+def test_parametre_assure_id_mauvaise_casse_refuse(
+    outil: InsuredHistoryTool,
+) -> None:
+    """`:ASSURE_ID` passe la liste blanche (elle ignore la casse)...
+
+    ...mais le pilote lie les parametres par NOM : `:ASSURE_ID` ne recevrait
+    jamais la valeur de l'assure. L'erreur doit etre une forme refusee, pas
+    une panne du service (« indisponible »).
+    """
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :ASSURE_ID"
+
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate(requete)
+
+    assert erreur.value.details["type_erreur"] == "forme_refusee"
+
+
+def test_parametre_lie_inconnu_refuse(outil: InsuredHistoryTool) -> None:
+    """Seul `:assure_id` peut etre lie : rien d'autre n'est de valeur pour
+    le code, donc rien d'autre ne doit passer la liste blanche."""
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id AND statut = :statut"
+
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate(requete)
+
+    assert erreur.value.details["type_erreur"] == "forme_refusee"
+
+
+def test_parametre_assure_id_bien_ecrit_accepte(outil: InsuredHistoryTool) -> None:
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id"
+
+    assert outil._validate(requete) == requete
+
+
+# --------------------------------------------- fonctions systeme et LIMIT (M3/M4)
+
+#: Fonctions systeme : elles ne livrent aucun dossier d'un autre assure,
+#: mais elles renseignent sur l'instance (role, base, version, adresse).
+REQUETES_FONCTIONS_SYSTEME = [
+    "SELECT current_user FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT session_user FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT current_database() FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT current_schema FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT version() FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT current_setting('server_version') FROM core.facture "
+    "WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT inet_server_addr() FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT pg_catalog_version() FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT pg_backend_pid() FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+]
+
+
+@pytest.mark.parametrize("requete", REQUETES_FONCTIONS_SYSTEME)
+def test_fonctions_systeme_refusees(outil: InsuredHistoryTool, requete: str) -> None:
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate(requete)
+
+    assert erreur.value.details["type_erreur"] in TYPES_REFUS
+
+
+def test_limit_borne_refuse(outil: InsuredHistoryTool) -> None:
+    """Un LIMIT enorme n'est jamais une lecture d'historique legitime."""
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id LIMIT 100000000"
+
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate(requete)
+
+    assert erreur.value.details["type_erreur"] in TYPES_REFUS
+
+
+def test_limit_a_quatre_chiffres_accepte(outil: InsuredHistoryTool) -> None:
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id LIMIT 1000"
+
+    assert outil._validate(requete) == requete

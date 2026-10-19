@@ -15,6 +15,46 @@ make seed-rag
 `data/` est gitignore : 44 Mo de donnees de sante restent hors du depot. Le
 dossier `rag_corpus/` (31 PDF) alimente le RAG et n'est pas charge ici.
 
+## Les comptes de demonstration
+
+```bash
+make comptes
+```
+
+Apres les migrations, `core.utilisateur` est **vide** : aucun mot de passe
+n'est code en dur dans le depot. `make comptes` est l'etape explicite qui rend
+l'interface utilisable — elle cree les quatre comptes du CDC :
+
+| Email | Role | Dossier rattache |
+| --- | --- | --- |
+| `assure@predicare.local` | Assure | oui (le premier dossier de `core.assure`) |
+| `pro@predicare.local` | Professionnel de sante | non |
+| `gestionnaire@predicare.local` | Gestionnaire | non |
+| `admin@predicare.local` | Administrateur | non |
+
+Le mot de passe vient de `DEMO_PASSWORD` (12 caracteres minimum, Argon2id) :
+
+- **si `DEMO_PASSWORD` est defini**, il est applique aux quatre comptes ;
+- **sinon**, un mot de passe aleatoire de 24 caracteres est genere et
+  **affiche UNE seule fois**. Il n'est ecrit dans aucun fichier versionne.
+  Notez-le, ou fixez-le dans `.env` puis relancez `make comptes`.
+
+La commande est idempotente : la relancer met a jour le mot de passe et le
+role au lieu de creer un doublon.
+
+> Ce mot de passe est la seule donnee d'acces dont le script d'evaluation et
+> le parcours de bout en bout ont besoin. **Aucun mot de passe n'est code en
+> dur dans le depot** : `scripts/e2e_rag.sh` et `tests/e2e/test_rag_parcours.py`
+> exigent la variable `DEMO_PASSWORD` et s'arretent avec un message explicite
+> si elle est absente.
+
+Avant de lancer le parcours de bout en bout :
+
+```bash
+DEMO_PASSWORD='<mot-de-passe>' make comptes   # ou notez celui affiche
+DEMO_PASSWORD='<mot-de-passe>' scripts/e2e_rag.sh
+```
+
 ## Les 14 fichiers
 
 | Fichier | Table | Lignes |

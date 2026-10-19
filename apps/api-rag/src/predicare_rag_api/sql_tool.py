@@ -97,7 +97,9 @@ FORME_AUTORISEE = re.compile(
     + _PREDICAT
     + r"))*)?"
     r"(?:\s+ORDER\s+BY\s+[a-zA-Z0-9_\s,]+)?"
-    r"(?:\s+LIMIT\s+\d+)?\s*;?\s*$",
+    # LIMIT borne a quatre chiffres : au-dela, ce n'est plus une lecture
+    # d'historique mais une extraction de masse.
+    r"(?:\s+LIMIT\s+\d{1,4})?\s*;?\s*$",
     re.IGNORECASE,
 )
 
@@ -114,6 +116,23 @@ MOTIFS_REFUSES: tuple[re.Pattern[str], ...] = (
     # L'assure connecte ne doit jamais etre remplace par une valeur en dur :
     # `assure_id = 2` lirait le dossier d'un autre.
     re.compile(r"\bassure_id\s*=\s*(?!:)[^\s,)]+", re.I),
+    # Fonctions systeme : elles ne revelent aucun dossier d'un autre
+    # assure, mais elles renseignent sur l'instance (role, base, version,
+    # adresse du serveur). Une divulgation d'information, meme petite, ne
+    # doit pas passer par la liste blanche.
+    re.compile(
+        r"\b(?:current_user|session_user|current_role|current_database|"
+        r"current_schema|current_catalog|current_setting|current_schemas|"
+        r"user|version|set_config|nextval|txid_current|lo_import|dblink|"
+        r"inet_server_addr|inet_client_addr|pg_notify|pg_terminate_backend|"
+        r"pg_backend_pid)\b",
+        re.I,
+    ),
+    # Tout le reste de la famille `pg_` : statistiques, catalogue, FDO.
+    re.compile(r"\bpg_\w+", re.I),
+    # Un LIMIT enorme n'est jamais legitimate : il transforme une lecture
+    # d'historique en extraction de masse. Quatre chiffres suffisent.
+    re.compile(r"\bLIMIT\s+\d{5,}\b", re.I),
 )
 
 #: Trois modeles prets a l'emploi. Ils sont exposes dans la description de
@@ -221,6 +240,19 @@ class InsuredHistoryTool:
             raise DataAccessError(
                 "Requete refusee : un WHERE doit toujours filtrer sur assure_id = :assure_id.",
                 details=_details_erreur("forme_refusee", motif="filtre_assure_manquant"),
+            )
+        # Le parametre lie doit s'ecrire exactement `:assure_id` : le pilote
+        # lie les parametres par nom, et `:ASSURE_ID` ne recevrait jamais la
+        # valeur de l'assure. La liste blanche ignore la casse, ce qui la
+        # laissait passer ; sans ce controle, l'erreur remontait comme une
+        # panne du service (« indisponible ») au lieu d'une forme refusee.
+        parametres = set(re.findall(r":([a-zA-Z0-9_]+)", structure))
+        inconnus = sorted(parametres - {"assure_id"})
+        if inconnus:
+            logger.warning("sql.parametre_inconnu", parametres=inconnus)
+            raise DataAccessError(
+                "Requete refusee : le parametre lie doit s'ecrire exactement :assure_id.",
+                details=_details_erreur("forme_refusee", motif="parametre_inconnu"),
             )
         return requete
 

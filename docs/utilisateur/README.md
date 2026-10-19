@@ -50,11 +50,28 @@ dossiers. L'assistant consulte la base pour y répondre, il ne devine pas.
 > « Y a-t-il des factures rejetées ? Pourquoi ont-elles été rejetées ? »
 
 **3. Une question de suivi** — enchaînée sur la question précédente, dans la
-même conversation. Le bouton « nouvelle conversation » (ou l'absence de
-`session_id`) remet le contexte à zéro.
+même conversation. Elle n'est possible que si la requête HTTP porte un
+identifiant de session : le client envoie
+
+```json
+POST /api/rag/question
+{ "question": "Et quel est le plafond annuel de l'optique pour cette formule ?",
+  "session_id": "ma-conversation" }
+```
+
+et réutilise **le même `session_id`** pour les questions suivantes. L'historique
+est alors conservé une heure, cloisonné sur votre seul dossier.
 
 > « Quel est le taux de remboursement d'une consultation en formule PREMIUM ? »
 > « Et quel est le plafond annuel de l'optique pour cette formule ? »
+
+**Dans l'interface web actuelle, ce suivi n'est pas encore disponible.** Le
+formulaire de l'espace assuré envoie uniquement la question, sans
+`session_id` : chaque question repart donc sans contexte. La mémoire de
+conversation existe côté service (l'API la prend en charge), mais le lien
+avec l'interface n'est pas fait. En attendant, **une question de suivi doit
+être reposée seule** : « Quel est le plafond annuel de l'optique en formule
+PREMIUM ? » et non « Et pour l'optique ? ».
 
 Le contexte n'est retenu qu'un nombre d'heures, et seulement pour votre
 propre conversation. **Si une question de suivi renvoie une valeur qui ne vous

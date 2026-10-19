@@ -10,20 +10,26 @@
 #   6. une question repetee au premier tour : servie par le cache semantique.
 #
 # Le script sort en erreur des qu'une verification echoue. Il ne code en dur
-# aucun secret : le mot de passe de demonstration vient de DEMO_PASSWORD.
+# aucun secret : le mot de passe de demonstration vient de DEMO_PASSWORD, qui
+# est obligatoire. `make comptes` en genere un aleatoire et l'affiche UNE
+# fois : sans cette variable, il n'y a rien a se passer.
 #
 # Usage :
-#   scripts/e2e_rag.sh
-#   API_CORE_URL=http://localhost:8001 RAG_URL=http://localhost:8003 scripts/e2e_rag.sh
 #   DEMO_PASSWORD='...' scripts/e2e_rag.sh
+#   API_CORE_URL=http://localhost:8001 RAG_URL=http://localhost:8003 \
+#     DEMO_PASSWORD='...' scripts/e2e_rag.sh
 
 set -uo pipefail
 
 API_CORE_URL="${API_CORE_URL:-http://localhost:8001}"
 RAG_URL="${RAG_URL:-http://localhost:8003}"
 DEMO_EMAIL="${DEMO_EMAIL:-assure@predicare.local}"
-DEMO_PASSWORD="${DEMO_PASSWORD:-hLz6uKbDZdRA+YOwh5fcGYLU}"
 TIMEOUT="${TIMEOUT:-120}"
+
+if [ -z "${DEMO_PASSWORD:-}" ]; then
+  echo "DEMO_PASSWORD non defini. Lancez : DEMO_PASSWORD='<mot-de-passe>' make comptes (le mot de passe est affiche une seule fois)" >&2
+  exit 2
+fi
 
 for dependance in curl jq; do
   if ! command -v "$dependance" >/dev/null 2>&1; then
