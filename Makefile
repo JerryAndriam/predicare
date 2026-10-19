@@ -320,6 +320,11 @@ reload-data: ## Recharge les donnees depuis ./data/raw et reapplique la couche B
 	@$(COMPOSE_CORE) run --rm seed
 	@bash db/bi/load.sh
 
+.PHONY: comptes
+comptes: ## Cree les quatre comptes de demonstration (mot de passe: DEMO_PASSWORD)
+	@$(COMPOSE_CORE) run --rm -e DEMO_PASSWORD="$${DEMO_PASSWORD:-}" seed \
+		python -m predicare_seed.creer_comptes
+
 .PHONY: shell-db
 shell-db: ## Ouvre psql sur la base (ROLE=predicare_ro pour un acces lecture seule)
 	@$(COMPOSE_CORE) exec db psql -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}

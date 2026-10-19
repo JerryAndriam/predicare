@@ -6,13 +6,14 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from predicare import db
+from predicare.auth import decode_access_token
 from predicare.config import get_settings
-from predicare.errors import PrediCareError
+from predicare.errors import PrediCareError, UnauthorizedError
 from predicare.http import (
     ObservabilityMiddleware,
     register_exception_handlers,
@@ -49,15 +50,30 @@ class AskResponse(BaseModel):
     cache_semantique: bool
 
 
+def porteuse(authorization: str = Header(default="")) -> str | None:
+    """Identite de l'appelant, lue dans le jeton JWT.
+
+    Sans ce controle, l'agent repondrait avec `assure_id = None` : l'outil
+    d'historique refuserait de servir des donnees personnelles, mais la route
+    resterait ouverte a n'importe qui. Le compte SQL de l'agent reste en
+    lecture seule : le jeton ne fait que restreindre la ligne visible.
+    """
+    if not authorization.startswith("Bearer "):
+        raise UnauthorizedError("Jeton d'acces requis pour interroger l'assistant.")
+    return decode_access_token(authorization.removeprefix("Bearer ").strip()).insured_id
+
+
 @router.post("/question", response_model=AskResponse)
-def ask(payload: AskRequest, request: Request) -> AskResponse:
+def ask(
+    payload: AskRequest,
+    request: Request,
+    assure_id: str | None = Depends(porteuse),
+) -> AskResponse:
     """Point d'entree de l'assistant : filtre, cache, agent, sources."""
     question = sanitize_question(payload.question)
 
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
-    assure_id = getattr(request.state, "insured_id", None)
-
     entree = cache.get(question)
     if entree is not None:
         logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))

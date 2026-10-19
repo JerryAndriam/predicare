@@ -15,10 +15,13 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
+from predicare import db
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.dependencies import get_threshold, require_permission
+from predicare.errors import ModelNotReadyError
 from predicare.logging_config import get_logger
+from predicare.persistance_ml import activer_version
 from predicare.schemas import ModelVersionInfo
 
 router = APIRouter(prefix="/admin", tags=["administration"])
@@ -137,14 +140,85 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
         )
 
 
+def _appeler_inference(request: Request, chemin: str) -> dict:
+    """Appelle le registre du Flux 1, en traduisant une panne en 503 metier."""
+    inference_url = str(request.app.state.inference_url).rstrip("/")
+    try:
+        response = httpx.post(f"{inference_url}{chemin}", timeout=10.0)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("admin.modele_action_impossible", chemin=chemin, erreur=str(exc))
+        raise ModelNotReadyError(
+            "Le service d'inference n'a pas pu appliquer l'operation sur le modele."
+        ) from exc
+    return response.json()
+
+
+@router.post("/modele/candidat")
+def charger_candidat(version: str, request: Request, _admin: AdminUser) -> dict[str, object]:
+    """Charge une version a cote de l'active, SANS l'activer.
+
+    C'est l'etape qui rend le deploiement sans interruption possible : le
+    modele en service continue de repondre pendant que la candidate charge.
+    """
+    return _appeler_inference(request, f"/modele/candidat?version={version}")
+
+
+@router.post("/modele/bascule")
+def basculer_modele(request: Request, _admin: AdminUser) -> dict[str, object]:
+    """Bascule la candidate en active, puis aligne le registre en base."""
+    resultat = _appeler_inference(request, "/modele/bascule")
+    version = str(resultat.get("active_version", ""))
+    if version:
+        activer_version(version)
+    return resultat
+
+
+@router.post("/modele/retour-arriere")
+def retour_arriere(version: str, request: Request, _admin: AdminUser) -> dict[str, object]:
+    """Revient a une version deja presente sur le volume `/models`."""
+    resultat = _appeler_inference(request, f"/modele/retour-arriere?version={version}")
+    activer_version(version)
+    return resultat
+
+
 @router.get("/sante")
 def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
-    """Sante consolidee de la plateforme, pour le bandeau de l'interface."""
+    """Sante consolidee de la plateforme, pour l'ecran de supervision.
+
+    api-core interroge les deux autres services sur le reseau interne : le
+    navigateur n'a donc pas besoin de connaitre leurs adresses, et la sonde
+    reste possible meme si la passerelle est en panne.
+    """
     settings = get_settings()
+
+    def sonder(url: str) -> dict[str, object]:
+        try:
+            reponse = httpx.get(f"{url.rstrip('/')}/health", timeout=2.0)
+            reponse.raise_for_status()
+            corps = reponse.json()
+            return {
+                "status": str(corps.get("status", "inconnu")),
+                "version": corps.get("version"),
+            }
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("admin.sonde_echouee", url=url, erreur=str(exc))
+            return {"status": "down", "version": None}
+
+    try:
+        base: bool = bool(db.check_database())
+    except Exception:  # une sonde de sante ne doit jamais lever
+        base = False
+
     return {
         "service": request.app.state.service,
         "version": request.app.state.version,
         "seuil": get_threshold(),
         "secrets_manquants": settings.missing_secrets(),
         "timestamp": datetime.now(UTC).isoformat(),
+        "dependances": {
+            "base": base,
+            "inference": sonder(str(request.app.state.inference_url)),
+            "rag": sonder(str(request.app.state.rag_url)),
+        },
     }

@@ -1,21 +1,40 @@
-"""File d'alertes et decisions du gestionnaire (parcours gestionnaire)."""
+"""File d'alertes, detail explicable et decisions du gestionnaire.
+
+Le parcours gestionnaire repose sur trois lectures et une ecriture :
+
+- la file des alertes au-dessus du seuil courant ;
+- le DETAIL d'une alerte, avec les contributions SHAP qui justifient le
+  score : sans elles, le gestionnaire ne peut ni expliquer ni contester la
+  decision du modele ;
+- l'historique des decisions, pour la tracabilite ;
+- l'enregistrement de la decision (valider / rejeter / demander une piece).
+
+Le controle d'acces est applique cote API, avant toute requete base : un
+assure ne peut pas lire la file d'alertes, meme en connaissant l'URL.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
+from predicare.auth import TokenPayload
 from predicare.db import session_scope
-from predicare.dependencies import CurrentUser, get_threshold
+from predicare.dependencies import get_threshold, require_permission
+from predicare.errors import NotFoundError
 from predicare.logging_config import get_logger
-from predicare.rbac import Role
 from predicare.schemas import ManagerDecision, ShapContribution
 
 router = APIRouter(prefix="/alertes", tags=["alertes"])
 logger = get_logger("api-core.decisions")
+
+AlertReader = Annotated[TokenPayload, Depends(require_permission("alerte:lire"))]
+AlertDecider = Annotated[TokenPayload, Depends(require_permission("alerte:decider"))]
+AuditReader = Annotated[TokenPayload, Depends(require_permission("audit:lire"))]
 
 
 class AlerteSummary(BaseModel):
@@ -38,7 +57,7 @@ class AlerteDetail(AlerteSummary):
 
 @router.get("/file", response_model=list[AlerteSummary])
 def file_alertes(
-    user: CurrentUser,
+    user: AlertReader,
     limit: int = Query(default=50, ge=1, le=200),
     statut: str = Query(default="nouvelle"),
 ) -> list[AlerteSummary]:
@@ -72,9 +91,69 @@ def file_alertes(
     return [AlerteSummary(**row) for row in rows]
 
 
+@router.get("/detail/{prediction_id}", response_model=AlerteDetail)
+def detail_alerte(prediction_id: str, user: AlertReader) -> AlerteDetail:
+    """Detail d'une alerte : le score ET les contributions qui l'expliquent.
+
+    Les contributions sont lues dans `ml.shap_explication`, ecrites par le
+    Flux 1 au moment de la notation. L'ecran affiche donc exactement ce que
+    le modele a produit, pas une reconstruction approximative.
+    """
+    if not prediction_id.isdigit():
+        raise NotFoundError("Alerte introuvable.")
+
+    with session_scope() as session:
+        entete = (
+            session.execute(
+                text(
+                    """
+                    SELECT p.id::text AS prediction_id, p.facture_id::text AS facture_id,
+                           a.pseudonyme AS assure_pseudonyme, p.score_fraude,
+                           f.montant_total, p.statut, p.created_at
+                    FROM ml.prediction p
+                    JOIN core.facture f ON f.id = p.facture_id
+                    JOIN core.assure a ON a.id = f.assure_id
+                    WHERE p.id = :prediction_id
+                    """
+                ),
+                {"prediction_id": int(prediction_id)},
+            )
+            .mappings()
+            .first()
+        )
+        if entete is None:
+            raise NotFoundError("Alerte introuvable.")
+
+        contributions = (
+            session.execute(
+                text(
+                    """
+                    SELECT feature, valeur AS value, shap_value, base_value,
+                           direction, libelle AS human_readable
+                    FROM ml.shap_explication
+                    WHERE prediction_id = :prediction_id
+                    ORDER BY rang
+                    """
+                ),
+                {"prediction_id": int(prediction_id)},
+            )
+            .mappings()
+            .all()
+        )
+
+    return AlerteDetail(
+        **entete,
+        shap=[ShapContribution(**contribution) for contribution in contributions],
+    )
+
+
 @router.post("/decision")
-def decider(payload: ManagerDecision, user: CurrentUser) -> dict[str, str]:
+def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
     """Enregistre la decision du gestionnaire (valider / rejeter / piece)."""
+    if not payload.prediction_id.isdigit():
+        raise NotFoundError("Alerte introuvable.")
+    prediction_id = int(payload.prediction_id)
+
     with session_scope() as session:
         session.execute(
             text(
@@ -88,7 +167,7 @@ def decider(payload: ManagerDecision, user: CurrentUser) -> dict[str, str]:
                 "decision": payload.decision,
                 "user": user.subject,
                 "now": payload.decided_at,
-                "prediction_id": payload.prediction_id,
+                "prediction_id": prediction_id,
             },
         ).scalar()
 
@@ -101,7 +180,7 @@ def decider(payload: ManagerDecision, user: CurrentUser) -> dict[str, str]:
                 """
             ),
             {
-                "prediction_id": payload.prediction_id,
+                "prediction_id": prediction_id,
                 "decision": payload.decision,
                 "commentaire": payload.commentaire,
                 "user": user.subject,
@@ -111,7 +190,7 @@ def decider(payload: ManagerDecision, user: CurrentUser) -> dict[str, str]:
 
     logger.info(
         "decision.prise",
-        prediction_id=payload.prediction_id,
+        prediction_id=prediction_id,
         decision=payload.decision,
         gestionnaire=user.subject,
         role=str(user.role),
@@ -120,7 +199,7 @@ def decider(payload: ManagerDecision, user: CurrentUser) -> dict[str, str]:
 
 
 @router.get("/historique")
-def historique(user: CurrentUser, limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
+def historique(user: AuditReader, limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
     """Historique des decisions, exigence du parcours gestionnaire."""
     with session_scope() as session:
         rows = (
@@ -141,7 +220,3 @@ def historique(user: CurrentUser, limit: int = Query(default=100, ge=1, le=500))
             .all()
         )
     return [dict(row) for row in rows]
-
-
-#: Role attendu sur ce module : gestionnaire ou administrateur.
-GESTIONNAIRE = Role.GESTIONNAIRE
