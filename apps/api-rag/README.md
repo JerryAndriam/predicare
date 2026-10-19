@@ -250,10 +250,10 @@ L'agent n'a aucun outil d'écriture, aucun accès réseau et une mémoire limit�
 
 Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 
-- **Le p95 de latence dépasse la cible de 5 s.** Quatre exécutions de
+- **Le p95 de latence dépasse la cible de 5 s.** Cinq exécutions de
   l'évaluation de référence (30 questions, cache désactivé) ont été mesurées
   sur la pile de développement. La première, publiée avant la refonte des
-  garde-fous, donnait **p50 = 5,7 s / p95 = 9,8 s**. Les trois suivantes ont
+  garde-fous, donnait **p50 = 5,7 s / p95 = 9,8 s**. Les quatre suivantes ont
   été rejouées sur le code actuel et sont versionnées dans le dépôt :
 
   | Exécution | Artefact | p50 | p95 |
@@ -261,10 +261,11 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
   | 1 | [`reports/eval_rag_2026-10-19_1.json`](../../reports/eval_rag_2026-10-19_1.json) | 3,61 s | 5,80 s |
   | 2 | [`reports/eval_rag_2026-10-19_2.json`](../../reports/eval_rag_2026-10-19_2.json) | 3,91 s | 6,58 s |
   | 3 | [`reports/eval_rag_2026-10-19_3.json`](../../reports/eval_rag_2026-10-19_3.json) | 3,71 s | 5,56 s |
+  | 4 | [`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json) | 3,98 s | 8,10 s |
 
   La cible de 5 s **n'est donc pas tenue de façon fiable** : le p50 est
-  désormais autour de 3,6–3,9 s (contre 5,7 s avant), mais le p95 reste
-  entre 5,6 s et 6,6 s — et il avait atteint 9,8 s sur l'exécution la plus
+  désormais autour de 3,6–4,0 s (contre 5,7 s avant), mais le p95 reste
+  entre 5,6 s et 8,1 s — et il avait atteint 9,8 s sur l'exécution la plus
   chargée. La latence est dominée par l'appel LLM, pas par la recherche
   vectorielle (le retriever rend la main en quelques centaines de
   millisecondes). Les leviers sont le nombre d'étapes ReAct, le modèle
@@ -280,23 +281,16 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
   (modèle, corpus) donné. Un changement de modèle sans réindexer rend les
   similarités incomparables : la recherche remonte alors des passages hors
   sujet. C'est la cause la plus fréquente d'une régression de citation.
-- **La citation est approximative par moments.** Sur les cinq évaluations
-  successives (deux avant la refonte des garde-fous, trois après), une
-  question mixte (pièces justificatives pour l'optique) a obtenu 0,95 de
-  citation au lieu de 1,00. Le diagnostic est précis : le
-  segment attendu « Conditions générales PREMIUM - Article 7 » obtient un
-  cosinus de **0,5471** pour la question complète, soit **juste sous** le
-  seuil `RAG_SIMILARITY_THRESHOLD` (0,55) ; la recherche initiale ne remonte
-  donc rien, et la reformulation que le modèle lui soumet (« pièces
-  justificatives pour l'optique ») fait remonter les segments « Guide réseau -
-  OPTICIENS », qui contiennent eux aussi la bonne réponse. La réponse est donc
-  correcte et sourcée, mais pas sur le passage attendu par le jeu de
-  référence. Vérifié avec le prompt d'origine : ce comportement **précède**
-  les garde-fous d'injection et n'est pas une régression. Le seuil de citation
-  du plan (0,90) reste tenu ; l'exigence de 1,00 ne l'est pas de façon
-  systématique. Baisser le seuil à 0,50 ferait remonter le bon passage, mais
-  élargirait le bruit sur les autres questions : c'est un réglage à
-  arbitrer, pas une correction évidente.
+- **La citation est mesurée, pas garantie.** Une question mixte (pièces
+  justificatives pour l'optique) obtenait 0,95 de citation : le segment attendu
+  « Conditions générales PREMIUM - Article 7 » obtenait un cosinus de 0,5471,
+  sous le seuil `RAG_SIMILARITY_THRESHOLD` (0,55), parce que l'article 7
+  regroupait les neuf types de soins dans trois segments seulement. La
+  correction a porté sur le découpage, pas sur le seuil : l'article 7 est
+  désormais segmenté par type de soins (« Article 7 - Pièces justificatives -
+  Optique »), et le cosinus du même passage passe à **0,6586**. Les cinq
+  évaluations suivantes tiennent **1,00** de citation. Un retour à 0,95
+  signifierait qu'un type de soins a de nouveau été regroupé avec d'autres.
 - **Le filtre de prompt injection est une liste de motifs.** Il refuse les
   formulations déclarées et testées ; il ne peut pas couvrir une formulation
   jamais vue. La barrière qui ne dépend pas du vocabulaire reste le rôle SQL
@@ -335,6 +329,19 @@ Le prompt domine très largement le coût : le système, les sources et
 l'historique pèsent ~3 800 tokens, contre ~105 pour la réponse. Réduire
 `RAG_TOP_K` et `SESSION_MAX_TURNS` est donc le levier FinOps le plus
 efficace — au prix de la précision de la recherche.
+
+### Dernière évaluation
+
+Quatrième exécution versionnée : [`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json),
+après le segmentage de l'article 7 par type de soins.
+
+| Mesure | Valeur |
+| --- | --- |
+| Fidélité | **30/30 = 1,00** |
+| Citation | **20/20 = 1,00** |
+| Exactitude des valeurs | **26/26 = 1,00** |
+| Latence p50 / p95 | 3,98 s / 8,10 s |
+| Coût estimé (30 questions) | 0,0703 USD |
 
 ## Vérification
 

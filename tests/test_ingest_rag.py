@@ -7,6 +7,7 @@ sont exercees, pas l'indexation.
 
 from __future__ import annotations
 
+import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -51,6 +52,12 @@ def _chemin(nom: str) -> Path:
     if not chemin.exists():
         pytest.skip(f"PDF absent du corpus : {chemin}")
     return chemin
+
+
+def _sans_accents(texte: str) -> str:
+    """Compare les libelles sans se soucier des accents du PDF."""
+    decompose = unicodedata.normalize("NFKD", texte)
+    return "".join(c for c in decompose if not unicodedata.combining(c)).lower()
 
 
 def test_nettoyage_supprime_le_boilerplate():
@@ -159,6 +166,63 @@ def test_article_6_synthese_des_carences():
         for valeur in valeurs:
             assert valeur in synthese.texte, (nom, valeur)
         assert "Consultation : aucune carence" in synthese.texte
+
+
+def test_article_7_un_segment_par_type_de_soins():
+    """L'article 7 est decoupe par type de soins.
+
+    Sans ce decoupage, une question sur l'optique compete avec les sept
+    autres types dans le meme embedding : le bon passage passait sous le
+    seuil de similarite et la reponse citait le guide plutot que l'article.
+    """
+    for nom in (
+        "Conditions_Generales_PREMIUM.pdf",
+        "Conditions_Generales_CONFORT.pdf",
+        "Conditions_Generales_ESSENTIEL.pdf",
+    ):
+        segments = ingest_rag._segments_pour_fichier(_chemin(nom))
+        par_type = [s for s in segments if s.article.startswith("Article 7") and s.garantie != "-"]
+        assert len(par_type) == len(CATEGORIES_ARTICLE_5), nom
+        assert {s.garantie for s in par_type} == set(CATEGORIES_ARTICLE_5), nom
+        for segment in par_type:
+            assert segment.article.startswith("Article 7 - Pièces justificatives")
+            assert segment.contrat == f"Conditions générales {nom.split('_')[-1][:-4]}"
+            assert segment.source_fichier == nom
+            assert _sans_accents(segment.garantie) in _sans_accents(segment.texte)
+            assert "Pièces justificatives" in segment.texte
+            assert 0 < len(segment.texte) <= 500, (nom, segment.garantie)
+
+        # Les regles generales restent disponibles dans un segment dedie.
+        general = [
+            s
+            for s in segments
+            if s.article == "Article 7 - Pièces justificatives par type de soins"
+        ]
+        assert len(general) == 1, nom
+        assert "Validité des ordonnances" in general[0].texte
+        assert "Pièces exigées" in general[0].texte
+
+        # Aucune perte : chaque type garde une piece justificative precise.
+        for attendu in (
+            "feuille de soins",
+            "numéro d'ordre (ONM)",
+            "Billet d'accouchement",
+            "Devis",
+            "proforma",
+        ):
+            assert any(attendu in s.texte for s in par_type), (nom, attendu)
+
+
+def test_le_decoupage_par_type_ne_s_applique_qu_aux_articles_concernes():
+    """Seuls les articles listes par type sont concernes.
+
+    Les autres articles des CG gardent leur decoupage generique : on ne veut
+    pas fragmenter un article qui n'a pas cette structure.
+    """
+    segments = ingest_rag._segments_pour_fichier(_chemin("Conditions_Generales_PREMIUM.pdf"))
+    generiques = {s.article for s in segments if s.article.startswith("Article 8")}
+    assert generiques == {"Article 8 - Fonctionnement du tiers payant"}
+    assert all(s.garantie == "-" for s in segments if s.article.startswith("Article 8"))
 
 
 def test_bareme_groupement_par_categorie():

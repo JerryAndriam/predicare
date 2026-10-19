@@ -91,8 +91,9 @@ La cible lance `python -m predicare_seed.ingest_rag --apply` dans le service
 1. vérifie si `core.document_vectorise` contient déjà des segments ;
 2. découpe chaque PDF du corpus (`RAG_CORPUS_DIR`, `/data/rag_corpus` par
    défaut) en segments — un par article pour les Conditions générales, un par
-   ligne du tableau des garanties pour l'article 5, un par section pour les
-   guides réseau, un par paragraphe sinon ;
+   ligne du tableau des garanties pour l'article 5, un par type de soins pour
+   l'article 7, un par section pour les guides réseau, un par paragraphe
+   sinon ;
 3. calcule les embeddings par lots de 64 et insère tout l'index dans **une
    seule transaction**.
 
@@ -134,6 +135,22 @@ docker compose run --rm seed python -m predicare_seed.ingest_rag --dry-run
 Découpe le corpus, affiche le nombre de segments détectés et un exemple, sans
 toucher à la base. C'est la commande à lancer en premier quand un PDF du
 corpus produit un découpage inattendu.
+
+### Pourquoi l'article 7 est segmenté par type de soins
+
+L'article 7 des Conditions générales liste les pièces justificatives **par type
+de soins** (Consultation, Pharmacie, Laboratoire, Imagerie, Hospitalisation,
+Maternité, Dentaire, Optique, Kinésithérapie), sur la même page. Regroupés
+dans trois segments, les neuf types se disputaient le même embedding : une
+question sur l'optique obtenait un cosinus de 0,5471, sous le seuil de
+similarité, et la recherche remontait d'abord le guide réseau au lieu de
+l'article.
+
+Le découpage isole donc chaque type (« Article 7 - Pièces justificatives -
+Optique ») et conserve un segment pour les règles générales (validité des
+ordonnances). Le cosinus du même passage passe à 0,6586, et la citation du
+jeu de référence atteint 1,00. La correction porte sur le découpage, **pas**
+sur le seuil de similarité.
 
 ### La colonne `source_fichier`
 
@@ -254,7 +271,7 @@ garantie unique, et `numero_police` reste dans sa colonne dediee.
 
 ## Brouillon / TODO
 
-- [x] Ingerer le `rag_corpus/` (31 PDF) dans `core.document_vectorise` (449 segments)
+- [x] Ingerer le `rag_corpus/` (31 PDF) dans `core.document_vectorise` (470 segments)
 - [ ] Cas d'invalidite d'entrainement (`FACTURE_INVALIDE` n'a aucune occurrence)
 - [ ] Contrat de recette sur effectifs, execute a chaque rechargement
 

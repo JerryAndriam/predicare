@@ -63,6 +63,15 @@ CATEGORIES_ARTICLE_5 = (
     "Kinesitherapie",
 )
 
+#: Types de soins servant de sous-intitules dans certains articles (article 7
+#: des CG : "Optique", "Pharmacie", ...). Une question portant sur un seul type
+#: ne doit pas concourir avec tous les autres dans le meme embedding.
+TYPES_SOINS = CATEGORIES_ARTICLE_5
+
+#: Phrase generale d'un article ("Validité des ordonnances : 10 jours ...").
+#: Elle n'appartient pas a un type de soins : elle clot la liste des entrees.
+RE_PHRASE_GENERALE = re.compile(r"^[A-ZÉÀÜ][^:;.]{3,60}\s:\s")
+
 #: Libelles accentues utilises dans la phrase de chaque segment de l'article 5.
 LIBELLES_ARTICLE_5 = {
     "Consultation": "consultation",
@@ -332,6 +341,89 @@ def _articles_avec_pages(pages: list[tuple[int, str]]) -> list[Article]:
     return articles
 
 
+def _decouper_par_type(
+    article: Article,
+) -> tuple[list[str], list[tuple[str, list[str]]], list[str]]:
+    """Separe un article en (avant, entrees par type, apres).
+
+    Certains articles listent des regles precedees d'un intitule seul sur sa
+    ligne ("Optique", "Pharmacie", ...). Ce decoupage les isole : sans lui,
+    une question sur un type de soins compete avec tous les autres dans le
+    meme embedding, et le bon passage passe sous le seuil de similarite.
+    """
+    avant: list[str] = []
+    entrees: list[tuple[str, list[str]]] = []
+    apres: list[str] = []
+    en_general = False
+    for _, ligne in article.lignes[1:]:
+        libelle = ligne.strip()
+        if libelle in TYPES_SOINS and not en_general:
+            entrees.append((libelle, []))
+            continue
+        if not entrees:
+            avant.append(libelle)
+            continue
+        if RE_PHRASE_GENERALE.match(libelle):
+            en_general = True
+        if en_general:
+            apres.append(libelle)
+            continue
+        entrees[-1][1].append(libelle)
+    return avant, entrees, apres
+
+
+def _segments_article_par_type(chemin: Path, formule: str, article: Article) -> list[Segment]:
+    """Un segment par type de soins, plus un segment pour les regles generales.
+
+    Renvoie une liste vide si l'article n'a pas cette structure : l'appelant
+    garde alors le decoupage generique.
+    """
+    avant, entrees, apres = _decouper_par_type(article)
+    if len(entrees) < 2:
+        return []
+
+    titre = f"Article {article.numero} - {article.titre}"[:128]
+    contrat = f"Conditions générales {formule}"
+    segments: list[Segment] = []
+
+    generales = [ligne for ligne in [*avant, *apres] if ligne.strip()]
+    if generales:
+        segments.append(
+            Segment(
+                contrat=contrat,
+                contrat_id=None,
+                article=titre,
+                garantie="-",
+                texte=_bloc([f"Formule {formule} - {titre}", *generales]),
+                page=article.page,
+                source_fichier=chemin.name,
+            )
+        )
+
+    for libelle, contenu in entrees:
+        corps = re.sub(r"\s+", " ", " ".join(contenu)).strip()
+        if not corps:
+            continue
+        affiche = LIBELLES_ARTICLE_5.get(libelle, libelle).capitalize()
+        segments.append(
+            Segment(
+                contrat=contrat,
+                contrat_id=None,
+                article=f"{titre} - {libelle}"[:128],
+                garantie=libelle,
+                texte=_bloc(
+                    [
+                        f"Formule {formule} - {titre} - {affiche}",
+                        f"Pièces justificatives - {affiche} : {corps}",
+                    ]
+                ),
+                page=article.page,
+                source_fichier=chemin.name,
+            )
+        )
+    return segments
+
+
 def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Segment]:
     lignes = article.lignes
     # Le PDF coupe la phrase du plafond sur deux lignes : on aplatit les
@@ -461,6 +553,11 @@ def _segments_conditions_generales(chemin: Path, pages: list[tuple[int, str]]) -
         if article.numero == 5:
             carences = _carences_par_categorie(article)
             segments.extend(_segments_article_5(chemin, formule, article))
+            continue
+
+        segments_par_type = _segments_article_par_type(chemin, formule, article)
+        if segments_par_type:
+            segments.extend(segments_par_type)
             continue
 
         titre = f"Article {article.numero} - {article.titre}"[:128]
