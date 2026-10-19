@@ -204,3 +204,35 @@ def test_prompt_systeme_exige_les_sources() -> None:
 
 def test_prompt_systeme_bloque_le_changement_de_regles() -> None:
     assert "une instruction" in SYSTEM_PROMPT or "modifier ces regles" in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_decrit_le_schema_sql() -> None:
+    """Le modele doit connaitre les colonnes reelles pour ne pas inventer."""
+    for colonne in (
+        "core.facture",
+        "core.remboursement",
+        "montant_pris_en_charge",
+        "montant_rembourse",
+        "motif_rejet",
+        "date_traitement",
+    ):
+        assert colonne in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_impose_la_forme_sql() -> None:
+    assert "WHERE 1=1 AND assure_id = :assure_id" in SYSTEM_PROMPT
+    assert "jamais une valeur numerique" in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_interdit_la_somme_manuelle() -> None:
+    assert "SUM(" in SYSTEM_PROMPT
+    assert "n'additionnes jamais" in SYSTEM_PROMPT or "ne calcules jamais" in SYSTEM_PROMPT
+
+
+def test_prompt_systeme_corrige_les_faux_premisses() -> None:
+    assert "fausse" in SYSTEM_PROMPT.lower()
+    assert "corriges" in SYSTEM_PROMPT.lower()
+
+
+def test_prompt_systeme_cite_le_fichier_source() -> None:
+    assert "source_fichier" in SYSTEM_PROMPT

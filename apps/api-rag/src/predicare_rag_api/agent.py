@@ -8,10 +8,11 @@ memoire est limitee a la conversation courante.
 
 from __future__ import annotations
 
+import json
 import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.tools import StructuredTool, Tool
+from langchain_core.tools import BaseTool, StructuredTool
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
@@ -25,6 +26,16 @@ from predicare_rag_api.sql_tool import InsuredHistoryTool
 logger = get_logger("api-rag.agent")
 
 SERVICE = "api-rag"
+
+#: Au-dela de deux requetes SQL, le modele doit conclure avec ce qu'il a.
+#: Sans plafond, une requete refusee peut etre repetee jusqu'a epuiser les
+#: etapes de l'agent et retarder une reponse deja disponible.
+MAX_APPELS_SQL = 2
+
+
+def _sql_attempt_allowed(count: int) -> bool:
+    """Vrai tant que le quota d'appels SQL de la question n'est pas epuise."""
+    return count < MAX_APPELS_SQL
 
 
 class RagAnswer:
@@ -86,12 +97,12 @@ class RagAgent:
             max_completion_tokens=settings.llm_max_tokens,
         )
 
-    def _tools(self, assure_id: str) -> list[Tool]:
+    def _tools(self, assure_id: str) -> list[BaseTool]:
         def _rechercher(question: str) -> str:
             return self._retriever.format_sources(self._retriever.search(question))
 
         def _consulter(requete_sql: str) -> str:
-            return str(self._history.run(requete_sql, assure_id=assure_id))
+            return self._history.run_agent(requete_sql, assure_id=assure_id)
 
         search_documents = StructuredTool.from_function(
             func=_rechercher,
@@ -103,25 +114,12 @@ class RagAgent:
             ),
         )
 
+        # La description vient de l'outil SQL : les modeles de requetes et le
+        # schema y sont maintenus a un seul endroit.
         read_history = StructuredTool.from_function(
             func=_consulter,
-            name="consulter_historique_assure",
-            description=(
-                "Lit l'historique des remboursements de l'assure connecte "
-                "(factures, montants, dates, statuts). "
-                "Nutilise que des SELECT sur les tables core.facture et "
-                "core.remboursement. Colonnes disponibles : id, assure_id, "
-                "date_facture, montant_total, montant_pris_en_charge (ou "
-                "montant_rembourse), statut (PAYEE/REJETEE/EN_ATTENTE), "
-                "motif_rejet, date_traitement. "
-                "Forme obligatoire : SELECT <colonnes> FROM core.facture "
-                "WHERE 1=1 AND assure_id = :assure_id [ORDER BY ...] "
-                "[LIMIT n]. Toute autre requete sera refusee. "
-                "Utilise TOUJOURS le parametre :assure_id, jamais de valeur "
-                "numerique. "
-                "Exemple : SELECT montant_total, statut FROM core.facture "
-                "WHERE 1=1 AND assure_id = :assure_id LIMIT 10."
-            ),
+            name=self._history.name,
+            description=self._history.description,
         )
         return [search_documents, read_history]
 
@@ -151,6 +149,7 @@ class RagAgent:
         usage_tokens = 0
         texte = ""
         limite_atteinte = False
+        appels_sql = 0
         try:
             for _ in range(self._max_steps):
                 reponse: AIMessage = llm_avec_outils.invoke(messages)
@@ -158,7 +157,11 @@ class RagAgent:
                 messages.append(reponse)
 
                 if not getattr(reponse, "tool_calls", None):
-                    texte = reponse.content if isinstance(reponse.content, str) else str(reponse.content)
+                    texte = (
+                        reponse.content
+                        if isinstance(reponse.content, str)
+                        else str(reponse.content)
+                    )
                     break
 
                 for appel in reponse.tool_calls:
@@ -166,17 +169,35 @@ class RagAgent:
                     args = appel.get("args", {}) or {}
                     outil = tool_map.get(nom)
                     debut = time.perf_counter()
-                    try:
-                        if outil is None:
-                            resultat = f"Outil inconnu : {nom}"
-                            statut = "inconnu"
-                        else:
-                            resultat = outil.invoke(args)
-                            statut = "ok"
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("agent.outil_erreur", outil=nom, erreur=str(exc))
-                        resultat = f"Erreur outil : {exc}"
-                        statut = "erreur"
+
+                    if nom == self._history.name and not _sql_attempt_allowed(appels_sql):
+                        # Troisieme appel SQL : on ne l'execute pas. Le modele
+                        # recoit une consigne explicite de conclure avec les
+                        # donnees deja obtenues.
+                        resultat = (
+                            "Limite de deux requetes SQL atteinte pour cette question. "
+                            "N'execute pas d'autre requete : reponds maintenant avec "
+                            "les donnees deja obtenues, ou indique clairement "
+                            "l'information manquante."
+                        )
+                        statut = "limite"
+                    else:
+                        if nom == self._history.name:
+                            appels_sql += 1
+                        try:
+                            if outil is None:
+                                resultat = f"Outil inconnu : {nom}"
+                                statut = "inconnu"
+                            else:
+                                resultat = outil.invoke(args)
+                                statut = "ok"
+                                if nom == self._history.name:
+                                    statut = _statut_sql(resultat)
+                        except Exception as exc:
+                            logger.warning("agent.outil_erreur", outil=nom, erreur=str(exc))
+                            resultat = f"Erreur outil : {exc}"
+                            statut = "erreur"
+
                     duree = (time.perf_counter() - debut) * 1000
                     steps.append(
                         {
@@ -200,7 +221,7 @@ class RagAgent:
                         if isinstance(reponse_finale.content, str)
                         else str(reponse_finale.content)
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
                     texte = (
                         "Le service de reponse est temporairement indisponible. "
@@ -238,6 +259,17 @@ class RagAgent:
             cached=False,
             limite_atteinte=limite_atteinte,
         )
+
+
+def _statut_sql(resultat: object) -> str:
+    """Traduit le JSON de `run_agent` en statut de trace lisible."""
+    try:
+        payload = json.loads(str(resultat))
+    except (TypeError, ValueError):
+        return "erreur"
+    if isinstance(payload, dict) and payload.get("ok") is True:
+        return "ok"
+    return "erreur"
 
 
 def _count_tokens(message: AIMessage) -> int:

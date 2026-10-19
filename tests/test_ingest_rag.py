@@ -102,6 +102,7 @@ def test_article_5_une_segment_par_categorie():
                 "Plafond annuel",
                 "Franchise",
                 "Carence",
+                "Délai de carence",
                 "Plafond annuel global par bénéficiaire",
             ):
                 assert attendu in segment.texte, (nom, segment.garantie, attendu)
@@ -119,6 +120,45 @@ def test_article_5_vue_globale():
             global_segment.texte
         )
         assert "non precise" not in global_segment.texte
+
+
+def test_article_6_synthese_des_carences():
+    """Le tableau de l'article 5 porte les carences ; l'article 6 les resume.
+
+    Sans ce resume, la question « delai de carence maternite » ne depasse
+    pas le seuil de similarite : l'article 6 generique ne contient aucune
+    duree, et le segment Maternite de l'article 5 est trop loin dans le
+    classement.
+    """
+    attendus = {
+        "Conditions_Generales_PREMIUM.pdf": {
+            "Maternité : 90 jours",
+            "Dentaire : 30 jours",
+            "Optique : 60 jours",
+        },
+        "Conditions_Generales_CONFORT.pdf": {
+            "Maternité : 180 jours",
+            "Dentaire : 60 jours",
+            "Optique : 90 jours",
+        },
+        "Conditions_Generales_ESSENTIEL.pdf": {
+            "Maternité : 270 jours",
+            "Dentaire : 90 jours",
+            "Optique : 180 jours",
+        },
+    }
+    for nom, valeurs in attendus.items():
+        segments = ingest_rag._segments_pour_fichier(_chemin(nom))
+        syntheses = [
+            s for s in segments if s.article == "Article 6 - Délais de carence par catégorie"
+        ]
+        assert len(syntheses) == 1, nom
+        synthese = syntheses[0]
+        assert synthese.garantie == "-"
+        assert synthese.source_fichier == nom
+        for valeur in valeurs:
+            assert valeur in synthese.texte, (nom, valeur)
+        assert "Consultation : aucune carence" in synthese.texte
 
 
 def test_bareme_groupement_par_categorie():

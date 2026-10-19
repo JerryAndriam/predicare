@@ -42,6 +42,10 @@ dev = [
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
 filterwarnings = ["ignore::DeprecationWarning"]
+pythonpath = ["."]
+markers = [
+    "integration: test qui exige un service externe (PostgreSQL, conteneur)",
+]
 
 [tool.coverage.run]
 branch = true

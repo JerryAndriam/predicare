@@ -14,10 +14,16 @@ controle de fuite de la CI.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from predicare.errors import DataAccessError
-from predicare_rag_api.sql_tool import FORME_AUTORISEE, InsuredHistoryTool
+from predicare_rag_api.sql_tool import (
+    FORME_AUTORISEE,
+    TEMPLATES_REQUETES,
+    InsuredHistoryTool,
+)
 
 # URL de connexion factice : `create_engine` n'ouvre pas de connexion tant
 # qu'on ne l'utilise pas, donc aucun conteneur n'est necessaire.
@@ -54,6 +60,35 @@ def test_casse_ignoree(outil: InsuredHistoryTool) -> None:
     requete = "select ID from CORE.FACTURE"
 
     assert outil._validate(requete) == requete
+
+
+def test_point_virgule_final_accepte(outil: InsuredHistoryTool) -> None:
+    """Un `;` final est courant et sans danger : une seule instruction.
+
+    Le moteur du modele ajoute souvent ce point-virgule ; le refuser ferait
+    echouer la requete exacte des modeles de reference.
+    """
+    requete = TEMPLATES_REQUETES["total_rembourse"] + " ;"
+
+    assert outil._validate(requete) == requete
+
+
+def test_filtre_sans_1_egal_1_accepte(outil: InsuredHistoryTool) -> None:
+    """Le modele peut omettre `1=1` : le filtre reste exige et verifie."""
+    requete = (
+        "SELECT statut FROM core.facture WHERE assure_id = :assure_id "
+        "ORDER BY date_facture DESC LIMIT 1"
+    )
+
+    assert outil._validate(requete) == requete
+
+
+def test_where_sans_filtre_assure_refuse(outil: InsuredHistoryTool) -> None:
+    """Un WHERE qui ne filtre pas sur l'assure connecte est rejete."""
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("SELECT * FROM core.facture WHERE statut = 'PAYEE'")
+
+    assert erreur.value.details["type_erreur"] == "forme_refusee"
 
 
 # --------------------------------------------------------------- formes refusees
@@ -194,3 +229,101 @@ def test_liste_blanche_est_ancree_sur_core() -> None:
     modification de la liste ne passe pas inapercue."""
     assert "core" in FORME_AUTORISEE.pattern
     assert "assure_id" in FORME_AUTORISEE.pattern
+
+
+# ------------------------------------------------------- agregats et modeles
+
+
+def test_agregat_sum_accepte(outil: InsuredHistoryTool) -> None:
+    """SUM est un besoin metier : un total ne se calcule pas a la main."""
+    requete = TEMPLATES_REQUETES["total_rembourse"]
+
+    assert outil._validate(requete) == requete
+
+
+def test_templates_de_requetes_disponibles(outil: InsuredHistoryTool) -> None:
+    assert set(TEMPLATES_REQUETES) == {
+        "total_rembourse",
+        "dernieres_factures",
+        "factures_rejetees",
+    }
+    for requete in TEMPLATES_REQUETES.values():
+        assert outil._validate(requete) == requete
+
+
+def test_description_expose_les_templates(outil: InsuredHistoryTool) -> None:
+    """Le LLM choisit ses arguments en lisant la description de l'outil."""
+    for requete in TEMPLATES_REQUETES.values():
+        assert requete in outil.description
+
+
+# ------------------------------------------------------- erreurs structurees
+
+
+def test_erreur_motif_refuse_structuree(outil: InsuredHistoryTool) -> None:
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("DELETE FROM core.facture")
+
+    details = erreur.value.details
+    assert details["type_erreur"] == "motif_refuse"
+    assert details["forme_attendue"]
+    assert details["exemple"]
+
+
+def test_assure_id_numerique_refuse(outil: InsuredHistoryTool) -> None:
+    """Une valeur en dur lirait le dossier d'un autre assure."""
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("SELECT * FROM core.facture WHERE 1=1 AND assure_id = 2")
+
+    assert erreur.value.details["type_erreur"] == "motif_refuse"
+
+
+def test_erreur_table_refusee_structuree(outil: InsuredHistoryTool) -> None:
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("SELECT * FROM core.assure")
+
+    details = erreur.value.details
+    assert details["type_erreur"] == "table_refusee"
+    assert ":assure_id" in details["forme_attendue"]
+
+
+def test_erreur_forme_refusee_structuree(outil: InsuredHistoryTool) -> None:
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id OR 1=1")
+
+    details = erreur.value.details
+    assert details["type_erreur"] == "forme_refusee"
+    assert details["exemple"].startswith("SELECT")
+
+
+# --------------------------------------------------------------- run_agent
+
+
+def test_run_agent_succes(monkeypatch: pytest.MonkeyPatch, outil: InsuredHistoryTool) -> None:
+    def _run(requete: str, *, assure_id: str) -> list[dict]:
+        assert "assure_id" in requete
+        return [{"total": 616060.0}]
+
+    monkeypatch.setattr(outil, "run", _run)
+
+    payload = json.loads(outil.run_agent(TEMPLATES_REQUETES["total_rembourse"], assure_id="1"))
+
+    assert payload == {"ok": True, "lignes": [{"total": 616060.0}]}
+
+
+def test_run_agent_erreur_structuree(outil: InsuredHistoryTool) -> None:
+    payload = json.loads(outil.run_agent("DELETE FROM core.facture", assure_id="1"))
+
+    assert payload["ok"] is False
+    assert payload["type_erreur"] == "motif_refuse"
+    assert payload["forme_attendue"]
+    assert payload["exemple"]
+    assert payload["erreur"]
+
+
+def test_run_agent_sans_assure_refuse(outil: InsuredHistoryTool) -> None:
+    payload = json.loads(outil.run_agent(TEMPLATES_REQUETES["total_rembourse"], assure_id=""))
+
+    assert payload["ok"] is False
+    assert payload["type_erreur"] in {"forme_refusee", "motif_refuse"}
+    assert "dossier assure" in payload["erreur"]

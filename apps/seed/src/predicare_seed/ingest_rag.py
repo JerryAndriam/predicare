@@ -387,7 +387,8 @@ def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Se
                 f"Article 5 – Tableau des garanties – Formule {formule} – Catégorie {categorie}",
                 f"Taux de remboursement {libelle} dans la formule {formule.lower()} : {taux}.",
                 f"Plafond annuel : {plafond_categorie}. Franchise : {franchise}. "
-                f"Carence : {carence}. Plafond annuel global par bénéficiaire : {plafond}.",
+                f"Délai de carence : {carence}. Carence : {carence}. "
+                f"Plafond annuel global par bénéficiaire : {plafond}.",
             ]
         )
         segments.append(
@@ -404,11 +405,61 @@ def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Se
     return segments
 
 
+def _carences_par_categorie(article: Article) -> dict[str, str]:
+    """Extrait la duree de carence de chaque categorie de l'article 5."""
+    carences: dict[str, str] = {}
+    lignes = article.lignes
+    for index, (_, ligne) in enumerate(lignes):
+        categorie = ligne.strip()
+        if categorie not in CATEGORIES_ARTICLE_5:
+            continue
+        valeurs = [valeur for _, valeur in lignes[index + 1 : index + 6]]
+        if len(valeurs) >= 4:
+            carences[categorie] = valeurs[3]
+    return carences
+
+
+def _segment_article_6_synthese(
+    chemin: Path, formule: str, article: Article, carences: dict[str, str]
+) -> Segment:
+    """Resume les carences de toutes les categories dans un seul segment.
+
+    L'article 6 du PDF ne contient aucune duree : il renvoie au tableau de
+    l'article 5. Sans ce resume, une question sur la carence maternite ne
+    trouve que des segments disperses, sous le seuil de similarite.
+    """
+    titre = "Article 6 - Délais de carence par catégorie"
+    lignes = [
+        f"Formule {formule} - {titre}",
+        "Récapitulatif des délais de carence par catégorie de soins, "
+        "à compter de la date d'adhésion de chaque bénéficiaire :",
+    ]
+    for categorie in CATEGORIES_ARTICLE_5:
+        libelle = LIBELLES_ARTICLE_5[categorie].capitalize()
+        carence = carences.get(categorie, "Aucune").strip()
+        if carence.lower() in {"aucune", "aucun", "non", ""}:
+            lignes.append(f"- {libelle} : aucune carence.")
+        else:
+            lignes.append(f"- {libelle} : {carence}.")
+    return Segment(
+        contrat=f"Conditions Generales {formule}",
+        contrat_id=None,
+        article=titre,
+        garantie="-",
+        texte=_bloc(lignes),
+        page=article.page,
+        source_fichier=chemin.name,
+    )
+
+
 def _segments_conditions_generales(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]:
     formule = _formule_depuis_nom(chemin.name)
     segments: list[Segment] = []
-    for article in _articles_avec_pages(pages):
+    articles = _articles_avec_pages(pages)
+    carences: dict[str, str] = {}
+    for article in articles:
         if article.numero == 5:
+            carences = _carences_par_categorie(article)
             segments.extend(_segments_article_5(chemin, formule, article))
             continue
 
@@ -436,6 +487,10 @@ def _segments_conditions_generales(chemin: Path, pages: list[tuple[int, str]]) -
                     source_fichier=chemin.name,
                 )
             )
+
+    article_6 = next((article for article in articles if article.numero == 6), None)
+    if article_6 is not None:
+        segments.append(_segment_article_6_synthese(chemin, formule, article_6, carences))
     return segments
 
 
