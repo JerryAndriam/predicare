@@ -7,6 +7,7 @@ sont exercees, pas l'indexation.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,11 @@ import pytest
 from predicare_seed import ingest_rag
 
 CORPUS = Path(__file__).resolve().parents[1] / "data" / "rag_corpus"
+PLAFONDS_GLOBAUX = {
+    "Conditions_Generales_PREMIUM.pdf": "20 000 000 Ar",
+    "Conditions_Generales_CONFORT.pdf": "8 000 000 Ar",
+    "Conditions_Generales_ESSENTIEL.pdf": "3 000 000 Ar",
+}
 CATEGORIES_ARTICLE_5 = (
     "Consultation",
     "Pharmacie",
@@ -85,6 +91,7 @@ def test_article_5_une_segment_par_categorie():
         ]
         assert len(tableaux) == len(CATEGORIES_ARTICLE_5), nom
         assert {s.garantie for s in tableaux} == set(CATEGORIES_ARTICLE_5), nom
+        plafond_attendu = PLAFONDS_GLOBAUX[nom]
         for segment in tableaux:
             assert segment.article == "Article 5 - Tableau des garanties"
             assert segment.page == 1
@@ -98,15 +105,20 @@ def test_article_5_une_segment_par_categorie():
                 "Plafond annuel global par bénéficiaire",
             ):
                 assert attendu in segment.texte, (nom, segment.garantie, attendu)
+            # Regression : le plafond global du PDF est coupe sur deux lignes.
+            assert plafond_attendu in segment.texte, (nom, segment.garantie)
+            assert "non precise" not in segment.texte, (nom, segment.garantie)
 
 
 def test_article_5_vue_globale():
-    segments = ingest_rag._segments_pour_fichier(
-        _chemin("Conditions_Generales_PREMIUM.pdf")
-    )
-    global_segment = next(s for s in segments if "vue globale" in s.article)
-    assert global_segment.garantie == "Global"
-    assert "Plafond annuel global par bénéficiaire : 20 000 000 Ar" in global_segment.texte
+    for nom, plafond_attendu in PLAFONDS_GLOBAUX.items():
+        segments = ingest_rag._segments_pour_fichier(_chemin(nom))
+        global_segment = next(s for s in segments if "vue globale" in s.article)
+        assert global_segment.garantie == "Global"
+        assert f"Plafond annuel global par bénéficiaire : {plafond_attendu}" in (
+            global_segment.texte
+        )
+        assert "non precise" not in global_segment.texte
 
 
 def test_bareme_groupement_par_categorie():
@@ -127,9 +139,7 @@ def test_bareme_groupement_par_categorie():
     for segment in segments:
         assert segment.contrat == "Bareme_Reference_Actes"
         assert segment.article == f"Barème - {segment.garantie}"
-        assert segment.texte.startswith(
-            f"Barème de référence des actes – {segment.garantie}"
-        )
+        assert segment.texte.startswith(f"Barème de référence des actes – {segment.garantie}")
         assert segment.source_fichier == "Bareme_Reference_Actes.pdf"
         assert "DOCUMENT FICTIF" not in segment.texte
         assert 0 < len(segment.texte) <= 500
@@ -154,9 +164,7 @@ def test_guide_decoupage_par_section():
 
 def test_conditions_particulieres_synthese_et_beneficiaires():
     nom = "CP_CTR-000048.pdf"
-    segments = ingest_rag._segments_pour_fichier(
-        _chemin(f"conditions_particulieres/{nom}")
-    )
+    segments = ingest_rag._segments_pour_fichier(_chemin(f"conditions_particulieres/{nom}"))
     par_article = {s.article: s for s in segments}
     assert set(par_article) == {
         "Conditions particulieres - synthese",
@@ -191,3 +199,110 @@ def test_segments_generiques_sans_boilerplate():
             assert "DOCUMENT FICTIF" not in segment.texte
             assert "GUIDE DU RÉSEAU" not in segment.texte
             assert len(segment.texte.strip()) > 0
+
+
+def test_decouper_texte_chevauche_et_couvre():
+    texte = " ".join(f"mot{index:04d}" for index in range(150))
+    morceaux = ingest_rag._decouper_texte(texte, cible=200, chevauchement=50)
+    assert len(morceaux) > 1
+    assert all(len(morceau) <= 200 for morceau in morceaux)
+    jetons = [set(morceau.split()) for morceau in morceaux]
+    assert set(texte.split()) <= set().union(*jetons)
+    assert all(jetons[index] & jetons[index + 1] for index in range(len(jetons) - 1))
+
+
+def test_pdf_recognise_sans_segment_bascule_generique(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    chemin = tmp_path / "Conditions_Generales_VIDE.pdf"
+    evenements: list[str] = []
+    monkeypatch.setattr(
+        ingest_rag.logger,
+        "warning",
+        lambda evenement, **_: evenements.append(evenement),
+    )
+    monkeypatch.setattr(
+        ingest_rag,
+        "_lire_pdf",
+        lambda _: [
+            (
+                1,
+                "Contenu generique sans article mais suffisamment long pour "
+                "produire un segment valide.",
+            )
+        ],
+    )
+    segments = ingest_rag._segments_pour_fichier(chemin)
+    assert len(segments) == 1
+    assert segments[0].article == "Section 1"
+    assert "pdf.aucun_segment" in evenements
+
+
+def test_pdf_illisible_est_ignore(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    chemin = tmp_path / "cassee.pdf"
+    chemin.write_bytes(b"ceci n'est pas un PDF")
+    evenements: list[str] = []
+    monkeypatch.setattr(
+        ingest_rag.logger,
+        "warning",
+        lambda evenement, **_: evenements.append(evenement),
+    )
+    segments = ingest_rag.collecter_segments(tmp_path)
+    assert segments == []
+    assert "pdf.erreur" in evenements
+
+
+class _ResultatFaux:
+    def __init__(self, valeur: int) -> None:
+        self._valeur = valeur
+
+    def scalar(self) -> int:
+        return self._valeur
+
+
+class _SessionFausse:
+    def __init__(self, valeur: int = 0) -> None:
+        self._valeur = valeur
+        self.requetes: list[str] = []
+
+    def execute(self, requete: object, _parametres: object | None = None) -> _ResultatFaux:
+        self.requetes.append(str(requete))
+        return _ResultatFaux(self._valeur)
+
+
+def _faux_scope(session: _SessionFausse):
+    @contextmanager
+    def _scope():
+        yield session
+
+    return _scope
+
+
+def test_appliquer_refuse_ecriture_si_aucun_segment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    session = _SessionFausse()
+    evenements: list[str] = []
+    monkeypatch.setattr(ingest_rag, "session_scope", _faux_scope(session))
+    monkeypatch.setattr(
+        ingest_rag.logger,
+        "error",
+        lambda evenement, **_: evenements.append(evenement),
+    )
+    resultat = ingest_rag.appliquer(tmp_path, force=True, segments=[])
+    assert resultat == {"segments": 0, "ignores": 0, "force": True}
+    assert len(session.requetes) == 1
+    assert "TRUNCATE" not in session.requetes[0].upper()
+    assert "ingestion.aucun_segment" in evenements
+
+
+def test_appliquer_noop_ne_parse_pas_le_corpus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    session = _SessionFausse(valeur=5)
+    monkeypatch.setattr(ingest_rag, "session_scope", _faux_scope(session))
+
+    def _interdit(_: Path) -> list[ingest_rag.Segment]:
+        pytest.fail("le corpus ne doit pas etre parse quand l'index est deja peuple")
+
+    monkeypatch.setattr(ingest_rag, "collecter_segments", _interdit)
+    resultat = ingest_rag.appliquer(tmp_path, force=False)
+    assert resultat == {"segments": 0, "ignores": 5, "force": False}

@@ -27,15 +27,21 @@ import os
 import re
 import sys
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from pydantic import SecretStr
 from pypdf import PdfReader
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.logging_config import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    from langchain_openai import OpenAIEmbeddings
 
 logger = get_logger("seed.ingest_rag")
 
@@ -120,7 +126,15 @@ ENTETES_TABLEAU = {
     "ORDONNANCE",
     "ENTENTE",
     "RESTRICTION",
+    "TAUX",
+    "PLAFOND ANNUEL",
+    "FRANCHISE / FACTURE",
+    "CARENCE",
 }
+
+#: Rangs et sexes acceptes dans le tableau des beneficiaires des CP.
+RANGS_BENEFICIAIRE = {"ASSURE_PRINCIPAL", "CONJOINT", "ENFANT"}
+SEXES_BENEFICIAIRE = {"M", "F"}
 
 
 @dataclass
@@ -132,6 +146,26 @@ class Segment:
     texte: str
     page: int | None
     source_fichier: str
+
+
+@dataclass
+class Article:
+    """Un article des Conditions Generales, avec la page de chaque ligne."""
+
+    numero: int
+    titre: str
+    page: int
+    lignes: list[tuple[int, str]] = field(default_factory=list)
+
+
+@dataclass
+class SectionGuide:
+    """Une section du guide reseau (pharmacies, laboratoires, etc.)."""
+
+    cle: str
+    titre: str
+    page: int
+    lignes: list[tuple[int, str]] = field(default_factory=list)
 
 
 def _lire_pdf(chemin: Path) -> list[tuple[int, str]]:
@@ -187,7 +221,7 @@ def _nettoyer_lignes(texte: str) -> str:
 
 
 def _nettoyer(texte: str) -> str:
-    """Nettoyage complet : boilerplate, tirets, espaces et accents."""
+    """Nettoyage complet : boilerplate, tirets et espaces ; accents conserves."""
     return re.sub(r"\s+", " ", _nettoyer_lignes(texte)).strip()
 
 
@@ -205,7 +239,9 @@ def _bloc(lignes: list[str]) -> str:
     return "\n".join(ligne.strip() for ligne in lignes if ligne.strip()).strip()
 
 
-def _decouper_texte(texte: str, cible: int = TAILLE_CIBLE, chevauchement: int = CHEVAUCHEMENT) -> list[str]:
+def _decouper_texte(
+    texte: str, cible: int = TAILLE_CIBLE, chevauchement: int = CHEVAUCHEMENT
+) -> list[str]:
     """Decoupe un texte en morceaux d'environ `cible` caracteres.
 
     Les coupures tombent de preference sur un espace pour ne pas tronquer un
@@ -274,48 +310,44 @@ def _formule_depuis_nom(nom: str) -> str:
     return "INCONNU"
 
 
-def _articles_avec_pages(
-    pages: list[tuple[int, str]],
-) -> list[dict[str, object]]:
+def _articles_avec_pages(pages: list[tuple[int, str]]) -> list[Article]:
     """Regroupe les lignes des Conditions Generales par article."""
-    articles: list[dict[str, object]] = []
-    courant: dict[str, object] | None = None
+    articles: list[Article] = []
+    courant: Article | None = None
     for page, ligne in _lignes_avec_pages(pages):
         correspondance = re.match(r"Article\s+(\d+)\s*-\s*(.+)$", ligne, flags=re.IGNORECASE)
         if correspondance:
             if courant is not None:
                 articles.append(courant)
-            courant = {
-                "numero": int(correspondance.group(1)),
-                "titre": correspondance.group(2).strip(),
-                "page": page,
-                "lignes": [(page, ligne)],
-            }
+            courant = Article(
+                numero=int(correspondance.group(1)),
+                titre=correspondance.group(2).strip(),
+                page=page,
+                lignes=[(page, ligne)],
+            )
         elif courant is not None:
-            courant["lignes"].append((page, ligne))  # type: ignore[union-attr]
+            courant.lignes.append((page, ligne))
     if courant is not None:
         articles.append(courant)
     return articles
 
 
-def _segments_article_5(
-    chemin: Path,
-    formule: str,
-    article: dict[str, object],
-) -> list[Segment]:
-    lignes: list[tuple[int, str]] = article["lignes"]  # type: ignore[assignment]
-    texte_entier = _bloc([ligne for _, ligne in lignes])
+def _segments_article_5(chemin: Path, formule: str, article: Article) -> list[Segment]:
+    lignes = article.lignes
+    # Le PDF coupe la phrase du plafond sur deux lignes : on aplatit les
+    # espaces avant la recherche, sinon le plafond global reste introuvable.
+    texte_entier = re.sub(r"\s+", " ", _bloc([ligne for _, ligne in lignes]))
     plafond_global = re.search(
         r"Plafond annuel global par bénéficiaire\s*:\s*([\d\s]+Ar)", texte_entier
     )
-    plafond = plafond_global.group(1).strip() if plafond_global else "non precise"
+    if plafond_global is None:
+        logger.warning("article5.plafond.introuvable", fichier=chemin.name)
+        plafond = "non precise"
+    else:
+        plafond = plafond_global.group(1).strip()
 
     premiere_categorie = next(
-        (
-            index
-            for index, (_, ligne) in enumerate(lignes)
-            if ligne.strip() in CATEGORIES_ARTICLE_5
-        ),
+        (index for index, (_, ligne) in enumerate(lignes) if ligne.strip() in CATEGORIES_ARTICLE_5),
         len(lignes),
     )
     intro = _nettoyer(" ".join(ligne for _, ligne in lignes[1:premiere_categorie]))
@@ -331,10 +363,11 @@ def _segments_article_5(
             texte=_bloc(
                 [
                     "Article 5 – Tableau des garanties (vue globale)",
+                    f"Formule {formule}",
                     intro,
                 ]
             ),
-            page=int(article["page"]),  # type: ignore[arg-type]
+            page=article.page,
             source_fichier=chemin.name,
         )
     ]
@@ -371,25 +404,23 @@ def _segments_article_5(
     return segments
 
 
-def _segments_conditions_generales(
-    chemin: Path, pages: list[tuple[int, str]]
-) -> list[Segment]:
+def _segments_conditions_generales(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]:
     formule = _formule_depuis_nom(chemin.name)
     segments: list[Segment] = []
     for article in _articles_avec_pages(pages):
-        if int(article["numero"]) == 5:  # type: ignore[arg-type]
+        if article.numero == 5:
             segments.extend(_segments_article_5(chemin, formule, article))
             continue
 
-        lignes: list[tuple[int, str]] = article["lignes"]  # type: ignore[assignment]
-        titre = f"Article {article['numero']} - {article['titre']}"[:128]
-        corps = _bloc([ligne for _, ligne in lignes[1:]])
-        texte_complet = _bloc([titre, corps])
+        titre = f"Article {article.numero} - {article.titre}"[:128]
+        prefixe = f"Formule {formule} - {titre}"
+        corps = _bloc([ligne for _, ligne in article.lignes[1:]])
+        texte_complet = _bloc([prefixe, corps])
         if len(texte_complet) <= TAILLE_ARTICLE:
             morceaux = [texte_complet]
         else:
-            cible = max(200, TAILLE_ARTICLE - len(titre) - 1)
-            morceaux = [f"{titre}\n{morceau}" for morceau in _decouper_texte(corps, cible)]
+            cible = max(200, TAILLE_ARTICLE - len(prefixe) - 1)
+            morceaux = [f"{prefixe}\n{morceau}" for morceau in _decouper_texte(corps, cible)]
 
         for morceau in morceaux:
             if len(morceau) < 40:
@@ -401,7 +432,7 @@ def _segments_conditions_generales(
                     article=titre,
                     garantie="-",
                     texte=morceau,
-                    page=int(article["page"]),  # type: ignore[arg-type]
+                    page=article.page,
                     source_fichier=chemin.name,
                 )
             )
@@ -413,10 +444,9 @@ def _extraire(regex: str, texte: str, defaut: str = "non precise") -> str:
     return correspondance.group(1).strip() if correspondance else defaut
 
 
-def _segments_conditions_particulieres(
-    chemin: Path, pages: list[tuple[int, str]]
-) -> list[Segment]:
-    texte = _nettoyer("\n".join(contenu for _, contenu in pages))
+def _segments_conditions_particulieres(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]:
+    lignes = _nettoyer_lignes("\n".join(contenu for _, contenu in pages)).splitlines()
+    texte = re.sub(r"\s+", " ", " ".join(lignes)).strip()
     numero_contrat = _extraire(r"Contrat\s+(CTR-\d+)", texte, chemin.stem)
     police = _extraire(r"Police\s+([A-Z0-9-]+)", texte)
     formule = _extraire(r"Formule\s+([A-Z]+)", texte)
@@ -426,9 +456,7 @@ def _segments_conditions_particulieres(
     fin = _extraire(r"Fin\s*:\s*(.+?)\s+-\s+Statut", texte, "tacite reconduction")
     statut = _extraire(r"Statut\s*:\s*([A-Z]+)", texte)
     prime = _extraire(r"Prime annuelle\s*:\s*(.+?\.)", texte)
-    plafond = _extraire(
-        r"Plafond annuel global par bénéficiaire\s*:\s*([\d\s]+Ar)", texte
-    )
+    plafond = _extraire(r"Plafond annuel global par bénéficiaire\s*:\s*([\d\s]+Ar)", texte)
 
     synthese = _bloc(
         [
@@ -448,7 +476,6 @@ def _segments_conditions_particulieres(
         ]
     )
 
-    lignes = [ligne for _, contenu in pages for ligne in _nettoyer_lignes(contenu).splitlines()]
     beneficiaires: list[str] = []
     index = 0
     while index < len(lignes):
@@ -456,13 +483,24 @@ def _segments_conditions_particulieres(
         if re.fullmatch(r"ASS-[A-Z0-9]+", ligne):
             champs = lignes[index + 1 : index + 6]
             if len(champs) == 5:
+                index += 6
                 rang, sexe, annee, adhesion, radiation = champs
+                if (
+                    rang not in RANGS_BENEFICIAIRE
+                    or sexe not in SEXES_BENEFICIAIRE
+                    or not annee.isdigit()
+                ):
+                    logger.warning(
+                        "cp.beneficiaire.invalide",
+                        fichier=chemin.name,
+                        identifiant=ligne,
+                    )
+                    continue
                 beneficiaires.append(
                     f"{ligne} | Rang : {rang} | Sexe : {sexe} | "
                     f"Année naiss. : {annee} | Adhésion : {adhesion} | "
                     f"Radiation : {radiation}"
                 )
-                index += 6
                 continue
         index += 1
 
@@ -498,9 +536,7 @@ def _segments_conditions_particulieres(
 
 
 def _segments_bareme(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]:
-    motif_code = re.compile(
-        r"^(?:(?:CONS|IMG|LAB|KINE|DENT|OPT|HOSP|ACC|MED)-[A-Z0-9]+|DIALYSE)$"
-    )
+    motif_code = re.compile(r"^(?:(?:CONS|IMG|LAB|KINE|DENT|OPT|HOSP|ACC|MED)-[A-Z0-9]+|DIALYSE)$")
     lignes = _lignes_avec_pages(pages)
     lignes_par_categorie: dict[str, list[tuple[int, str]]] = {}
 
@@ -565,30 +601,24 @@ def _entrees_guide(lignes: list[str]) -> list[str]:
 
 
 def _segments_guide(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]:
-    sections: list[dict[str, object]] = []
-    courante: dict[str, object] | None = None
+    sections: list[SectionGuide] = []
+    courante: SectionGuide | None = None
     for page, ligne in _lignes_avec_pages(pages):
         cle = _cle_normalisee(ligne)
         if cle in SECTIONS_GUIDE:
             titre = SECTIONS_GUIDE[cle]
-            if courante is not None and courante["cle"] == cle:
+            if courante is not None and courante.cle == cle:
                 # Titre repete apres un saut de page : la section continue.
                 continue
-            courante = {
-                "cle": cle,
-                "titre": titre,
-                "page": page,
-                "lignes": [],
-            }
+            courante = SectionGuide(cle=cle, titre=titre, page=page)
             sections.append(courante)
         elif courante is not None:
-            courante["lignes"].append((page, ligne))  # type: ignore[union-attr]
+            courante.lignes.append((page, ligne))
 
     segments: list[Segment] = []
     for section in sections:
-        titre = str(section["titre"])
-        contenu: list[tuple[int, str]] = section["lignes"]  # type: ignore[assignment]
-        lignes = [ligne for _, ligne in contenu]
+        titre = section.titre
+        lignes = [ligne for _, ligne in section.lignes]
         premiere_entree = next(
             (index for index, ligne in enumerate(lignes) if re.fullmatch(r"\d{1,3}", ligne)),
             len(lignes),
@@ -617,7 +647,7 @@ def _segments_guide(chemin: Path, pages: list[tuple[int, str]]) -> list[Segment]
                     article=f"Guide - {titre}"[:128],
                     garantie=titre,
                     texte=f"{prefixe}\n{bloc}" if bloc != prefixe else bloc,
-                    page=int(section["page"]),  # type: ignore[arg-type]
+                    page=section.page,
                     source_fichier=chemin.name,
                 )
             )
@@ -648,17 +678,23 @@ def _segments_pour_fichier(chemin: Path) -> list[Segment]:
     pages = _lire_pdf(chemin)
     nom = chemin.name
     if nom.startswith("Conditions_Generales"):
-        return _segments_conditions_generales(chemin, pages)
-    if nom.startswith("CP_") or "conditions_particulieres" in str(chemin):
-        return _segments_conditions_particulieres(chemin, pages)
-    if nom.startswith("Bareme_Reference"):
-        return _segments_bareme(chemin, pages)
-    if nom.startswith("Guide_Reseau"):
-        return _segments_guide(chemin, pages)
-    return _segments_generique(chemin, pages)
+        segments = _segments_conditions_generales(chemin, pages)
+    elif nom.startswith("CP_") or "conditions_particulieres" in str(chemin):
+        segments = _segments_conditions_particulieres(chemin, pages)
+    elif nom.startswith("Bareme_Reference"):
+        segments = _segments_bareme(chemin, pages)
+    elif nom.startswith("Guide_Reseau"):
+        segments = _segments_guide(chemin, pages)
+    else:
+        segments = _segments_generique(chemin, pages)
+
+    if not segments:
+        logger.warning("pdf.aucun_segment", fichier=chemin.name, pages=len(pages))
+        segments = _segments_generique(chemin, pages)
+    return segments
 
 
-def _resoudre_contrat_id(session, numero: str) -> int | None:
+def _resoudre_contrat_id(session: Session, numero: str) -> int | None:
     if not numero.startswith("CTR-"):
         return None
     row = session.execute(
@@ -668,13 +704,16 @@ def _resoudre_contrat_id(session, numero: str) -> int | None:
     return int(row) if row is not None else None
 
 
-def _embedder():
+def _embedder() -> OpenAIEmbeddings:
     from langchain_openai import OpenAIEmbeddings
 
     settings = get_settings()
+    cle = settings.embedding_api_key
+    if not cle:
+        raise RuntimeError("EMBEDDING_API_KEY manquante : impossible de calculer les embeddings.")
     return OpenAIEmbeddings(
         base_url=settings.embedding_api_base or None,
-        api_key=settings.embedding_api_key or "not-configured",
+        api_key=SecretStr(cle),
         model=settings.embedding_model,
     )
 
@@ -683,35 +722,47 @@ def collecter_segments(corpus_dir: Path) -> list[Segment]:
     segments: list[Segment] = []
     for chemin in sorted(corpus_dir.rglob("*.pdf")):
         try:
-            segs = _segments_pour_fichier(chemin)
-            for seg in segs:
-                seg.contrat_id = None
-            segments.extend(segs)
-        except Exception as exc:  # noqa: BLE001
+            segments.extend(_segments_pour_fichier(chemin))
+        except Exception as exc:
             logger.warning("pdf.erreur", fichier=str(chemin), erreur=str(exc))
-    # Resolution des contrat_id.
-    with session_scope() as session:
-        for seg in segments:
-            if seg.contrat.startswith("CTR-"):
-                seg.contrat_id = _resoudre_contrat_id(session, seg.contrat)
+    # Resolution des contrat_id : une seule lecture pour tous les contrats.
+    if any(seg.contrat.startswith("CTR-") for seg in segments):
+        with session_scope() as session:
+            for seg in segments:
+                if seg.contrat.startswith("CTR-"):
+                    seg.contrat_id = _resoudre_contrat_id(session, seg.contrat)
     return segments
 
 
-def appliquer(corpus_dir: Path, force: bool = False) -> dict:
-    segments = collecter_segments(corpus_dir)
-    logger.info("ingestion.segments", nombre=len(segments))
-
+def appliquer(
+    corpus_dir: Path,
+    force: bool = False,
+    segments: list[Segment] | None = None,
+) -> dict[str, int | bool]:
+    # L'idempotence se decide AVANT de parser le corpus : une relance sans
+    # `--force` ne doit ni relire les PDF ni ouvrir de transaction d'ecriture.
     with session_scope() as session:
-        existants = session.execute(
-            text("SELECT count(*) FROM core.document_vectorise")
-        ).scalar() or 0
+        existants = int(
+            session.execute(text("SELECT count(*) FROM core.document_vectorise")).scalar() or 0
+        )
         if existants and not force:
             logger.info("ingestion.ignoree", existants=existants)
             return {"segments": 0, "ignores": existants, "force": force}
 
+    if segments is None:
+        segments = collecter_segments(corpus_dir)
+    logger.info("ingestion.segments", nombre=len(segments))
+
+    if not segments:
+        logger.error("ingestion.aucun_segment", corpus=str(corpus_dir))
+        return {"segments": 0, "ignores": existants, "force": force}
+
+    # Une seule transaction pour tout l'index : en cas d'echec, aucun lot
+    # partiel ne subsiste et une relance sans --force ne prend pas cet index
+    # incomplet pour un index complet.
+    with session_scope() as session:
         if force and existants:
             session.execute(text("TRUNCATE core.document_vectorise RESTART IDENTITY"))
-            session.commit()
 
         embedder = _embedder()
         modeles = get_settings().embedding_model
@@ -744,10 +795,9 @@ def appliquer(corpus_dir: Path, force: bool = False) -> dict:
                     },
                 )
                 inseres += 1
-            session.commit()
             logger.info("ingestion.lot", debut=debut, taille=len(lot))
 
-        return {"segments": inseres, "ignores": 0, "force": force}
+    return {"segments": inseres, "ignores": 0, "force": force}
 
 
 def main() -> None:
@@ -764,17 +814,15 @@ def main() -> None:
         print(f"Corpus introuvable : {corpus}", file=sys.stderr)
         sys.exit(1)
 
+    if args.apply and not args.dry_run:
+        print(appliquer(corpus, force=args.force))
+        return
+
     segments = collecter_segments(corpus)
     print(f"Segments detectes : {len(segments)}")
     if segments:
         print("Exemple :")
-        print(segments[0].__dict__)
-
-    if args.dry_run or not args.apply:
-        return
-
-    resultat = appliquer(corpus, force=args.force)
-    print(resultat)
+        print(asdict(segments[0]))
 
 
 if __name__ == "__main__":

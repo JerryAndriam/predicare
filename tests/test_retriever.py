@@ -12,7 +12,7 @@ class _StoreFaux:
     def __init__(self, resultats):
         self._resultats = resultats
 
-    def similarity_search(self, query, *, k, score_threshold):
+    def similarity_search(self, query, *, k, score_threshold):  # noqa: ARG002 - signature imposee par le protocole
         return self._resultats[:k]
 
 
@@ -39,7 +39,16 @@ def test_search_vide_si_aucun_resultat():
 def test_format_sources_cite_contrat_et_article():
     store = _StoreFaux([])
     retriever = ContractRetriever(store)
-    source = Source(contrat="PREMIUM", article="Art 5", garantie="Consultation", extrait="taux 100%", score=0.9)
+    source = Source(
+        contrat="PREMIUM",
+        article="Art 5",
+        garantie="Consultation",
+        extrait="taux 100%",
+        score=0.9,
+        source_fichier="Conditions_Generales_PREMIUM.pdf",
+    )
     bloc = retriever.format_sources([source])
     assert "PREMIUM" in bloc
     assert "Art 5" in bloc
+    assert "Conditions_Generales_PREMIUM.pdf" in bloc
+    assert source.to_dict()["source_fichier"] == "Conditions_Generales_PREMIUM.pdf"

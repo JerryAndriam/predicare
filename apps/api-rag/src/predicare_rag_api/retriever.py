@@ -10,14 +10,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from pydantic import SecretStr
+
 from predicare import metrics
 from predicare.config import get_settings
 from predicare.logging_config import get_logger
-from pydantic import SecretStr
 
 logger = get_logger("api-rag.retriever")
 
 SERVICE = "api-rag"
+
+
+class Embedder(Protocol):
+    """Interface minimale de calcul d'embeddings."""
+
+    def embed_query(self, text: str) -> list[float]: ...
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class VectorStore(Protocol):
@@ -64,7 +73,7 @@ class ContractRetriever:
             resultats = self._store.similarity_search(
                 question, k=self._top_k, score_threshold=self._threshold
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("rag.recherche_indisponible", erreur=str(exc))
             return []
 
@@ -92,7 +101,8 @@ class ContractRetriever:
             return "<sources>Aucun passage de contrat pertinent.</sources>"
         blocs = "\n\n".join(
             f"[Source {index}] Contrat : {s.contrat} - Article {s.article} "
-            f"(garantie : {s.garantie})\n{s.extrait}"
+            f"(garantie : {s.garantie}, fichier : {s.source_fichier or 'inconnu'})\n"
+            f"{s.extrait}"
             for index, s in enumerate(sources, start=1)
         )
         return f"<sources>\n{blocs}\n</sources>"
@@ -106,13 +116,13 @@ class PgVectorContractStore:
         connection_url: str,
         *,
         table: str = "core.document_vectorise",
-        embedder: object | None = None,
+        embedder: Embedder | None = None,
     ) -> None:
         self._connection_url = connection_url
         self._table = table
         self._embedder = embedder
 
-    def _obtenir_embedder(self) -> object:
+    def _obtenir_embedder(self) -> Embedder:
         if self._embedder is not None:
             return self._embedder
         from langchain_openai import OpenAIEmbeddings
