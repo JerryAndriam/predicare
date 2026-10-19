@@ -97,10 +97,37 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
 @router.get("/me", response_model=ProfileResponse)
 def me(user: CurrentUser) -> ProfileResponse:
     """Profil de l'utilisateur connecte, pour l'affichage du role en interface."""
+    profil = None
+    try:
+        identifiant = int(user.subject)
+    except (TypeError, ValueError):
+        identifiant = None
+
+    if identifiant is not None:
+        with session_scope() as session:
+            profil = (
+                session.execute(
+                    text(
+                        """
+                        SELECT display_name, last_login
+                        FROM core.utilisateur
+                        WHERE id = :identifiant
+                        """
+                    ),
+                    {"identifiant": identifiant},
+                )
+                .mappings()
+                .first()
+            )
+
+    # `insured_id` provient du JWT : c'est un entier pour un assure. Le
+    # contrat expose un pseudonyme textuel, d'ou la conversion explicite.
     return ProfileResponse(
         subject=user.subject,
         role=user.role,
-        assured_pseudonym=user.insured_id,
+        assured_pseudonym=str(user.insured_id) if user.insured_id is not None else None,
+        display_name=profil["display_name"] if profil else None,
+        last_login=profil["last_login"] if profil else None,
     )
 
 

@@ -1,51 +1,42 @@
-const ROLES = [
-  {
-    id: 'assure',
-    titre: 'Assure',
-    description: 'Consulter ses remboursements et interroger l\'assistant sur son contrat.',
-  },
-  {
-    id: 'professionnel_sante',
-    titre: 'Professionnel de sante',
-    description: 'Deposer factures et ordonnances, suivre l\'etat de ses dossiers.',
-  },
-  {
-    id: 'gestionnaire',
-    titre: 'Gestionnaire',
-    description: 'Traiter la file d\'alertes, lire le rapport SHAP, valider ou rejeter.',
-  },
-  {
-    id: 'administrateur',
-    titre: 'Administrateur',
-    description: 'Seuil, canaux, secrets, metriques, sante et retour arriere du modele.',
-  },
-] as const
+import { Navigate, Route, Routes } from 'react-router-dom'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+import { RequireAuth, RequireRole } from './components/Guards'
+import { Shell } from './components/Shell'
+import { AdminPage } from './pages/AdminPage'
+import { AssurePage } from './pages/AssurePage'
+import { HomePage } from './pages/HomePage'
+import { LoginPage } from './pages/LoginPage'
+import { ManagerPage } from './pages/ManagerPage'
+import { ProPage } from './pages/ProPage'
 
 export default function App() {
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', margin: '0 auto', maxWidth: 960, padding: 32 }}>
-      <h1>PrediCare TPA</h1>
-      <p>
-        Detection de fraude medicale, assistant agentique et pilotage decisionnel.
-      </p>
+    <Routes>
+      <Route path="/connexion" element={<LoginPage />} />
 
-      <h2>Quatre roles, une seule application</h2>
-      <ul>
-        {ROLES.map((role) => (
-          <li key={role.id}>
-            <strong>{role.titre}</strong> — {role.description}
-          </li>
-        ))}
-      </ul>
+      <Route element={<RequireAuth />}>
+        <Route element={<Shell />}>
+          <Route index element={<HomePage />} />
 
-      <h2>Sante de la plateforme</h2>
-      <p>
-        <a href={`${API_BASE}/api/core/health`}>API coeur</a> ·{' '}
-        <a href={`${API_BASE}/api/inference/health`}>API inference</a> ·{' '}
-        <a href={`${API_BASE}/api/rag/health`}>API RAG</a>
-      </p>
-    </main>
+          <Route element={<RequireRole roles={['assure']} />}>
+            <Route path="/assure" element={<AssurePage />} />
+          </Route>
+
+          <Route element={<RequireRole roles={['professionnel_sante']} />}>
+            <Route path="/professionnel" element={<ProPage />} />
+          </Route>
+
+          <Route element={<RequireRole roles={['gestionnaire']} />}>
+            <Route path="/gestionnaire" element={<ManagerPage />} />
+          </Route>
+
+          <Route element={<RequireRole roles={['administrateur']} />}>
+            <Route path="/administration" element={<AdminPage />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Route>
+    </Routes>
   )
 }

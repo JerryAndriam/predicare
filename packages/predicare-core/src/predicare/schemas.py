@@ -93,15 +93,23 @@ class PredictionResponse(BaseModel):
 
 
 class ModelVersionInfo(BaseModel):
-    """Etat du registre de modeles, pour la bascule et le retour arriere."""
+    """Etat du registre de modeles, pour la bascule et le retour arriere.
+
+    `active_version` est nullable : au premier demarrage, aucun modele n'est
+    encore charge, et l'ecran d'administration doit pouvoir l'afficher au lieu
+    de recevoir une erreur de validation. `available_versions` fait partie de
+    l'etat rendu par le registre : l'omettre ici rendrait la reponse
+    inutilisable (le schema est strict).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    active_version: str
+    active_version: str | None = None
     candidate_version: str | None = None
     loaded_at: datetime | None = None
     threshold: float
     metrics: dict[str, Any] = Field(default_factory=dict)
+    available_versions: list[str] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------
