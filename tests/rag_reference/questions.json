@@ -52,34 +52,38 @@
     "question": "Quelles sont les exclusions de la formule PREMIUM concernant les soins esthetiques et les cures thermales ?",
     "type": "rag",
     "mots_cles": ["esthetique", "cure"],
-    "sources_attendues": ["Conditions Generales PREMIUM", "Article 10"]
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 10"],
+    "attendu_contient": []
   },
   {
     "id": "Q08",
     "question": "Les soins esthetiques et les cures thermales sont-ils exclus de la formule CONFORT ?",
     "type": "rag",
     "mots_cles": ["esthetique", "cure"],
-    "sources_attendues": ["Conditions Generales CONFORT", "Article 10"]
+    "sources_attendues": ["Conditions Generales CONFORT", "Article 10"],
+    "attendu_contient": []
   },
   {
     "id": "Q09",
     "question": "Quelles pieces justificatives faut-il fournir pour une pharmacie ?",
     "type": "rag",
     "mots_cles": ["ordonnance", "pharmacie"],
-    "sources_attendues": ["Conditions Generales PREMIUM", "Article 7"]
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 7"],
+    "attendu_contient": []
   },
   {
     "id": "Q10",
     "question": "Quelles pieces justificatives sont exigees pour une depense d'optique ?",
     "type": "rag",
     "mots_cles": ["ordonnance", "optique"],
-    "sources_attendues": ["Conditions Generales PREMIUM", "Article 7"]
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 7"],
+    "attendu_contient": []
   },
   {
     "id": "Q11",
     "question": "Combien ai-je ete rembourse au total sur mes factures payees ?",
     "type": "sql",
-    "mots_cles": ["616 060"],
+    "mots_cles": ["rembourse", "total"],
     "sources_attendues": [],
     "attendu_contient": ["616 060"]
   },
@@ -87,7 +91,7 @@
     "id": "Q12",
     "question": "Combien de factures figurent dans mon historique ?",
     "type": "sql",
-    "mots_cles": ["17 factures"],
+    "mots_cles": ["factures", "historique"],
     "sources_attendues": [],
     "attendu_contient": ["17 factures"]
   },
@@ -95,7 +99,7 @@
     "id": "Q13",
     "question": "Quel est le montant total de ma derniere facture ?",
     "type": "sql",
-    "mots_cles": ["224 000"],
+    "mots_cles": ["montant", "derniere"],
     "sources_attendues": [],
     "attendu_contient": ["224 000"]
   },
@@ -103,7 +107,7 @@
     "id": "Q14",
     "question": "Quel est le statut de ma facture la plus recente ?",
     "type": "sql",
-    "mots_cles": ["payee"],
+    "mots_cles": ["statut", "facture"],
     "sources_attendues": [],
     "attendu_contient": ["payee"]
   },
@@ -151,7 +155,7 @@
     "id": "Q20",
     "question": "Quel est le montant total facture de toutes mes factures ?",
     "type": "sql",
-    "mots_cles": ["845 000"],
+    "mots_cles": ["montant", "total"],
     "sources_attendues": [],
     "attendu_contient": ["845 000"]
   },

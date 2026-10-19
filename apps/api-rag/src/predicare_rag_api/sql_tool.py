@@ -1,6 +1,6 @@
 """Outil SQL de l'agent : historique de remboursement de l'assure connecte.
 
-Point de securite le plus note du projet (15 %). Trois barrierses
+Point de securite le plus note du projet (15 %). Trois barrières
 independantes, dont chacune seule serait insuffisante :
 
 1. Connexion sur une URL dediee (`PREDICARE_DB_RO_URL`) qui pointe vers un
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import create_engine, text
@@ -42,6 +41,31 @@ EXEMPLE_REQUETE = (
     "SELECT date_facture, montant_total, statut FROM core.facture "
     "WHERE 1=1 AND assure_id = :assure_id ORDER BY date_facture DESC LIMIT 10"
 )
+
+#: Schema expose au modele. Source unique : la description de l'outil et le
+#: prompt systeme le reprennent, pour qu'une colonne ajoutee apparaisse des
+#: deux cotes sans risque d'oubli ni de divergence.
+SCHEMA_SQL = (
+    "core.facture (id, assure_id, date_facture, montant_total, "
+    "montant_pris_en_charge, statut, motif_rejet, date_traitement) et "
+    "core.remboursement (id, assure_id, date_facture, date_remboursement, "
+    "montant_total, montant_rembourse, statut, motif_rejet, reference)"
+)
+
+#: Litteral de chaine SQL. On le neutralise avant toute analyse de structure :
+#: un `:assure_id` ecrit dans une chaine ne doit pas passer pour le filtre de
+#: l'assure, et il ne doit pas non plus empecher l'injection du vrai filtre.
+_LITTERAL = re.compile(r"'(?:[^']|'')*'")
+
+
+def _sans_litteraux(requete: str) -> str:
+    """Remplace le contenu des chaines SQL par des espaces, longueur conservee.
+
+    La longueur est preservee pour que les positions trouvees sur le texte
+    nettoye restent valides sur le texte d'origine.
+    """
+    return _LITTERAL.sub(lambda m: "'" + " " * (len(m.group(0)) - 2) + "'", requete)
+
 
 #: Predicat supplementaire autorise : `statut = 'PAYEE'`, `date_facture >= ...`.
 #: Le nom de colonne et l'operateur sont restreints ; les valeurs sont soit un
@@ -84,6 +108,9 @@ MOTIFS_REFUSES: tuple[re.Pattern[str], ...] = (
     re.compile(r"--|/\*|\*/", re.I),
     re.compile(r"\bpg_sleep\b|\bpg_read_file\b|\bcopy\b", re.I),
     re.compile(r"\b(information_schema|pg_catalog|sys\.|sqlite_)\b", re.I),
+    # Une sous-requete scalaire peut lire une autre table dans la liste
+    # SELECT : `SELECT (SELECT ...)` est refuse. `SUM(...)` reste autorise.
+    re.compile(r"\(\s*SELECT\b", re.I),
     # L'assure connecte ne doit jamais etre remplace par une valeur en dur :
     # `assure_id = 2` lirait le dossier d'un autre.
     re.compile(r"\bassure_id\s*=\s*(?!:)[^\s,)]+", re.I),
@@ -124,17 +151,6 @@ def _table_hors_perimetre(requete: str) -> bool:
     return any(table.lower() not in {"core.facture", "core.remboursement"} for table in tables)
 
 
-@dataclass(frozen=True, slots=True)
-class HistoryRow:
-    """Une ligne d'historique autorisee pour l'assure connecte."""
-
-    facture_id: str
-    date_facture: str
-    code_acte: str
-    montant_total: float
-    statut: str
-
-
 class InsuredHistoryTool:
     """Outil LangChain : lit l'historique d'un assure, et rien d'autre."""
 
@@ -143,11 +159,7 @@ class InsuredHistoryTool:
         "A utiliser pour repondre a une question sur un montant deja verse, "
         "un remboursement en attente ou l'etat d'un dossier. "
         "Ne retourne aucune donnee d'un autre assure. "
-        "Tables autorisees : core.facture (id, assure_id, date_facture, "
-        "montant_total, montant_pris_en_charge, statut, motif_rejet, "
-        "date_traitement) et core.remboursement (id, assure_id, date_facture, "
-        "date_remboursement, montant_total, montant_rembourse, statut, "
-        "motif_rejet, reference). "
+        "Tables autorisees : " + SCHEMA_SQL + ". "
         "Forme obligatoire : SELECT <colonnes> FROM core.facture "
         "WHERE 1=1 AND assure_id = :assure_id [AND <predicat>] [ORDER BY ...] "
         "[LIMIT n]. Utilise toujours le parametre :assure_id, jamais une "
@@ -199,8 +211,11 @@ class InsuredHistoryTool:
                 "Requete refusee : la forme demandee n'est pas autorisee par cet assistant.",
                 details=_details_erreur(type_erreur),
             )
-        if re.search(r"\bWHERE\b", requete, re.IGNORECASE) and not re.search(
-            _FILTRE_ASSURE, requete, re.IGNORECASE
+        # L'analyse de structure ignore les chaines : un `:assure_id` ecrit
+        # dans un litteral ne compte pas comme le filtre de l'assure.
+        structure = _sans_litteraux(requete)
+        if re.search(r"\bWHERE\b", structure, re.IGNORECASE) and not re.search(
+            _FILTRE_ASSURE, structure, re.IGNORECASE
         ):
             logger.warning("sql.filtre_assure_manquant")
             raise DataAccessError(
@@ -216,17 +231,35 @@ class InsuredHistoryTool:
         pas casser les usages historiques. Dans ce cas, le code ajoute
         lui-meme `WHERE 1=1 AND assure_id = :assure_id` : la restriction ne
         depend jamais de la bonne volonte du LLM.
+
+        Le `:assure_id` est cherche hors des chaines : un `:assure_id` ecrit
+        dans un litteral ne doit pas dispenser d'injecter le vrai filtre.
+        Le point-virgule final est retire avant l'injection puis remis, sinon
+        la clause serait ajoutee apres le terminateur.
         """
-        if ":assure_id" in requete:
+        structure = _sans_litteraux(requete)
+        if re.search(_FILTRE_ASSURE, structure, re.IGNORECASE):
             return requete
-        correspondance = re.search(r"\b(ORDER\s+BY|LIMIT)\b", requete, re.IGNORECASE)
-        if correspondance is None:
-            return f"{requete.rstrip()} WHERE 1=1 AND assure_id = :assure_id"
-        debut = correspondance.start()
-        return (
-            f"{requete[:debut].rstrip()} WHERE 1=1 AND assure_id = :assure_id "
-            f"{requete[debut:].lstrip()}"
-        )
+
+        corps = requete.rstrip()
+        terminaison = ""
+        if corps.endswith(";"):
+            terminaison = ";"
+            corps = corps[:-1].rstrip()
+
+        structure_corps = _sans_litteraux(corps)
+        correspondance = re.search(r"\b(ORDER\s+BY|LIMIT)\b", structure_corps, re.IGNORECASE)
+        debut = correspondance.start() if correspondance else len(corps)
+        prefixe = corps[:debut].rstrip()
+        suffixe = corps[debut:].lstrip()
+
+        if re.search(r"\bWHERE\b", structure_corps, re.IGNORECASE):
+            injectee = f"{prefixe} AND assure_id = :assure_id"
+        else:
+            injectee = f"{prefixe} WHERE 1=1 AND assure_id = :assure_id"
+        if suffixe:
+            injectee = f"{injectee} {suffixe}"
+        return injectee + terminaison
 
     def run(self, requete: str, *, assure_id: str) -> list[dict]:
         """Execute une requete en lecture seule, filtree sur l'assure connecte.
@@ -237,7 +270,10 @@ class InsuredHistoryTool:
         if not assure_id:
             raise DataAccessError("Aucun dossier assure rattache a votre session.")
 
-        requete_validee = self._injecter_filtre(self._validate(requete))
+        # Re-validation de la requete finale : le filtre injecte doit lui-meme
+        # respecter la liste blanche. Une requete refusee apres injection ne
+        # doit jamais atteindre la base.
+        requete_validee = self._validate(self._injecter_filtre(self._validate(requete)))
 
         try:
             with self._engine.connect() as connection:
@@ -253,8 +289,13 @@ class InsuredHistoryTool:
         except DataAccessError:
             raise
         except Exception as exc:
+            # Le message du pilote reste dans les journaux : il n'est jamais
+            # renvoye au modele, qui n'a rien a en faire et pourrait le citer.
             logger.error("sql.erreur", erreur=str(exc))
-            raise DataAccessError("Lecture de l'historique indisponible pour le moment.") from exc
+            raise DataAccessError(
+                "Lecture de l'historique indisponible pour le moment.",
+                details=_details_erreur("indisponible"),
+            ) from exc
 
         logger.info(
             "sql.lecture_ok",
@@ -269,43 +310,42 @@ class InsuredHistoryTool:
         Le LLM doit pouvoir lire `type_erreur`, `forme_attendue` et
         `exemple` pour corriger sa requete, au lieu de recevoir une simple
         chaine d'erreur qu'il risque de répéter a l'identique.
+
+        Une panne du service d'historique porte un `type_erreur`
+        `indisponible` et un conseil different : rejouer la requete ne
+        corrigerait rien, le modele doit conclure avec ce qu'il a deja.
         """
         try:
             lignes = self.run(requete, assure_id=assure_id)
         except DataAccessError as exc:
             details = exc.details
-            payload = {
+            type_erreur = details.get("type_erreur", "forme_refusee")
+            payload: dict[str, Any] = {
                 "ok": False,
-                "type_erreur": details.get("type_erreur", "forme_refusee"),
+                "type_erreur": type_erreur,
                 "erreur": exc.message,
-                "forme_attendue": details.get("forme_attendue", FORME_ATTENDUE),
-                "exemple": details.get("exemple", EXEMPLE_REQUETE),
-                "conseil": (
+            }
+            if type_erreur == "indisponible":
+                payload["conseil"] = (
+                    "Probleme technique cote service d'historique : ne reessaie "
+                    "pas cette requete, elle n'aboutira pas. Reponds avec les "
+                    "donnees deja obtenues ou indique l'information manquante."
+                )
+            else:
+                payload["forme_attendue"] = details.get("forme_attendue", FORME_ATTENDUE)
+                payload["exemple"] = details.get("exemple", EXEMPLE_REQUETE)
+                payload["conseil"] = (
                     "Ne repete pas la meme requete refusee : corrige-la en "
                     "suivant forme_attendue et exemple."
-                ),
-            }
+                )
             logger.info(
                 "sql.agent_refus",
                 assure_id=assure_id,
-                type_erreur=payload["type_erreur"],
+                type_erreur=type_erreur,
             )
             return json.dumps(payload, ensure_ascii=False)
 
         return json.dumps({"ok": True, "lignes": lignes}, ensure_ascii=False, default=str)
-
-    def _as_tool(self) -> object:
-        """Expose l'outil a LangChain avec un schema de parametres strict."""
-        from langchain_core.tools import StructuredTool
-
-        def _call(requete_sql: str, assure_id: str) -> str:
-            return self.run_agent(requete_sql, assure_id=assure_id)
-
-        return StructuredTool.from_function(
-            func=_call,
-            name=self.name,
-            description=self.description,
-        )
 
     def close(self) -> None:
         self._engine.dispose()

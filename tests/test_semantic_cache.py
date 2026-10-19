@@ -258,3 +258,54 @@ def test_economie_expose_les_entrees_du_calcul() -> None:
     assert "miss" in economie["json"]
     assert "cout_par_appel_eur" in economie["json"]
     assert "timestamp" in economie
+
+
+# --------------------------------------------------------------- isolation
+
+
+def test_deux_scopes_ne_partagent_jamais_une_entree(cache: SemanticCache) -> None:
+    """Une entree posee pour un assure n'est jamais servie a un autre.
+
+    Sans ce cloisonnement, deux assures posant une question proche
+    s'echangeaient leur historique personnel : c'est une fuite de donnees,
+    pas un simple defaut d'entete.
+    """
+    cache.put("Quel est mon taux ?", "Reponse de A.", scope="assure-A")
+
+    assert cache.get("Quel est mon taux ?", scope="assure-B") is None
+
+
+def test_meme_scope_partage_le_succes(cache: SemanticCache) -> None:
+    cache.put("Quel est mon taux ?", "Reponse de A.", scope="assure-A")
+
+    entree = cache.get("Quel est mon taux ?", scope="assure-A")
+
+    assert entree is not None
+    assert entree.answer == "Reponse de A."
+
+
+def test_scope_par_defaut_isole_du_scope_nomme(cache: SemanticCache) -> None:
+    """Un `get` sans scope ne lit pas les entrees d'un assure nomme."""
+    cache.put("Question ?", "Sans scope.")
+
+    assert cache.get("Question ?", scope="assure-A") is None
+    assert cache.get("Question ?") is not None
+
+
+def test_deux_scopes_stockent_deux_entrees(cache: SemanticCache) -> None:
+    """La meme question posee par deux assures occupe deux entrees."""
+    cache.put("Question identique ?", "Reponse A.", scope="assure-A")
+    cache.put("Question identique ?", "Reponse B.", scope="assure-B")
+
+    assert cache.stats()["entrees"] == 2
+    assert cache.get("Question identique ?", scope="assure-A").answer == "Reponse A."
+    assert cache.get("Question identique ?", scope="assure-B").answer == "Reponse B."
+
+
+def test_entree_expose_le_scope(cache: SemanticCache) -> None:
+    cache.put("Question ?", "Reponse.", scope="assure-A")
+
+    entree = cache.get("Question ?", scope="assure-A")
+
+    assert entree is not None
+    assert entree.scope == "assure-A"

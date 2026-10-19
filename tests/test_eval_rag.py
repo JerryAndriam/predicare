@@ -12,6 +12,7 @@ from scripts.eval_rag import (
     citation_ok,
     cout_par_million_depuis_env,
     estimer_cout,
+    evaluer_reponse,
     mots_cles_presents,
     normaliser_texte,
     percentile,
@@ -154,3 +155,74 @@ def test_seuils_ci_citation_insuffisante() -> None:
 
 def test_seuils_ci_valeur_insuffisante() -> None:
     assert not respecte_seuils_ci(fidelite=0.95, citation=0.95, valeur=0.89)
+
+
+def test_seuils_ci_echoue_si_aucune_question_de_citation() -> None:
+    """Un taux de 1.0 sur zero question ne doit jamais valider la CI."""
+    assert not respecte_seuils_ci(
+        fidelite=1.0, citation=1.0, valeur=1.0, citation_questions=0, valeur_questions=10
+    )
+
+
+def test_seuils_ci_echoue_si_aucune_question_de_valeur() -> None:
+    assert not respecte_seuils_ci(
+        fidelite=1.0, citation=1.0, valeur=1.0, citation_questions=10, valeur_questions=0
+    )
+
+
+def test_seuils_ci_avec_denominateurs_non_nuls() -> None:
+    assert respecte_seuils_ci(
+        fidelite=0.9, citation=0.95, valeur=0.95, citation_questions=20, valeur_questions=26
+    )
+
+
+# --------------------------------------------------------------- tokens et cache
+
+
+def _question_vide() -> dict:
+    return {
+        "id": "Q00",
+        "question": "Question ?",
+        "mots_cles": [],
+        "sources_attendues": [],
+        "attendu_contient": [],
+    }
+
+
+def test_evaluer_reponse_somme_les_tokens_entree_et_sortie() -> None:
+    resultat = evaluer_reponse(
+        _question_vide(),
+        {"reponse": "ok", "sources": [], "tokens_entree": 100, "tokens_sortie": 20},
+        latence_ms=1.0,
+    )
+
+    assert resultat["tokens_entree"] == 100
+    assert resultat["tokens_sortie"] == 20
+    assert resultat["tokens"] == 120
+
+
+def test_evaluer_reponse_repli_sur_l_ancien_champ_tokens() -> None:
+    """Une API sans detail entree/sortie ne doit pas afficher zero token."""
+    resultat = evaluer_reponse(
+        _question_vide(),
+        {"reponse": "ok", "sources": [], "tokens": 42},
+        latence_ms=1.0,
+    )
+
+    assert resultat["tokens"] == 42
+
+
+def test_evaluer_reponse_remonte_les_succes_de_cache() -> None:
+    resultat = evaluer_reponse(
+        _question_vide(),
+        {"reponse": "ok", "sources": [], "cache_semantique": True},
+        latence_ms=0.0,
+    )
+
+    assert resultat["cache_semantique"] is True
+
+
+def test_evaluer_reponse_sans_cache_par_defaut() -> None:
+    resultat = evaluer_reponse(_question_vide(), {"reponse": "ok", "sources": []}, latence_ms=1.0)
+
+    assert resultat["cache_semantique"] is False

@@ -33,7 +33,12 @@ class Embedder(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CacheHit:
-    """Reponse reutilisable."""
+    """Reponse reutilisable.
+
+    `scope` est l'identite a laquelle la reponse appartient. Deux assures
+    differentes ne partagent jamais une entree : sans ce champ, une question
+    proche suffisait a servir a l'un l'historique personnel de l'autre.
+    """
 
     question: str
     answer: str
@@ -41,6 +46,7 @@ class CacheHit:
     similarity: float
     created_at: float = 0.0
     vector: list[float] | None = None
+    scope: str = ""
 
 
 class SemanticCache:
@@ -69,8 +75,12 @@ class SemanticCache:
         self._order: list[str] = []
 
     # ------------------------------------------------------------------ API
-    def get(self, question: str) -> CacheHit | None:
-        """Retourne une reponse equivalente, ou None."""
+    def get(self, question: str, *, scope: str | None = None) -> CacheHit | None:
+        """Retourne une reponse equivalente pour ce `scope`, ou None.
+
+        `scope` isole les entrees par assure : deux questions proches de deux
+        assures differents ne doivent jamais se repondre l'une l'autre.
+        """
         self._purge_expired()
         if not self._entries:
             metrics.CACHE_EVENTS.labels(SERVICE, "vide").inc()
@@ -79,13 +89,20 @@ class SemanticCache:
 
         try:
             vector = self._embedder.embed_documents([question])[0]
-        except Exception:  # noqa: BLE001
+        except Exception:
             metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
             return None
+        scope_cle = scope or ""
         best_key, best_score = None, 0.0
         for key in self._order:
             entry = self._entries[key]
-            vecteur_entree = entry.vector if entry.vector is not None else self._embedder.embed_documents([entry.question])[0]
+            if entry.scope != scope_cle:
+                continue
+            vecteur_entree = (
+                entry.vector
+                if entry.vector is not None
+                else self._embedder.embed_documents([entry.question])[0]
+            )
             score = _cosine_similarity(vector, vecteur_entree)
             if score > best_score:
                 best_key, best_score = key, score
@@ -98,9 +115,21 @@ class SemanticCache:
         metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
         return None
 
-    def put(self, question: str, answer: str, sources: list[dict] | None = None) -> None:
-        """Memorise une reponse repetee au-dela du seuil de similarite."""
-        key = hashlib.sha256(question.encode()).hexdigest()[:16]
+    def put(
+        self,
+        question: str,
+        answer: str,
+        sources: list[dict] | None = None,
+        *,
+        scope: str | None = None,
+    ) -> None:
+        """Memorise une reponse repetee au-dela du seuil de similarite.
+
+        La cle inclut le `scope` : deux assures ne peuvent pas ecraser ni
+        relire l'entree l'un de l'autre, meme sur une question identique.
+        """
+        scope_cle = scope or ""
+        key = hashlib.sha256(f"{scope_cle}|{question}".encode()).hexdigest()[:16]
         if key in self._entries:
             self._order.remove(key)
         elif len(self._order) >= self._max_entries:
@@ -108,7 +137,7 @@ class SemanticCache:
 
         try:
             vecteur = self._embedder.embed_documents([question])[0]
-        except Exception:  # noqa: BLE001
+        except Exception:
             vecteur = None
         self._entries[key] = CacheHit(
             question=question,
@@ -117,6 +146,7 @@ class SemanticCache:
             similarity=1.0,
             created_at=time.time(),
             vector=vecteur,
+            scope=scope_cle,
         )
         self._order.append(key)
         metrics.CACHE_EVENTS.labels(SERVICE, "ecriture").inc()

@@ -6,11 +6,17 @@ Le script mesure quatre choses, separement :
 - la citation : au moins une source retournee porte le contrat ou l'article
   attendu (les questions purement SQL ne declarent pas de source) ;
 - l'exactitude des valeurs : les montants/dates attendus sont presents ;
-- le cout et la latence : p50, p95, tokens et estimation FinOps.
+- le cout et la latence : p50, p95, tokens (entree + sortie) et estimation
+  FinOps.
+
+Le cache semantique est desactive par defaut (`--no-cache`) : sans cela, une
+question proche deja posee serait servie depuis le cache, avec zero token, et
+l'evaluation mesurerait le cache au lieu du RAG. Le resume rapporte les
+succes de cache pour que le chiffre reste lisible.
 
 Usage :
     python scripts/eval_rag.py --base-url http://localhost:8003 --token <JWT>
-    python scripts/eval_rag.py --token <JWT> --ci --output /tmp/eval.json
+    python scripts/eval_rag.py --token <JWT> --ci --no-cache --output /tmp/eval.json
 """
 
 from __future__ import annotations
@@ -125,8 +131,10 @@ def percentile(valeurs: list[float], p: float) -> float:
 def estimer_cout(tokens: int, cout_par_million: float = COUT_PAR_MILLION_DEFAUT) -> float:
     """Estimation lineaire du cout LLM, en dollars.
 
-    C'est une estimation volontairement simple : elle applique un prix
-    moyen par million de tokens, sans distinguer entree et sortie.
+    `tokens` est le total entree + sortie : ne compter que la completion
+    sous-estime le cout, la part « prompt » dominant un agent a outils. Le
+    prix applique reste un prix moyen par million de tokens, sans distinguer
+    les deux sens.
     """
     return round(tokens / 1_000_000 * cout_par_million, 6)
 
@@ -140,8 +148,24 @@ def cout_par_million_depuis_env() -> float:
         return COUT_PAR_MILLION_DEFAUT
 
 
-def respecte_seuils_ci(fidelite: float, citation: float, valeur: float) -> bool:
-    """Decision de la CI : les trois seuils doivent etre atteints."""
+def respecte_seuils_ci(
+    fidelite: float,
+    citation: float,
+    valeur: float,
+    *,
+    citation_questions: int | None = None,
+    valeur_questions: int | None = None,
+) -> bool:
+    """Decision de la CI : les trois seuils doivent etre atteints.
+
+    Un taux vaut 1.0 quand son denominateur est nul (`_taux`). Une CI qui
+    admettrait une mesure vide passerait donc sans avoir rien verifie : un
+    denominateur nul est un echec explicite, pas un sans-faute.
+    """
+    if citation_questions == 0:
+        return False
+    if valeur_questions == 0:
+        return False
     return fidelite >= SEUIL_FIDELITE and citation >= SEUIL_CITATION and valeur >= SEUIL_VALEUR
 
 
@@ -152,10 +176,24 @@ def _taux(ok: int, total: int) -> float:
 # ------------------------------------------------------------------- evaluation
 
 
+def _tokens_entree_sortie(reponse: dict[str, Any]) -> tuple[int, int]:
+    """Tokens d'entree et de sortie d'une reponse API, avec repli.
+
+    Une API ancienne n'expose pas le detail : on retombe alors sur le total
+    `tokens` (historiquement la completion), pour ne pas afficher zero.
+    """
+    entree = int(reponse.get("tokens_entree") or 0)
+    sortie = int(reponse.get("tokens_sortie") or 0)
+    if entree == 0 and sortie == 0:
+        sortie = int(reponse.get("tokens") or 0)
+    return entree, sortie
+
+
 def evaluer_reponse(question: dict[str, Any], reponse: dict[str, Any], latence_ms: float) -> dict:
     """Construit le resultat d'une question, sans modifier la reponse."""
     texte = reponse.get("reponse") or ""
     sources = reponse.get("sources") or []
+    tokens_entree, tokens_sortie = _tokens_entree_sortie(reponse)
     return {
         "id": question["id"],
         "type": question.get("type", "rag"),
@@ -174,17 +212,29 @@ def evaluer_reponse(question: dict[str, Any], reponse: dict[str, Any], latence_m
         "citation": citation_ok(sources, question.get("sources_attendues", [])),
         "valeur": valeur_ok(texte, question.get("attendu_contient", [])),
         "latence_ms": round(latence_ms, 2),
-        "tokens": int(reponse.get("tokens") or 0),
+        "tokens_entree": tokens_entree,
+        "tokens_sortie": tokens_sortie,
+        "tokens": tokens_entree + tokens_sortie,
+        "cache_semantique": bool(reponse.get("cache_semantique")),
     }
 
 
 def _appeler(
-    client: httpx.Client, base_url: str, token: str, question: str
+    client: httpx.Client, base_url: str, token: str, question: str, *, sans_cache: bool = True
 ) -> tuple[dict[str, Any], float]:
+    """Appelle l'API RAG, cache desactive par defaut.
+
+    Sans ce contournement, deux questions proches partageraient la meme
+    reponse et l'evaluation mesurerait le cache, pas le RAG. Un appel
+    servi par le cache coute zero token : il fausserait l'estimation.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    if sans_cache:
+        headers["X-Rag-No-Cache"] = "true"
     debut = time.perf_counter()
     response = client.post(
         f"{base_url.rstrip('/')}/api/rag/question",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=headers,
         json={"question": question},
     )
     latence_ms = (time.perf_counter() - debut) * 1000
@@ -218,6 +268,19 @@ def main() -> None:
     parser.add_argument("--output", type=Path, help="Ecrit les resultats detailles en JSON")
     parser.add_argument("--limit", type=int, default=0, help="Limite le nombre de questions")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--no-cache",
+        dest="sans_cache",
+        action="store_true",
+        default=True,
+        help="Desactive le cache semantique : evaluation a froid (defaut)",
+    )
+    parser.add_argument(
+        "--cache",
+        dest="sans_cache",
+        action="store_false",
+        help="Autorise le cache semantique (mesure alors le gain du cache)",
+    )
     args = parser.parse_args()
 
     questions = json.loads(FICHIER.read_text(encoding="utf-8"))
@@ -229,7 +292,11 @@ def main() -> None:
         for question in questions:
             try:
                 reponse, latence_ms = _appeler(
-                    client, args.base_url, args.token, question["question"]
+                    client,
+                    args.base_url,
+                    args.token,
+                    question["question"],
+                    sans_cache=args.sans_cache,
                 )
                 resultat = evaluer_reponse(question, reponse, latence_ms)
             except Exception as exc:
@@ -244,7 +311,10 @@ def main() -> None:
                     "citation": None if not question.get("sources_attendues") else False,
                     "valeur": None if not question.get("attendu_contient") else False,
                     "latence_ms": 0.0,
+                    "tokens_entree": 0,
+                    "tokens_sortie": 0,
                     "tokens": 0,
+                    "cache_semantique": False,
                     "erreur": str(exc),
                 }
             resultats.append(resultat)
@@ -259,7 +329,10 @@ def main() -> None:
     ok_valeur = sum(1 for r in applicables_valeur if r["valeur"])
 
     latences = [r["latence_ms"] for r in resultats if r["latence_ms"] > 0]
-    total_tokens = sum(r["tokens"] for r in resultats)
+    total_entree = sum(r["tokens_entree"] for r in resultats)
+    total_sortie = sum(r["tokens_sortie"] for r in resultats)
+    total_tokens = total_entree + total_sortie
+    cache_hits = sum(1 for r in resultats if r["cache_semantique"])
     prix = cout_par_million_depuis_env()
     cout = estimer_cout(total_tokens, prix)
 
@@ -277,8 +350,14 @@ def main() -> None:
     print(
         f"  Latence p50/p95   : {percentile(latences, 50):.1f} / {percentile(latences, 95):.1f} ms"
     )
-    print(f"  Tokens            : {total_tokens}")
-    print(f"  Cout estime       : {cout:.4f} USD ({prix:.2f} USD / million de tokens, estimation)")
+    print(f"  Tokens entree     : {total_entree}")
+    print(f"  Tokens sortie     : {total_sortie}")
+    print(f"  Tokens total      : {total_tokens} (entree + sortie)")
+    print(
+        f"  Cout estime       : {cout:.4f} USD "
+        f"({prix:.2f} USD / million, entree + sortie, estimation)"
+    )
+    print(f"  Cache succes      : {cache_hits} (reponses servies du cache : aucun token, cout nul)")
 
     resume = {
         "total_questions": total,
@@ -292,7 +371,10 @@ def main() -> None:
         "valeur_questions": len(applicables_valeur),
         "latence_p50_ms": round(percentile(latences, 50), 2),
         "latence_p95_ms": round(percentile(latences, 95), 2),
+        "tokens_entree": total_entree,
+        "tokens_sortie": total_sortie,
         "tokens_total": total_tokens,
+        "cache_hits": cache_hits,
         "cout_estime_usd": cout,
         "cout_par_million_usd": prix,
     }
@@ -305,7 +387,13 @@ def main() -> None:
         )
         print(f"\nResultats ecrits dans {args.output}")
 
-    if args.ci and not respecte_seuils_ci(taux_fidelite, taux_citation, taux_valeur):
+    if args.ci and not respecte_seuils_ci(
+        taux_fidelite,
+        taux_citation,
+        taux_valeur,
+        citation_questions=len(applicables_citation),
+        valeur_questions=len(applicables_valeur),
+    ):
         print("\nSeuils CI non atteints.", file=sys.stderr)
         sys.exit(1)
 

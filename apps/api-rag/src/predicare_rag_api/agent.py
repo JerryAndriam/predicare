@@ -41,7 +41,17 @@ def _sql_attempt_allowed(count: int) -> bool:
 class RagAnswer:
     """Reponse complete de l'agent, avec ses sources et sa trace."""
 
-    __slots__ = ("answer", "cached", "latency_ms", "limite_atteinte", "sources", "steps", "tokens")
+    __slots__ = (
+        "answer",
+        "cached",
+        "latency_ms",
+        "limite_atteinte",
+        "sources",
+        "steps",
+        "tokens",
+        "tokens_entree",
+        "tokens_sortie",
+    )
 
     def __init__(
         self,
@@ -52,6 +62,8 @@ class RagAnswer:
         tokens: int,
         cached: bool,
         limite_atteinte: bool = False,
+        tokens_entree: int = 0,
+        tokens_sortie: int = 0,
     ) -> None:
         self.answer = answer
         self.sources = sources
@@ -60,6 +72,10 @@ class RagAnswer:
         self.tokens = tokens
         self.cached = cached
         self.limite_atteinte = limite_atteinte
+        # Le detail entree/sortie rend le cout estimable sans sous-estimer la
+        # part « prompt », qui n'est pas mince sur un agent a outils.
+        self.tokens_entree = tokens_entree
+        self.tokens_sortie = tokens_sortie
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +84,8 @@ class RagAnswer:
             "etapes_agent": self.steps,
             "latence_ms": self.latency_ms,
             "tokens": self.tokens,
+            "tokens_entree": self.tokens_entree,
+            "tokens_sortie": self.tokens_sortie,
             "cache_semantique": self.cached,
             "limite_atteinte": self.limite_atteinte,
         }
@@ -146,14 +164,17 @@ class RagAgent:
             message,
         ]
 
-        usage_tokens = 0
+        tokens_entree = 0
+        tokens_sortie = 0
         texte = ""
         limite_atteinte = False
         appels_sql = 0
         try:
             for _ in range(self._max_steps):
                 reponse: AIMessage = llm_avec_outils.invoke(messages)
-                usage_tokens += _count_tokens(reponse)
+                entree, sortie = _usage(reponse)
+                tokens_entree += entree
+                tokens_sortie += sortie
                 messages.append(reponse)
 
                 if not getattr(reponse, "tool_calls", None):
@@ -215,7 +236,9 @@ class RagAgent:
                 # Derniere tentative sans outils pour forcer une reponse.
                 try:
                     reponse_finale = self._llm.invoke(messages)
-                    usage_tokens += _count_tokens(reponse_finale)
+                    entree, sortie = _usage(reponse_finale)
+                    tokens_entree += entree
+                    tokens_sortie += sortie
                     texte = (
                         reponse_finale.content
                         if isinstance(reponse_finale.content, str)
@@ -245,7 +268,8 @@ class RagAgent:
             )
 
         latency_ms = (time.perf_counter() - started) * 1000
-        metrics.LLM_TOKENS.labels(SERVICE, self._model_name, "completion").inc(usage_tokens)
+        metrics.LLM_TOKENS.labels(SERVICE, self._model_name, "prompt").inc(tokens_entree)
+        metrics.LLM_TOKENS.labels(SERVICE, self._model_name, "completion").inc(tokens_sortie)
         metrics.LLM_CALL_LATENCY.labels(SERVICE, self._model_name, "ok").observe(
             time.perf_counter() - started
         )
@@ -255,9 +279,11 @@ class RagAgent:
             sources=[source.to_dict() for source in sources],
             steps=steps,
             latency_ms=round(latency_ms, 2),
-            tokens=usage_tokens,
+            tokens=tokens_entree + tokens_sortie,
             cached=False,
             limite_atteinte=limite_atteinte,
+            tokens_entree=tokens_entree,
+            tokens_sortie=tokens_sortie,
         )
 
 
@@ -272,7 +298,13 @@ def _statut_sql(resultat: object) -> str:
     return "erreur"
 
 
-def _count_tokens(message: AIMessage) -> int:
-    """Nombre de tokens de completion, pour le suivi du cout FinOps."""
+def _usage(message: AIMessage) -> tuple[int, int]:
+    """Tokens (entree, sortie) d'un appel LLM, pour le suivi FinOps.
+
+    Le cout se calcule sur les deux : ne compter que la completion revient a
+    ignorer la part « prompt », qui domine sur un agent multi-etapes.
+    """
     metadata = getattr(message, "usage_metadata", None) or {}
-    return int(metadata.get("output_tokens", 0)) or len(str(message.content)) // 4
+    entree = int(metadata.get("input_tokens", 0))
+    sortie = int(metadata.get("output_tokens", 0)) or len(str(message.content)) // 4
+    return entree, sortie

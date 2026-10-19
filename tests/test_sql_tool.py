@@ -15,6 +15,7 @@ controle de fuite de la CI.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -327,3 +328,143 @@ def test_run_agent_sans_assure_refuse(outil: InsuredHistoryTool) -> None:
     assert payload["ok"] is False
     assert payload["type_erreur"] in {"forme_refusee", "motif_refuse"}
     assert "dossier assure" in payload["erreur"]
+
+
+def test_run_agent_indisponible_ne_conseille_pas_de_recorriger(
+    monkeypatch: pytest.MonkeyPatch, outil: InsuredHistoryTool
+) -> None:
+    """Une panne n'est pas une requete mal formee : le conseil differe.
+
+    Inviter le modele a reecrire sa requete sur une erreur d'infrastructure
+    l'engage dans une boucle de correction inutile.
+    """
+
+    def _run(requete: str, *, assure_id: str) -> list[dict]:
+        raise DataAccessError(
+            "Lecture de l'historique indisponible pour le moment.",
+            details={"type_erreur": "indisponible"},
+        )
+
+    monkeypatch.setattr(outil, "run", _run)
+
+    payload = json.loads(outil.run_agent("SELECT * FROM core.facture", assure_id="1"))
+
+    assert payload["type_erreur"] == "indisponible"
+    assert "reessaie pas" in payload["conseil"].lower()
+    assert "forme_attendue" not in payload
+
+
+def test_execution_indisponible_ne_fuit_pas_le_message_du_pilote(
+    outil: InsuredHistoryTool,
+) -> None:
+    """Le message du pilote reste dans les journaux, jamais dans l'erreur."""
+
+    class _MoteurEnPanne:
+        def connect(self) -> object:
+            raise RuntimeError("FATAL: password authentication failed for user predicare_ro")
+
+    outil._engine = _MoteurEnPanne()  # type: ignore[assignment]
+
+    with pytest.raises(DataAccessError) as erreur:
+        outil.run(
+            "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+            assure_id="1",
+        )
+
+    assert erreur.value.details["type_erreur"] == "indisponible"
+    assert "password" not in erreur.value.message
+
+
+# --------------------------------------------------------------- injection du filtre
+
+
+def _contient_filtre_assure(requete: str) -> bool:
+    return re.search(r"\bassure_id\s*=\s*:assure_id\b", requete) is not None
+
+
+def test_injection_sans_clause_where(outil: InsuredHistoryTool) -> None:
+    requete = outil._injecter_filtre("SELECT * FROM core.facture")
+
+    assert requete == "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id"
+    assert _contient_filtre_assure(requete)
+
+
+def test_injection_avant_order_by(outil: InsuredHistoryTool) -> None:
+    requete = outil._injecter_filtre(
+        "SELECT date_facture FROM core.facture ORDER BY date_facture DESC"
+    )
+
+    assert requete == (
+        "SELECT date_facture FROM core.facture WHERE 1=1 AND assure_id = :assure_id "
+        "ORDER BY date_facture DESC"
+    )
+    assert _contient_filtre_assure(requete)
+
+
+def test_injection_avant_limit(outil: InsuredHistoryTool) -> None:
+    requete = outil._injecter_filtre("SELECT * FROM core.facture LIMIT 10")
+
+    assert requete == "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id LIMIT 10"
+    assert _contient_filtre_assure(requete)
+
+
+def test_injection_point_virgule_final_conserve(outil: InsuredHistoryTool) -> None:
+    """Le `;` doit rester terminal : la clause ne s'ecrit pas apres lui."""
+    requete = outil._injecter_filtre("SELECT * FROM core.facture;")
+
+    assert requete == "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id;"
+    assert requete.endswith(";")
+
+
+def test_injection_ignore_un_litteral_contenant_assure_id(outil: InsuredHistoryTool) -> None:
+    """Un `:assure_id` dans une chaine ne doit pas faire croire au filtre."""
+    requete = outil._injecter_filtre(
+        "SELECT montant_total FROM core.facture WHERE motif_rejet = ':assure_id'"
+    )
+
+    assert _contient_filtre_assure(requete)
+    assert requete != "SELECT montant_total FROM core.facture WHERE motif_rejet = ':assure_id'"
+    assert requete.endswith("AND assure_id = :assure_id")
+
+
+def test_injection_ne_duplique_pas_un_filtre_present(outil: InsuredHistoryTool) -> None:
+    requete = "SELECT * FROM core.facture WHERE 1=1 AND assure_id = :assure_id"
+
+    assert outil._injecter_filtre(requete) == requete
+
+
+def test_requete_injectee_valide(outil: InsuredHistoryTool) -> None:
+    """La requete finale est re-validee : l'injection ne contourne pas la liste blanche."""
+    injectee = outil._injecter_filtre(
+        "SELECT * FROM core.facture ORDER BY date_facture DESC LIMIT 5"
+    )
+
+    assert outil._validate(injectee) == injectee
+
+
+# --------------------------------------------------------------- evasions nouvelles
+
+
+def test_assure_id_dans_un_litteral_ne_vaut_pas_filtre(outil: InsuredHistoryTool) -> None:
+    """Un WHERE dont le seul `:assure_id` est dans une chaine est refuse."""
+    with pytest.raises(DataAccessError) as erreur:
+        outil._validate("SELECT statut FROM core.facture WHERE statut = ':assure_id'")
+
+    assert erreur.value.details["type_erreur"] == "forme_refusee"
+
+
+def test_sous_requete_scalaire_refusee(outil: InsuredHistoryTool) -> None:
+    """`SELECT (SELECT ...)` est une lecture hors perimetre potentielle."""
+    with pytest.raises(DataAccessError):
+        outil._validate(
+            "SELECT (SELECT count(*) FROM core.remboursement) FROM core.facture "
+            "WHERE 1=1 AND assure_id = :assure_id"
+        )
+
+
+def test_agregat_sum_toujours_accepte_apres_refus_des_sous_requetes(
+    outil: InsuredHistoryTool,
+) -> None:
+    requete = TEMPLATES_REQUETES["total_rembourse"]
+
+    assert outil._validate(requete) == requete

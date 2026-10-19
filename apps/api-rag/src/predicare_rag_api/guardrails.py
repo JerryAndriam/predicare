@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 
 from predicare.errors import PromptInjectionError
+from predicare_rag_api.sql_tool import SCHEMA_SQL
 
 #: Motifs d'instruction adverse. Volontairement etroits : un filtre trop
 #: large rejetterait des questions legitimes ("comment annuler mon contrat
@@ -37,7 +38,7 @@ MOTIFS_INJECTION: tuple[re.Pattern[str], ...] = (
     # sont les plus naturelles et n'etaient pas couvertes.
     re.compile(
         r"(?:r[eé]v[eè]le|affiche|montre|recopie)"
-        r"(?:[- ](?:moi|nous|nous|toi))?"
+        r"(?:[- ](?:moi|nous|toi))?"
         r"(?:[ -](?:ton|ta|tes|le|la|les|ces))*"
         r"[ -](?:prompt|syst[eè]me)",
         re.I,
@@ -105,7 +106,7 @@ def build_user_context_block(question: str, insure_pseudonyme: str | None) -> st
     )
 
 
-SYSTEM_PROMPT = """Tu es l'assistant de la plateforme d'assurance PrediCare.
+SYSTEM_PROMPT = f"""Tu es l'assistant de la plateforme d'assurance PrediCare.
 
 REGLE ABSOLUE : tu ne reponds qu'a partir des documents et des donnees qui te
 sont fournis dans le bloc de contexte. Si l'information n'y figure pas, tu
@@ -126,10 +127,7 @@ indique un `source_fichier`, tu le cites egalement. Si tu ne peux pas
 rattacher une affirmation a une source du bloc, tu ne l'emets pas.
 
 SCHEMA SQL AUTORISE (lecture seule, filtre serveur sur l'assure connecte) :
-- core.facture(id, assure_id, date_facture, montant_total,
-  montant_pris_en_charge, statut, motif_rejet, date_traitement)
-- core.remboursement(id, assure_id, date_facture, date_remboursement,
-  montant_total, montant_rembourse, statut, motif_rejet, reference)
+{SCHEMA_SQL}
 
 FORME SQL OBLIGATOIRE :
 SELECT <colonnes> FROM core.facture WHERE 1=1 AND assure_id = :assure_id

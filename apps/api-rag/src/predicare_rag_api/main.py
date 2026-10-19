@@ -50,6 +50,10 @@ class AskResponse(BaseModel):
     tokens: int
     cache_semantique: bool
     limite_atteinte: bool = False
+    # Detail du cout : `tokens` reste le total, ces deux champs permettent de
+    # chiffrer separement le prompt et la completion.
+    tokens_entree: int = 0
+    tokens_sortie: int = 0
 
 
 def porteuse(authorization: str = Header(default="")) -> str | None:
@@ -74,27 +78,37 @@ def ask(
     payload: AskRequest,
     request: Request,
     assure_id: str | None = Depends(porteuse),
+    x_rag_no_cache: bool = Header(default=False),
 ) -> AskResponse:
-    """Point d'entree de l'assistant : filtre, cache, agent, sources."""
+    """Point d'entree de l'assistant : filtre, cache, agent, sources.
+
+    `X-Rag-No-Cache: true` court-circuite entierement le cache semantique :
+    l'evaluation s'execute alors a froid et ses chiffres sont reproductibles.
+    Le cache est de plus borne au `scope` de l'assure connecte, sans quoi une
+    question proche suffirait a servir l'historique d'un autre.
+    """
     question = sanitize_question(payload.question)
+    scope = assure_id or "anonyme"
 
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
-    entree = cache.get(question)
-    if entree is not None:
-        logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))
-        return AskResponse(
-            reponse=entree.answer,
-            sources=entree.sources,
-            etapes_agent=[{"outil": "cache_semantique", "resultat": "hit"}],
-            latence_ms=0.0,
-            tokens=0,
-            cache_semantique=True,
-            limite_atteinte=False,
-        )
+    if not x_rag_no_cache:
+        entree = cache.get(question, scope=scope)
+        if entree is not None:
+            logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))
+            return AskResponse(
+                reponse=entree.answer,
+                sources=entree.sources,
+                etapes_agent=[{"outil": "cache_semantique", "resultat": "hit"}],
+                latence_ms=0.0,
+                tokens=0,
+                cache_semantique=True,
+                limite_atteinte=False,
+            )
 
     resultat = agent.ask(question, assure_id=assure_id)
-    cache.put(question, resultat.answer, resultat.sources)
+    if not x_rag_no_cache:
+        cache.put(question, resultat.answer, resultat.sources, scope=scope)
     return AskResponse(**resultat.to_dict())
 
 
@@ -166,9 +180,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    # `service` est un mot-cle : l'annot de `add_middleware` suppose une
-    # factory positionnelle, ce que le type ne peut pas voir.
-    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)  # type: ignore[arg-type]
+    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)
 
     register_exception_handlers(app)
     register_health_route(
