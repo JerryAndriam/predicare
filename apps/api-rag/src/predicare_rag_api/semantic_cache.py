@@ -50,6 +50,9 @@ class CacheHit:
     #: Latence (ms) de l'appel LLM d'origine. Elle est rejouee en negatif
     #: dans les statistiques : c'est le temps que le cache a evite.
     latency_ms: float = 0.0
+    #: Une entree de degradation ne doit jamais etre servie comme un succes.
+    #: Le `put` refuse deja ces reponses ; ce champ est la seconde barriere.
+    succes: bool = True
 
 
 class SemanticCache:
@@ -78,6 +81,13 @@ class SemanticCache:
         self._cout_moyen_appel_eur = cout_moyen_appel_eur
         self._entries: dict[str, CacheHit] = {}
         self._order: list[str] = []
+        # Compteurs d'instance : les tests et l'ecran d'administration lisent
+        # le cache lui-meme, sans dependre de l'etat global de Prometheus.
+        self._hits = 0
+        self._misses = 0
+        #: Dernier vecteur calcule pour une question : `put` le reutilise
+        #: apres un `get` manque, au lieu de recalculer un embedding.
+        self._derniere_requete: tuple[str, list[float]] | None = None
         # Gains cumules mesures sur les succes : latence epargnee et nombre
         # d'appels LLM evites. Ce sont des mesures, pas des projections.
         self._latence_evitee_ms = 0.0
@@ -91,33 +101,46 @@ class SemanticCache:
         assures differents ne doivent jamais se repondre l'une l'autre.
         """
         self._purge_expired()
-        if not self._entries:
+        scope_cle = scope or ""
+        # Verifier l'appartenance au scope AVANT d'appeler l'embedder : sans
+        # entree pour cet assure, la question ne peut pas etre servie et
+        # l'embedding serait paye pour rien.
+        cles_scope = [key for key in self._order if self._entries[key].scope == scope_cle]
+        if not cles_scope:
             metrics.CACHE_EVENTS.labels(SERVICE, "vide").inc()
             metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
+            self._misses += 1
             return None
 
         try:
             vector = self._embedder.embed_documents([question])[0]
         except Exception:
             metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
+            self._misses += 1
             return None
-        scope_cle = scope or ""
+        # Memorise le vecteur : `put`, juste apres un miss, n'aura pas a
+        # recalculer un embedding pour la meme question.
+        self._derniere_requete = (question, vector)
+
         best_key, best_score = None, 0.0
-        for key in self._order:
+        for key in cles_scope:
             entry = self._entries[key]
-            if entry.scope != scope_cle:
-                continue
-            vecteur_entree = (
-                entry.vector
-                if entry.vector is not None
-                else self._embedder.embed_documents([entry.question])[0]
-            )
+            vecteur_entree = entry.vector
+            if vecteur_entree is None:
+                try:
+                    vecteur_entree = self._embedder.embed_documents([entry.question])[0]
+                except Exception:
+                    # Un vecteur manquant et non recalculable rend l'entree
+                    # incomparable : on la traite comme absente, pas comme une
+                    # correspondance parfaite.
+                    continue
             score = _cosine_similarity(vector, vecteur_entree)
             if score > best_score:
                 best_key, best_score = key, score
 
         if best_key is not None and best_score >= self._threshold:
             metrics.CACHE_EVENTS.labels(SERVICE, "hit").inc()
+            self._hits += 1
             entry = self._entries[best_key]
             self._latence_evitee_ms += entry.latency_ms
             self._nombre_appels_evites += 1
@@ -125,6 +148,7 @@ class SemanticCache:
             return entry
 
         metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
+        self._misses += 1
         return None
 
     def put(
@@ -135,12 +159,16 @@ class SemanticCache:
         *,
         scope: str | None = None,
         latency_ms: float = 0.0,
+        succes: bool = True,
+        vector: list[float] | None = None,
     ) -> None:
         """Memorise une reponse repetee au-dela du seuil de similarite.
 
         La cle inclut le `scope` : deux assures ne peuvent pas ecraser ni
         relire l'entree l'un de l'autre, meme sur une question identique.
         `latency_ms` est la latence de l'appel LLM evite par ce succes.
+        `succes=False` marque une degradation : elle est stockee pour la
+        tracabilite mais ne doit jamais etre servie comme un succes.
         """
         scope_cle = scope or ""
         key = hashlib.sha256(f"{scope_cle}|{question}".encode()).hexdigest()[:16]
@@ -149,27 +177,27 @@ class SemanticCache:
         elif len(self._order) >= self._max_entries:
             self._entries.pop(self._order.pop(0), None)
 
-        try:
-            vecteur = self._embedder.embed_documents([question])[0]
-        except Exception:
-            vecteur = None
         self._entries[key] = CacheHit(
             question=question,
             answer=answer,
             sources=sources or [],
             similarity=1.0,
             created_at=time.time(),
-            vector=vecteur,
+            vector=self._vecteur_pour(question, vector),
             scope=scope_cle,
             latency_ms=max(0.0, float(latency_ms)),
+            succes=succes,
         )
         self._order.append(key)
         metrics.CACHE_EVENTS.labels(SERVICE, "ecriture").inc()
 
     def stats(self) -> dict[str, float | int]:
         """Compteurs affiches dans l'ecran d'administration (FinOps)."""
-        total = metrics.CACHE_EVENTS.labels(SERVICE, "hit")._value.get()
-        miss = metrics.CACHE_EVENTS.labels(SERVICE, "miss")._value.get()
+        # Passe le balai avant de compter : une entree expiree ne doit pas
+        # gonfler la taille affichee.
+        self._purge_expired()
+        total = self._hits
+        miss = self._misses
         appele = total + miss
         return {
             "entrees": len(self._entries),
@@ -194,8 +222,26 @@ class SemanticCache:
     def clear(self) -> None:
         self._entries.clear()
         self._order.clear()
+        self._hits = 0
+        self._misses = 0
+        self._derniere_requete = None
         self._latence_evitee_ms = 0.0
         self._nombre_appels_evites = 0
+
+    def _vecteur_pour(self, question: str, vector: list[float] | None) -> list[float] | None:
+        """Vecteur d'une question : fourni, reutilise apres un miss, ou calcule.
+
+        Un echec de l'embedder laisse `None` : l'entree reste consultable
+        mais sera ignoree a la comparaison (cf. `get`).
+        """
+        if vector is not None:
+            return vector
+        if self._derniere_requete is not None and self._derniere_requete[0] == question:
+            return self._derniere_requete[1]
+        try:
+            return self._embedder.embed_documents([question])[0]
+        except Exception:
+            return None
 
     def _purge_expired(self) -> None:
         """Retire les entrees plus anciennes que la duree de vie configuree."""

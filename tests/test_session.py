@@ -13,13 +13,19 @@ import pytest
 
 from predicare.config import Settings
 from predicare_rag_api.agent import RagAnswer
-from predicare_rag_api.main import AskRequest, _creer_session_store, ask
+from predicare_rag_api.main import Appelant, AskRequest, _creer_session_store, ask
 from predicare_rag_api.semantic_cache import CacheHit, SemanticCache
 from predicare_rag_api.session import (
     SESSION_KEY_PREFIX,
     InMemorySessionStore,
     RedisSessionStore,
+    adresse_redis,
 )
+
+
+def _appelant(assure_id: str | None = "assure-A") -> Appelant:
+    """Appelant de test : le sujet reprend l'identifiant du dossier."""
+    return Appelant(assure_id=assure_id, subject=assure_id or "anonyme")
 
 
 class EmbedderFictif:
@@ -88,19 +94,19 @@ class RedisEnPanne:
     def ping(self) -> bool:
         raise ConnectionError("redis indisponible")
 
-    def rpush(self, *args: object, **kwargs: object) -> None:
+    def rpush(self, *_args: object, **_kwargs: object) -> None:
         raise ConnectionError("redis indisponible")
 
-    def ltrim(self, *args: object, **kwargs: object) -> None:
+    def ltrim(self, *_args: object, **_kwargs: object) -> None:
         raise ConnectionError("redis indisponible")
 
-    def expire(self, *args: object, **kwargs: object) -> None:
+    def expire(self, *_args: object, **_kwargs: object) -> None:
         raise ConnectionError("redis indisponible")
 
-    def lrange(self, *args: object, **kwargs: object) -> list[str]:
+    def lrange(self, *_args: object, **_kwargs: object) -> list[str]:
         raise ConnectionError("redis indisponible")
 
-    def delete(self, *args: object, **kwargs: object) -> None:
+    def delete(self, *_args: object, **_kwargs: object) -> None:
         raise ConnectionError("redis indisponible")
 
 
@@ -169,6 +175,38 @@ def test_expiration_locale() -> None:
     assert store.get("assure-A", "s1") == []
 
 
+def test_taille_locale_bornee() -> None:
+    """Un repli de longue duree ne doit pas accumuler les sessions mortes."""
+    store = InMemorySessionStore(max_sessions=3)
+
+    for index in range(10):
+        store.append("assure-A", f"s{index}", _tour(f"Q{index}"))
+
+    assert store.nombre_sessions == 3
+    # Les plus anciennes sont evincees, les recentes restent lisibles.
+    assert store.get("assure-A", "s0") == []
+    assert store.get("assure-A", "s9") != []
+
+
+def test_taille_locale_evince_les_expirees_en_premier() -> None:
+    store = InMemorySessionStore(ttl_seconds=10, max_sessions=2)
+    store.append("assure-A", "s1", _tour("Q1"))
+    store.append("assure-A", "s2", _tour("Q2"))
+    # s1 est perimee, s3 doit prendre sa place sans evincer s2.
+    store._expire_at["rag:session:assure-A:s1"] -= 11
+
+    store.append("assure-A", "s3", _tour("Q3"))
+
+    assert store.nombre_sessions == 2
+    assert store.get("assure-A", "s2") != []
+    assert store.get("assure-A", "s3") != []
+
+
+def test_adresse_redis_masque_le_mot_de_passe() -> None:
+    assert adresse_redis("redis://user:secret@redis:6380/2") == "redis:6380/2"
+    assert adresse_redis("redis://redis:6379/0") == "redis:6379/0"
+
+
 # --------------------------------------------------------------- Redis
 
 
@@ -222,6 +260,27 @@ def test_redis_panne_ne_leve_jamais() -> None:
     assert store.get("assure-A", "s1") == []
 
 
+def test_redis_connexion_avec_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un Redis suspendu ne doit pas bloquer le demarrage ni la route."""
+    import predicare_rag_api.session as module
+
+    captures: dict[str, object] = {}
+
+    def faux_from_url(url: str, **kwargs: object) -> FakeRedis:
+        captures["url"] = url
+        captures.update(kwargs)
+        return FakeRedis()
+
+    monkeypatch.setattr(module.redis.Redis, "from_url", staticmethod(faux_from_url))
+
+    RedisSessionStore("redis://redis:6379/0")
+
+    assert captures["decode_responses"] is True
+    assert captures["socket_connect_timeout"] == 1.0
+    assert captures["socket_timeout"] == 1.0
+    assert captures["health_check_interval"] == 30
+
+
 # --------------------------------------------------------------- cablage route
 
 
@@ -236,6 +295,7 @@ class AgentFictif:
         assure_id: str | None,
         history: list[dict] | None = None,
     ) -> RagAnswer:
+        del assure_id
         self.historiques.append(history)
         return RagAnswer(
             answer=f"Reponse a : {question}",
@@ -251,16 +311,58 @@ class AgentFictif:
         )
 
 
-class CacheVide:
-    def get(self, *args: object, **kwargs: object) -> None:
+class AgentCompteur:
+    """Agent en echec qui compte ses appels : prouve qu'une degradation ne
+    bloque pas la question suivante (elle n'est pas mise en cache)."""
+
+    def __init__(self) -> None:
+        self.appels = 0
+
+    def ask(
+        self,
+        question: str,
+        *,
+        assure_id: str | None,
+        history: list[dict] | None = None,
+    ) -> RagAnswer:
+        del question, assure_id, history
+        self.appels += 1
+        return RagAnswer(
+            answer="Le service de reponse est temporairement indisponible.",
+            sources=[],
+            steps=[],
+            latency_ms=0.0,
+            tokens=0,
+            cached=False,
+            succes=False,
+        )
+
+
+class CacheEspion:
+    """Cache enregistreur : prouve qu'aucune lecture/ecriture n'a eu lieu."""
+
+    def __init__(self) -> None:
+        self.gets = 0
+        self.puts = 0
+
+    def get(self, *_args: object, **_kwargs: object) -> None:
+        self.gets += 1
         return None
 
-    def put(self, *args: object, **kwargs: object) -> None:
+    def put(self, *_args: object, **_kwargs: object) -> None:
+        self.puts += 1
+
+
+class CacheVide:
+    def get(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def put(self, *_args: object, **_kwargs: object) -> None:
         return None
 
 
 class CacheAvecSucces:
-    def get(self, *args: object, **kwargs: object) -> CacheHit:
+    def get(self, *_args: object, **_kwargs: object) -> CacheHit:
         return CacheHit(
             question="Question ?",
             answer="Reponse du cache",
@@ -268,11 +370,27 @@ class CacheAvecSucces:
             similarity=1.0,
         )
 
-    def put(self, *args: object, **kwargs: object) -> None:
+    def put(self, *_args: object, **_kwargs: object) -> None:
         return None
 
 
-def _requete(agent: AgentFictif, cache: object, sessions: InMemorySessionStore) -> object:
+class CacheAvecDegradation:
+    """Entree de cache marquee en echec : ne doit jamais etre servie."""
+
+    def get(self, *_args: object, **_kwargs: object) -> CacheHit:
+        return CacheHit(
+            question="Question ?",
+            answer="Reponse degradee du cache",
+            sources=[],
+            similarity=1.0,
+            succes=False,
+        )
+
+    def put(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+def _requete(agent: object, cache: object, sessions: InMemorySessionStore) -> object:
     state = SimpleNamespace(agent=agent, cache=cache, sessions=sessions)
     return SimpleNamespace(app=SimpleNamespace(state=state))
 
@@ -285,13 +403,13 @@ def test_route_transmet_l_historique_au_deuxieme_tour() -> None:
     ask(
         AskRequest(question="Quel est le taux de la consultation ?", session_id="s1"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=True,
     )
     ask(
         AskRequest(question="Et pour la pharmacie ?", session_id="s1"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=True,
     )
 
@@ -307,7 +425,7 @@ def test_route_ajoute_le_cout_et_les_tokens() -> None:
     reponse = ask(
         AskRequest(question="Question ?", session_id=None),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=True,
     )
 
@@ -324,7 +442,7 @@ def test_route_memorise_un_succes_de_cache_avec_cout_nul() -> None:
     reponse = ask(
         AskRequest(question="Question ?", session_id="s1"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
 
@@ -343,19 +461,48 @@ def test_route_ne_franchit_pas_la_frontiere_des_assures() -> None:
     ask(
         AskRequest(question="Question de A", session_id="partagee"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=True,
     )
     ask(
         AskRequest(question="Question de B", session_id="partagee"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-B",
+        appelant=_appelant("assure-B"),
         x_rag_no_cache=True,
     )
 
     assert agent.historiques[1] == []
     assert sessions.get("assure-A", "partagee")[0]["question"] == "Question de A"
     assert sessions.get("assure-B", "partagee")[0]["question"] == "Question de B"
+
+
+def test_deux_gestionnaires_sans_dossier_ont_des_scopes_distincts() -> None:
+    """`ins=None` et sujets differents : ni cache ni session en commun.
+
+    Sans le sujet du jeton dans le scope, tous les gestionnaires et
+    administrateurs partageraient la meme cle « anonyme » et l'un pourrait
+    lire la conversation de l'autre.
+    """
+    agent = AgentFictif()
+    sessions = InMemorySessionStore()
+    request = _requete(agent, CacheVide(), sessions)
+
+    ask(
+        AskRequest(question="Question de u1", session_id="partagee"),
+        request,  # type: ignore[arg-type]
+        appelant=Appelant(assure_id=None, subject="u1"),
+        x_rag_no_cache=True,
+    )
+    ask(
+        AskRequest(question="Question de u2", session_id="partagee"),
+        request,  # type: ignore[arg-type]
+        appelant=Appelant(assure_id=None, subject="u2"),
+        x_rag_no_cache=True,
+    )
+
+    assert agent.historiques[1] == []
+    assert sessions.get("user:u1", "partagee")[0]["question"] == "Question de u1"
+    assert sessions.get("user:u2", "partagee")[0]["question"] == "Question de u2"
 
 
 # --------------------------------------------- cache et reponses contextuelles
@@ -378,21 +525,21 @@ def test_une_reponse_de_suivi_ne_pollue_pas_le_cache() -> None:
     ask(
         AskRequest(question="Quel est le taux de la consultation ?", session_id="A"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
     # Tour 2 de A : question de suivi, le cache doit etre contourne.
     ask(
         AskRequest(question="Et pour la pharmacie ?", session_id="A"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
     # Session B, premiere question : contexte different, pas de cache.
     reponse_b = ask(
         AskRequest(question="Et pour la pharmacie ?", session_id="B"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
 
@@ -401,6 +548,38 @@ def test_une_reponse_de_suivi_ne_pollue_pas_le_cache() -> None:
     # que la premiere question de A et la premiere question de B.
     assert cache.stats()["entrees"] == 2
     assert agent.historiques[2] == []
+
+
+def test_un_suivi_ne_lit_ni_n_ecrit_le_cache() -> None:
+    """Avec un historique, le cache n'est ni consulte ni alimente.
+
+    Le test precedent prouve qu'aucune ecriture n'a lieu ; celui-ci enregistre
+    les appels pour verifier qu'il n'y a meme pas de lecture (`get`).
+    """
+    agent = AgentFictif()
+    cache = CacheEspion()
+    sessions = InMemorySessionStore()
+    request = _requete(agent, cache, sessions)
+
+    ask(
+        AskRequest(question="Quel est le taux de la consultation ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        appelant=_appelant("assure-A"),
+        x_rag_no_cache=False,
+    )
+    assert cache.gets == 1
+    assert cache.puts == 1
+
+    ask(
+        AskRequest(question="Et pour la pharmacie ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        appelant=_appelant("assure-A"),
+        x_rag_no_cache=False,
+    )
+
+    # Le tour de suivi n'a declenche ni lecture ni ecriture.
+    assert cache.gets == 1
+    assert cache.puts == 1
 
 
 def test_succes_de_cache_appende_quand_meme_le_tour() -> None:
@@ -414,13 +593,13 @@ def test_succes_de_cache_appende_quand_meme_le_tour() -> None:
     ask(
         AskRequest(question="Quel est mon plafond ?"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
     reponse = ask(
         AskRequest(question="Quel est mon plafond ?", session_id="s1"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=False,
     )
 
@@ -438,6 +617,7 @@ class AgentEnEchec:
         assure_id: str | None,
         history: list[dict] | None = None,
     ) -> RagAnswer:
+        del question, assure_id, history
         return RagAnswer(
             answer="Le service de reponse est temporairement indisponible.",
             sources=[],
@@ -451,17 +631,70 @@ class AgentEnEchec:
 
 def test_une_reponse_en_echec_n_entre_pas_dans_l_historique() -> None:
     sessions = InMemorySessionStore()
-    request = _requete(AgentEnEchec(), CacheVide(), sessions)  # type: ignore[arg-type]
+    request = _requete(AgentEnEchec(), CacheVide(), sessions)
 
     reponse = ask(
         AskRequest(question="Question ?", session_id="s1"),
         request,  # type: ignore[arg-type]
-        assure_id="assure-A",
+        appelant=_appelant("assure-A"),
         x_rag_no_cache=True,
     )
 
     assert reponse.succes is False
     assert sessions.get("assure-A", "s1") == []
+
+
+def test_une_reponse_en_echec_n_est_jamais_mise_en_cache() -> None:
+    """Un echec ne doit pas etre memorise puis reserve comme un succes.
+
+    Sans la garde `resultat.succes`, la reponse de degradation entrerait
+    dans le cache pour tout le TTL : la question suivante la servirait comme
+    un succes (`cache_semantique=True`) et l'ajouterait a l'historique.
+    """
+    agent = AgentCompteur()
+    cache = SemanticCache(EmbedderFictif(), threshold=0.95)
+    sessions = InMemorySessionStore()
+    request = _requete(agent, cache, sessions)
+
+    premiere = ask(
+        AskRequest(question="Quel est mon plafond ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        appelant=_appelant("assure-A"),
+        x_rag_no_cache=False,
+    )
+    seconde = ask(
+        AskRequest(question="Quel est mon plafond ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        appelant=_appelant("assure-A"),
+        x_rag_no_cache=False,
+    )
+
+    assert premiere.succes is False
+    assert premiere.cache_semantique is False
+    assert cache.stats()["entrees"] == 0
+    # La seconde question n'a pas pu etre servie par le cache : l'agent a
+    # reellement ete rappele.
+    assert seconde.cache_semantique is False
+    assert agent.appels == 2
+    assert sessions.get("assure-A", "s1") == []
+
+
+def test_une_entree_degradee_du_cache_est_ignoree() -> None:
+    """Defense en profondeur : une entree `succes=False` n'est pas servie."""
+    agent = AgentFictif()
+    sessions = InMemorySessionStore()
+    request = _requete(agent, CacheAvecDegradation(), sessions)
+
+    reponse = ask(
+        AskRequest(question="Question ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        appelant=_appelant("assure-A"),
+        x_rag_no_cache=False,
+    )
+
+    assert reponse.cache_semantique is False
+    assert reponse.succes is True
+    assert sessions.get("assure-A", "s1")[0]["answer"] != "Reponse degradee du cache"
 
 
 # ------------------------------------------------------ selection du store

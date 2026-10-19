@@ -103,6 +103,52 @@ def test_ecriture_incremente_les_compteurs(embedder: EmbedderFictif) -> None:
     assert stats["entrees"] == 1
 
 
+def test_un_miss_puis_put_ne_calcule_qu_un_embedding(
+    embedder: EmbedderFictif,
+) -> None:
+    """Le vecteur du `get` manque est reutilise par le `put` suivant.
+
+    Sans cette reutilisation, chaque question payait deux embeddings
+    (un pour chercher, un pour ecrire) chez le fournisseur.
+    """
+    cache = SemanticCache(embedder, threshold=0.99)
+    cache.put("Question initiale ?", "Reponse.")
+
+    avant = embedder.appels
+    cache.get("Une autre question sans mots communs")
+    cache.put("Une autre question sans mots communs", "Reponse 2.")
+
+    assert embedder.appels - avant == 1
+
+
+def test_scope_absent_n_appelle_pas_l_embedder(embedder: EmbedderFictif) -> None:
+    """Sans entree dans le scope, une recherche ne peut pas aboutir : ne pas
+    payer l'embedding pour rien."""
+    cache = SemanticCache(embedder, threshold=0.95)
+    cache.put("Question ?", "Reponse.", scope="assure-A")
+
+    avant = embedder.appels
+
+    assert cache.get("Question ?", scope="assure-B") is None
+    assert embedder.appels == avant
+
+
+def test_vecteur_d_entree_non_recalculable_traite_comme_un_miss() -> None:
+    """Un embedding d'entree en echec ne doit ni lever ni produire un succes."""
+
+    class EmbedderCible(EmbedderFictif):
+        def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            if any("introuvable" in texte for texte in texts):
+                raise RuntimeError("embedding indisponible")
+            return super().embed_documents(texts)
+
+    embedder_cible = EmbedderCible()
+    cache = SemanticCache(embedder_cible, threshold=0.95)
+    cache.put("question introuvable", "Reponse.")
+
+    assert cache.get("une question valide") is None
+
+
 # --------------------------------------------------------------- seuil
 
 
@@ -126,8 +172,7 @@ def test_seuil_execute_changement(cache: SemanticCache) -> None:
 
     # Un seuil de 0 rend toute similitude acceptable : le cache repond
     # toujours. C'est le comportement degrade attendu d'une configuration
-    # trop permissive, et il est_volontaire.
-    cache.seuil = 0.0
+    # trop permissive, et il est volontaire.
     cache._threshold = 0.0
 
     assert cache.get("Question ?") is not None

@@ -7,6 +7,14 @@ from functools import lru_cache
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: Tarifs LLM par defaut, en USD par million de tokens, et taux indicatif
+#: USD -> EUR. Source unique : les champs de `Settings` et le calcul FinOps
+#: (`predicare_rag_api.finops`) les importent, ce qui evite qu'une grille
+#: tarifaire diverge entre le calcul du service et son affichage.
+PRIX_ENTREE_DEFAUT_USD_PAR_MILLION = 0.15
+PRIX_SORTIE_DEFAUT_USD_PAR_MILLION = 0.60
+TAUX_USD_EUR_DEFAUT = 0.92
+
 
 class Settings(BaseSettings):
     """Toutes les valeurs comes de variables d'environnement.
@@ -80,13 +88,18 @@ class Settings(BaseSettings):
     # historique, et chaque tour supplementaire coute des tokens de prompt.
     session_ttl_seconds: int = 3600
     session_max_turns: int = 6
+    #: Nombre maximal de sessions gardees par le repli memoire. Le TTL ne
+    #: suffit pas : des sessions abandonnees et jamais relues s'accumulent si
+    #: rien ne borne la taille. La valeur est large pour ne pas evincer une
+    #: conversation active en usage normal.
+    session_max_sessions: int = 1000
 
     # FinOps (Phase F) : tarifs LLM configurable, en USD par million de
     # tokens, et taux de conversion indicatif. Les valeurs par defaut
     # correspondent a un petit modele ; elles doivent suivre la grille reelle.
-    llm_input_cost_per_million_usd: float = 0.15
-    llm_output_cost_per_million_usd: float = 0.60
-    taux_usd_eur: float = 0.92
+    llm_input_cost_per_million_usd: float = PRIX_ENTREE_DEFAUT_USD_PAR_MILLION
+    llm_output_cost_per_million_usd: float = PRIX_SORTIE_DEFAUT_USD_PAR_MILLION
+    taux_usd_eur: float = TAUX_USD_EUR_DEFAUT
 
     # LLM (jamais en clair dans le code)
     llm_api_base: str = ""

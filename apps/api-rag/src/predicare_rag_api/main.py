@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,7 @@ from predicare_rag_api.session import (
     InMemorySessionStore,
     RedisSessionStore,
     SessionStore,
+    adresse_redis,
 )
 from predicare_rag_api.sql_tool import InsuredHistoryTool
 
@@ -71,17 +73,45 @@ class AskResponse(BaseModel):
     succes: bool = True
 
 
-def _tour(question: str, answer: str, sources: list[dict]) -> dict:
-    """Un tour de session, serialisable en JSON."""
+def _tour(question: str, answer: str) -> dict:
+    """Un tour de session, serialisable en JSON.
+
+    Le tour ne porte que la question, la reponse et l'horodatage : les
+    sources ne servent pas a rejouer la conversation et ne sont donc pas
+    persistees (minimisation des donnees personnelles).
+    """
     return {
         "question": question,
         "answer": answer,
-        "sources": list(sources),
         "timestamp": time.time(),
     }
 
 
-def porteuse(authorization: str = Header(default="")) -> str | None:
+@dataclass(frozen=True, slots=True)
+class Appelant:
+    """Identite verifiee du porteur de jeton.
+
+    `assure_id` est le dossier de sante, absent pour un gestionnaire ou un
+    administrateur. `subject` est le sujet du jeton (`sub`), qui distingue
+    ces profils entre eux.
+    """
+
+    assure_id: str | None
+    subject: str
+
+
+def _scope_appelant(appelant: Appelant) -> str:
+    """Cle de cloisonnement du cache et des sessions.
+
+    Un assure est identifie par son dossier (`ins`). Un gestionnaire ou un
+    administrateur n'a pas d'identifiant assure : on retombe alors sur le
+    sujet du jeton. Employer un scope unique « anonyme » ferait partager a
+    tous les gestionnaires le meme cache et le meme historique de session.
+    """
+    return appelant.assure_id or f"user:{appelant.subject}"
+
+
+def porteuse(authorization: str = Header(default="")) -> Appelant:
     """Identite de l'appelant, lue dans le jeton JWT.
 
     Sans ce controle, l'agent repondrait avec `assure_id = None` : l'outil
@@ -95,14 +125,14 @@ def porteuse(authorization: str = Header(default="")) -> str | None:
     # Un profil de sante n'a pas la permission `rag:interroger` : sans ce
     # controle, la route serait ouverte a un role que la matrice exclut.
     ensure_permission(payload.role, "rag:interroger")
-    return payload.insured_id
+    return Appelant(assure_id=payload.insured_id, subject=payload.subject)
 
 
 @router.post("/question", response_model=AskResponse)
 def ask(
     payload: AskRequest,
     request: Request,
-    assure_id: str | None = Depends(porteuse),
+    appelant: Appelant = Depends(porteuse),
     x_rag_no_cache: bool = Header(default=False),
 ) -> AskResponse:
     """Point d'entree de l'assistant : filtre, session, cache, agent, sources.
@@ -119,21 +149,24 @@ def ask(
     session du meme assure dont le contexte differe.
     """
     question = sanitize_question(payload.question)
-    scope = assure_id or "anonyme"
+    assure_id = appelant.assure_id
+    scope = _scope_appelant(appelant)
 
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
     sessions: SessionStore = request.app.state.sessions
 
-    # L'historique est lu uniquement dans le scope du jeton : une session
-    # identique appartenant a un autre assure reste invisible. Il est charge
-    # avant le cache : sa presence decide si le cache est utilisable.
+    # L'historique est lu uniquement dans le scope du porteur : une session
+    # identique appartenant a un autre reste invisible. Il est charge avant
+    # le cache : sa presence decide si le cache est utilisable.
     historique = sessions.get(scope, payload.session_id) if payload.session_id is not None else []
     suit_une_conversation = bool(historique)
 
     if not x_rag_no_cache and not suit_une_conversation:
         entree = cache.get(question, scope=scope)
-        if entree is not None:
+        # Une entree marquee en echec n'est jamais servie comme un succes :
+        # elle est ignoree et la question part a l'agent.
+        if entree is not None and entree.succes:
             logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))
             # Un succes de cache est une reponse valide pour cette session :
             # le tour est memorise, avec un cout nul.
@@ -141,7 +174,7 @@ def ask(
                 sessions.append(
                     scope,
                     payload.session_id,
-                    _tour(question, entree.answer, entree.sources),
+                    _tour(question, entree.answer),
                 )
             return AskResponse(
                 reponse=entree.answer,
@@ -155,17 +188,23 @@ def ask(
                 cout_estime_eur=0.0,
                 cache_semantique=True,
                 limite_atteinte=False,
-                succes=True,
+                succes=entree.succes,
             )
+        if entree is not None:
+            logger.warning("cache.entree_degradee_ignoree", question_cle=entree.question)
 
     resultat = agent.ask(question, assure_id=assure_id, history=historique)
-    if not x_rag_no_cache and not suit_une_conversation:
+    # Une degradation ne doit pas etre memorisee : sinon elle serait servie
+    # pendant tout le TTL comme une reponse valide, a cette session comme aux
+    # suivantes.
+    if not x_rag_no_cache and not suit_une_conversation and resultat.succes:
         cache.put(
             question,
             resultat.answer,
             resultat.sources,
             scope=scope,
             latency_ms=resultat.latency_ms,
+            succes=resultat.succes,
         )
     # Seule une vraie reponse entre dans l'historique : un message de
     # degradation ne doit pas polluer le contexte des tours suivants.
@@ -173,7 +212,7 @@ def ask(
         sessions.append(
             scope,
             payload.session_id,
-            _tour(question, resultat.answer, resultat.sources),
+            _tour(question, resultat.answer),
         )
     return AskResponse(**resultat.to_dict())
 
@@ -208,13 +247,15 @@ def _creer_session_store(settings: Settings) -> SessionStore:
         ttl_seconds=settings.session_ttl_seconds,
         max_turns=settings.session_max_turns,
     )
+    endpoint = adresse_redis(settings.redis_url)
     if redis_store.ping():
-        logger.info("session.redis_pret", url=settings.redis_url)
+        logger.info("session.redis_pret", redis=endpoint)
         return redis_store
-    logger.warning("session.repli_memoire", url=settings.redis_url)
+    logger.warning("session.repli_memoire", redis=endpoint)
     return InMemorySessionStore(
         ttl_seconds=settings.session_ttl_seconds,
         max_turns=settings.session_max_turns,
+        max_sessions=settings.session_max_sessions,
     )
 
 
@@ -265,6 +306,7 @@ def create_app() -> FastAPI:
     app.state.sessions = InMemorySessionStore(
         ttl_seconds=settings.session_ttl_seconds,
         max_turns=settings.session_max_turns,
+        max_sessions=settings.session_max_sessions,
     )
 
     app.add_middleware(

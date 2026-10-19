@@ -22,6 +22,7 @@ import json
 import threading
 import time
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 import redis
 
@@ -33,9 +34,37 @@ logger = get_logger("api-rag.session")
 #: deux assures qui choisissent le meme `session_id` restent isoles.
 SESSION_KEY_PREFIX = "rag:session"
 
+#: Bornes de connexion Redis. Sans elles, un Redis suspendu peut bloquer le
+#: `ping()` du demarrage ou la route d'ask, qui sont synchrones.
+REDIS_CONNECT_TIMEOUT_SECONDS = 1.0
+REDIS_READ_TIMEOUT_SECONDS = 1.0
+REDIS_HEALTH_CHECK_INTERVAL_SECONDS = 30
+
+
+def adresse_redis(redis_url: str) -> str:
+    """Decrit Redis pour les logs sans jamais exposer l'identifiant.
+
+    `redis_url` peut porter un mot de passe (`redis://user:secret@host`).
+    Un journal est lisible par l'exploitant et finit souvent dans un
+    agregateur : on ne conserve que l'hote, le port et le numero de base.
+    """
+    try:
+        parties = urlsplit(redis_url)
+    except ValueError:
+        return "redis"
+    hote = parties.hostname or "redis"
+    port = parties.port or 6379
+    base = (parties.path or "/0").lstrip("/") or "0"
+    return f"{hote}:{port}/{base}"
+
 
 class SessionStore(Protocol):
-    """Contrat minimal d'un stockage de tours de conversation."""
+    """Contrat minimal d'un stockage de tours de conversation.
+
+    Un tour ne contient que `question`, `answer` et `timestamp` : les sources
+    ne sont pas requises pour rejouer la conversation et ne sont donc pas
+    persistees (minimisation des donnees, RGPD).
+    """
 
     def get(self, scope: str, session_id: str) -> list[dict]: ...
 
@@ -65,7 +94,13 @@ class RedisSessionStore:
         max_turns: int = 6,
         client: Any | None = None,
     ) -> None:
-        self._client = client or redis.Redis.from_url(redis_url, decode_responses=True)
+        self._client = client or redis.Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=REDIS_CONNECT_TIMEOUT_SECONDS,
+            socket_timeout=REDIS_READ_TIMEOUT_SECONDS,
+            health_check_interval=REDIS_HEALTH_CHECK_INTERVAL_SECONDS,
+        )
         self._ttl_seconds = ttl_seconds
         self._max_turns = max(1, max_turns)
 
@@ -126,12 +161,23 @@ class InMemorySessionStore:
     """Repli local : suffisant pour les tests et pour un Redis absent.
 
     La duree de vie est appliquee a la lecture : une session inutilisee
-    depuis `ttl_seconds` est oubliee, comme dans Redis.
+    depuis `ttl_seconds` est oubliee, comme dans Redis. Comme rien ne relit
+    une session abandonnee, un balayage des entrees expirees est fait a
+    chaque ecriture et la taille totale est bornee par `max_sessions` : sans
+    cette borne, un repli de longue duree accumulerait sans fin des sessions
+    mortes.
     """
 
-    def __init__(self, *, ttl_seconds: int = 3600, max_turns: int = 6) -> None:
+    def __init__(
+        self,
+        *,
+        ttl_seconds: int = 3600,
+        max_turns: int = 6,
+        max_sessions: int = 1000,
+    ) -> None:
         self._ttl_seconds = ttl_seconds
         self._max_turns = max(1, max_turns)
+        self._max_sessions = max(1, max_sessions)
         self._tours: dict[str, list[dict]] = {}
         self._expire_at: dict[str, float] = {}
         self._lock = threading.Lock()
@@ -139,6 +185,11 @@ class InMemorySessionStore:
     @property
     def max_turns(self) -> int:
         return self._max_turns
+
+    @property
+    def nombre_sessions(self) -> int:
+        with self._lock:
+            return len(self._tours)
 
     def get(self, scope: str, session_id: str) -> list[dict]:
         cle = _cle(scope, session_id)
@@ -150,19 +201,38 @@ class InMemorySessionStore:
     def append(self, scope: str, session_id: str, turn: dict) -> None:
         cle = _cle(scope, session_id)
         with self._lock:
-            if self._expiree(cle):
-                self._tours.pop(cle, None)
+            # `_expiree` retire deja la cle perimee : ne pas la retirer ici en
+            # double, ce serait un `pop` inutile sur un dictionnaire vide.
+            self._expiree(cle)
             tours = self._tours.setdefault(cle, [])
             tours.append(dict(turn))
             if len(tours) > self._max_turns:
                 del tours[: len(tours) - self._max_turns]
             self._expire_at[cle] = time.time() + self._ttl_seconds
+            self._borner_taille()
 
     def clear(self, scope: str, session_id: str) -> None:
         cle = _cle(scope, session_id)
         with self._lock:
             self._tours.pop(cle, None)
             self._expire_at.pop(cle, None)
+
+    def _borner_taille(self) -> None:
+        """Evince les sessions les plus anciennes au-dela de `max_sessions`.
+
+        Les sessions expirees partent en premier ; s'il en reste trop, on
+        retire dans l'ordre d'insertion (les dictionnaires Python le
+        conservent), ce qui revient a une politique FIFO suffisante pour un
+        repli de secours.
+        """
+        expirees = [cle for cle, limite in self._expire_at.items() if limite <= time.time()]
+        for cle in expirees:
+            self._tours.pop(cle, None)
+            self._expire_at.pop(cle, None)
+        while len(self._tours) > self._max_sessions:
+            plus_ancienne = next(iter(self._tours))
+            self._tours.pop(plus_ancienne, None)
+            self._expire_at.pop(plus_ancienne, None)
 
     def _expiree(self, cle: str) -> bool:
         limite = self._expire_at.get(cle)

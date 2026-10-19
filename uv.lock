@@ -1751,6 +1751,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "pgvector" },
     { name = "predicare-core" },
+    { name = "redis" },
     { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1764,6 +1765,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=0.2.60" },
     { name = "pgvector", specifier = ">=0.3.6" },
     { name = "predicare-core", editable = "packages/predicare-core" },
+    { name = "redis", specifier = ">=5.2.0" },
     { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]

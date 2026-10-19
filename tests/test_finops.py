@@ -31,8 +31,8 @@ def test_un_million_de_tokens_sortie() -> None:
 
     assert cout["cout_entree_usd"] == 0.0
     assert cout["cout_total_usd"] == pytest.approx(0.60)
-    assert cout["cout_sortie_eur"] == pytest.approx(0.60 * 0.92)
-    assert cout["cout_total_eur"] == pytest.approx(0.60 * 0.92)
+    assert cout["cout_sortie_eur"] == pytest.approx(0.60 * TAUX_USD_EUR_DEFAUT)
+    assert cout["cout_total_eur"] == pytest.approx(0.60 * TAUX_USD_EUR_DEFAUT)
 
 
 def test_les_couts_eur_par_sens_s_additionnent() -> None:
@@ -58,6 +58,7 @@ def test_tokens_nuls_donnent_un_cout_nul() -> None:
         "cout_entree_usd": 0.0,
         "cout_sortie_usd": 0.0,
         "cout_total_usd": 0.0,
+        "cout_total_usd_brut": 0.0,
         "cout_entree_eur": 0.0,
         "cout_sortie_eur": 0.0,
         "cout_total_eur": 0.0,
