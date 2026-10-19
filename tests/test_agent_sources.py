@@ -101,6 +101,8 @@ def test_les_sources_de_l_outil_apparaissent_dans_la_reponse() -> None:
     contrats = {source["contrat"] for source in reponse.sources}
     assert "Conditions Generales PREMIUM" in contrats
     assert "Guide des garanties PREMIUM" in contrats
+    assert reponse.succes is True
+    assert reponse.to_dict()["succes"] is True
 
 
 def test_les_sources_sont_dedupliquees() -> None:

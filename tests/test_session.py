@@ -11,14 +11,33 @@ from types import SimpleNamespace
 
 import pytest
 
+from predicare.config import Settings
 from predicare_rag_api.agent import RagAnswer
-from predicare_rag_api.main import AskRequest, ask
-from predicare_rag_api.semantic_cache import CacheHit
+from predicare_rag_api.main import AskRequest, _creer_session_store, ask
+from predicare_rag_api.semantic_cache import CacheHit, SemanticCache
 from predicare_rag_api.session import (
     SESSION_KEY_PREFIX,
     InMemorySessionStore,
     RedisSessionStore,
 )
+
+
+class EmbedderFictif:
+    """Embeddings deterministes, sans appel reseau (cf. test_semantic_cache)."""
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        import hashlib
+
+        vecteurs: list[list[float]] = []
+        for texte in texts:
+            dimensions = [0.0] * 16
+            for mot in texte.lower().split():
+                brut = int(hashlib.sha256(mot.encode()).hexdigest(), 16)
+                dimensions[brut % 16] += 1.0
+            if not any(dimensions):
+                dimensions[0] = 1.0
+            vecteurs.append(dimensions)
+        return vecteurs
 
 
 class FakeRedis:
@@ -337,3 +356,132 @@ def test_route_ne_franchit_pas_la_frontiere_des_assures() -> None:
     assert agent.historiques[1] == []
     assert sessions.get("assure-A", "partagee")[0]["question"] == "Question de A"
     assert sessions.get("assure-B", "partagee")[0]["question"] == "Question de B"
+
+
+# --------------------------------------------- cache et reponses contextuelles
+
+
+def test_une_reponse_de_suivi_ne_pollue_pas_le_cache() -> None:
+    """Une reponse construite avec l'historique ne doit jamais etre stockee
+    sous la cle du seul assure, ni servie a une autre session.
+
+    On produit d'abord un tour de suivi en session A, puis on repose la meme
+    question en session B, sans historique : B ne doit pas obtenir un succes
+    de cache.
+    """
+    agent = AgentFictif()
+    cache = SemanticCache(EmbedderFictif(), threshold=0.95)
+    sessions = InMemorySessionStore()
+    request = _requete(agent, cache, sessions)
+
+    # Tour 1 de A : premiere question, cache autorise.
+    ask(
+        AskRequest(question="Quel est le taux de la consultation ?", session_id="A"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=False,
+    )
+    # Tour 2 de A : question de suivi, le cache doit etre contourne.
+    ask(
+        AskRequest(question="Et pour la pharmacie ?", session_id="A"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=False,
+    )
+    # Session B, premiere question : contexte different, pas de cache.
+    reponse_b = ask(
+        AskRequest(question="Et pour la pharmacie ?", session_id="B"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=False,
+    )
+
+    assert reponse_b.cache_semantique is False
+    # La reponse contextuelle de A n'a pas ete ecrite : le cache ne contient
+    # que la premiere question de A et la premiere question de B.
+    assert cache.stats()["entrees"] == 2
+    assert agent.historiques[2] == []
+
+
+def test_succes_de_cache_appende_quand_meme_le_tour() -> None:
+    """Un succes de cache reste une reponse valide : il alimente la session."""
+    agent = AgentFictif()
+    cache = SemanticCache(EmbedderFictif(), threshold=0.95)
+    sessions = InMemorySessionStore()
+    request = _requete(agent, cache, sessions)
+
+    # Sans session : la premiere question remplit le cache.
+    ask(
+        AskRequest(question="Quel est mon plafond ?"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=False,
+    )
+    reponse = ask(
+        AskRequest(question="Quel est mon plafond ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=False,
+    )
+
+    assert reponse.cache_semantique is True
+    assert sessions.get("assure-A", "s1")[0]["question"] == "Quel est mon plafond ?"
+
+
+class AgentEnEchec:
+    """Agent dont le LLM est indisponible : reponse de degradation."""
+
+    def ask(
+        self,
+        question: str,
+        *,
+        assure_id: str | None,
+        history: list[dict] | None = None,
+    ) -> RagAnswer:
+        return RagAnswer(
+            answer="Le service de reponse est temporairement indisponible.",
+            sources=[],
+            steps=[],
+            latency_ms=0.0,
+            tokens=0,
+            cached=False,
+            succes=False,
+        )
+
+
+def test_une_reponse_en_echec_n_entre_pas_dans_l_historique() -> None:
+    sessions = InMemorySessionStore()
+    request = _requete(AgentEnEchec(), CacheVide(), sessions)  # type: ignore[arg-type]
+
+    reponse = ask(
+        AskRequest(question="Question ?", session_id="s1"),
+        request,  # type: ignore[arg-type]
+        assure_id="assure-A",
+        x_rag_no_cache=True,
+    )
+
+    assert reponse.succes is False
+    assert sessions.get("assure-A", "s1") == []
+
+
+# ------------------------------------------------------ selection du store
+
+
+def test_creer_session_store_repli_memoire(monkeypatch: pytest.MonkeyPatch) -> None:
+    import predicare_rag_api.main as module
+
+    monkeypatch.setattr(module.RedisSessionStore, "ping", lambda self: False)
+    store = _creer_session_store(Settings(_env_file=None))
+
+    assert isinstance(store, InMemorySessionStore)
+
+
+def test_creer_session_store_utilise_redis_si_disponible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import predicare_rag_api.main as module
+
+    monkeypatch.setattr(module.RedisSessionStore, "ping", lambda self: True)
+    store = _creer_session_store(Settings(_env_file=None))
+
+    assert isinstance(store, RedisSessionStore)

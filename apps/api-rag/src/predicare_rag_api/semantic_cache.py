@@ -184,6 +184,8 @@ class SemanticCache:
             # estime avec un cout moyen par appel (donc une ESTIMATION).
             "latence_evitee_ms": round(self._latence_evitee_ms, 2),
             "nombre_appels_evites": self._nombre_appels_evites,
+            # Alias attendu par l'ecran d'administration.
+            "appels_evites": self._nombre_appels_evites,
             "cout_evite_eur": round(self._nombre_appels_evites * self._cout_moyen_appel_eur, 6),
             "cout_moyen_appel_eur": self._cout_moyen_appel_eur,
             "estimation": True,

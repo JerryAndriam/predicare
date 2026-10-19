@@ -94,6 +94,7 @@ class RagAnswer:
         "limite_atteinte",
         "sources",
         "steps",
+        "succes",
         "tokens",
         "tokens_entree",
         "tokens_sortie",
@@ -112,6 +113,7 @@ class RagAnswer:
         tokens_sortie: int = 0,
         cout_estime_usd: float = 0.0,
         cout_estime_eur: float = 0.0,
+        succes: bool = True,
     ) -> None:
         self.answer = answer
         self.sources = sources
@@ -120,6 +122,9 @@ class RagAnswer:
         self.tokens = tokens
         self.cached = cached
         self.limite_atteinte = limite_atteinte
+        # `succes` distingue une vraie reponse d'un message de degradation :
+        # seul un succes doit etre memorise dans l'historique de session.
+        self.succes = succes
         # Le detail entree/sortie rend le cout estimable sans sous-estimer la
         # part « prompt », qui n'est pas mince sur un agent a outils.
         self.tokens_entree = tokens_entree
@@ -140,6 +145,7 @@ class RagAnswer:
             "cout_estime_eur": self.cout_estime_eur,
             "cache_semantique": self.cached,
             "limite_atteinte": self.limite_atteinte,
+            "succes": self.succes,
         }
 
 
@@ -238,6 +244,7 @@ class RagAgent:
         tokens_sortie = 0
         texte = ""
         limite_atteinte = False
+        succes = True
         appels_sql = 0
         try:
             for _ in range(self._max_steps):
@@ -316,6 +323,7 @@ class RagAgent:
                     )
                 except Exception as exc:
                     logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
+                    succes = False
                     texte = (
                         "Le service de reponse est temporairement indisponible. "
                         "Vos demandes restent enregistrees et seront traitees aussitot."
@@ -326,12 +334,14 @@ class RagAgent:
                 time.perf_counter() - started
             )
             metrics.ERRORS.labels(SERVICE, "llm_unavailable").inc()
+            succes = False
             texte = (
                 "Le service de reponse est temporairement indisponible. "
                 "Vos demandes restent enregistrees et seront traitees aussitot."
             )
 
         if not texte:
+            succes = False
             texte = (
                 "Je n'ai pas pu formuler de reponse. "
                 "Reformulez votre question ou contactez votre gestionnaire."
@@ -365,6 +375,7 @@ class RagAgent:
             tokens_sortie=tokens_sortie,
             cout_estime_usd=cout["cout_total_usd"],
             cout_estime_eur=cout["cout_total_eur"],
+            succes=succes,
         )
 
 

@@ -36,7 +36,9 @@ def estimer_cout(
         cout_total_eur = cout_total_usd * taux_usd_eur
 
     Les tokens sont des entiers positifs ou nuls ; une valeur negative est
-    traitee comme zero pour ne jamais produire un cout negatif.
+    traitee comme zero pour ne jamais produire un cout negatif. Le detail en
+    EUR par sens est fourni pour que le dossier FinOps puisse ventiler le
+    cout d'entree (prompt) et le cout de sortie (completion).
     """
     entree = max(0, int(tokens_entree))
     sortie = max(0, int(tokens_sortie))
@@ -49,5 +51,7 @@ def estimer_cout(
         "cout_entree_usd": round(cout_entree_usd, 6),
         "cout_sortie_usd": round(cout_sortie_usd, 6),
         "cout_total_usd": round(cout_total_usd, 6),
+        "cout_entree_eur": round(cout_entree_usd * taux_usd_eur, 6),
+        "cout_sortie_eur": round(cout_sortie_usd * taux_usd_eur, 6),
         "cout_total_eur": round(cout_total_usd * taux_usd_eur, 6),
     }

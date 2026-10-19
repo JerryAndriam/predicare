@@ -354,9 +354,11 @@ def test_stats_conserve_les_cles_attendues(cache: SemanticCache) -> None:
         "taille",
         "latence_evitee_ms",
         "cout_evite_eur",
+        "appels_evites",
     ):
         assert cle in stats
     assert stats["taille"] == stats["entrees"]
+    assert stats["appels_evites"] == stats["nombre_appels_evites"]
 
 
 def test_vidage_reinitialise_les_gains(cache: SemanticCache) -> None:

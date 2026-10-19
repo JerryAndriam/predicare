@@ -66,6 +66,9 @@ class AskResponse(BaseModel):
     # Estimation FinOps. Nulle sur un succes de cache : aucun LLM n'a ete appele.
     cout_estime_usd: float = 0.0
     cout_estime_eur: float = 0.0
+    #: Faux quand l'agent a renvoye un message de degradation : la reponse
+    #: n'est alors pas memorisee dans l'historique de session.
+    succes: bool = True
 
 
 def _tour(question: str, answer: str, sources: list[dict]) -> dict:
@@ -102,12 +105,18 @@ def ask(
     assure_id: str | None = Depends(porteuse),
     x_rag_no_cache: bool = Header(default=False),
 ) -> AskResponse:
-    """Point d'entree de l'assistant : filtre, cache, agent, sources.
+    """Point d'entree de l'assistant : filtre, session, cache, agent, sources.
 
     `X-Rag-No-Cache: true` court-circuite entierement le cache semantique :
     l'evaluation s'execute alors a froid et ses chiffres sont reproductibles.
     Le cache est de plus borne au `scope` de l'assure connecte, sans quoi une
     question proche suffirait a servir l'historique d'un autre.
+
+    Une question de suivi depend de l'historique de sa session : sa reponse
+    n'est ni lue ni ecrite dans le cache, car la cle du cache ne porte que
+    l'assure et non le contexte de la conversation. Sans ce contournement,
+    une reponse construite pour une session pourrait etre servie a une autre
+    session du meme assure dont le contexte differe.
     """
     question = sanitize_question(payload.question)
     scope = assure_id or "anonyme"
@@ -115,7 +124,14 @@ def ask(
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
     sessions: SessionStore = request.app.state.sessions
-    if not x_rag_no_cache:
+
+    # L'historique est lu uniquement dans le scope du jeton : une session
+    # identique appartenant a un autre assure reste invisible. Il est charge
+    # avant le cache : sa presence decide si le cache est utilisable.
+    historique = sessions.get(scope, payload.session_id) if payload.session_id is not None else []
+    suit_une_conversation = bool(historique)
+
+    if not x_rag_no_cache and not suit_une_conversation:
         entree = cache.get(question, scope=scope)
         if entree is not None:
             logger.info("cache.reponse_servie", similarite=round(entree.similarity, 4))
@@ -139,13 +155,11 @@ def ask(
                 cout_estime_eur=0.0,
                 cache_semantique=True,
                 limite_atteinte=False,
+                succes=True,
             )
 
-    # L'historique est lu uniquement dans le scope du jeton : une session
-    # identique appartenant a un autre assure reste invisible.
-    historique = sessions.get(scope, payload.session_id) if payload.session_id is not None else []
     resultat = agent.ask(question, assure_id=assure_id, history=historique)
-    if not x_rag_no_cache:
+    if not x_rag_no_cache and not suit_une_conversation:
         cache.put(
             question,
             resultat.answer,
@@ -153,7 +167,9 @@ def ask(
             scope=scope,
             latency_ms=resultat.latency_ms,
         )
-    if payload.session_id:
+    # Seule une vraie reponse entre dans l'historique : un message de
+    # degradation ne doit pas polluer le contexte des tours suivants.
+    if payload.session_id and resultat.succes:
         sessions.append(
             scope,
             payload.session_id,
