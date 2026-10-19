@@ -325,6 +325,11 @@ comptes: ## Cree les quatre comptes de demonstration (mot de passe: DEMO_PASSWOR
 	@$(COMPOSE_CORE) run --rm -e DEMO_PASSWORD="$${DEMO_PASSWORD:-}" seed \
 		python -m predicare_seed.creer_comptes
 
+.PHONY: seed-rag
+seed-rag: ## Indexe le corpus de contrats PDF dans pgvector
+	@$(COMPOSE_CORE) run --rm -e RAG_CORPUS_DIR="$${RAG_CORPUS_DIR:-/data/rag_corpus}" seed \
+		python -m predicare_seed.ingest_rag --apply
+
 .PHONY: shell-db
 shell-db: ## Ouvre psql sur la base (ROLE=predicare_ro pour un acces lecture seule)
 	@$(COMPOSE_CORE) exec db psql -U $${ROLE:-$${POSTGRES_USER:-predicare}} -d $${POSTGRES_DB:-predicare}

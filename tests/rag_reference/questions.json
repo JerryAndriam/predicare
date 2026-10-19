@@ -1,0 +1,32 @@
+[
+  {
+    "id": "Q01",
+    "question": "Quel est le taux de remboursement d'une consultation en formule PREMIUM ?",
+    "mots_cles": ["100", "consultation"],
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 5"]
+  },
+  {
+    "id": "Q02",
+    "question": "Quel est le plafond annuel global d'une formule PREMIUM ?",
+    "mots_cles": ["20 000 000", "plafond"],
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 5"]
+  },
+  {
+    "id": "Q03",
+    "question": "Combien de temps dure le delai de carence pour la maternite ?",
+    "mots_cles": ["90", "jours", "maternite"],
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 6"]
+  },
+  {
+    "id": "Q04",
+    "question": "La dentaire est-elle remboursee a 100 % ?",
+    "mots_cles": ["90", "dentaire"],
+    "sources_attendues": ["Conditions Generales PREMIUM"]
+  },
+  {
+    "id": "Q05",
+    "question": "Quelles pieces justificatives pour une pharmacie ?",
+    "mots_cles": ["ordonnance", "pharmacie"],
+    "sources_attendues": ["Conditions Generales PREMIUM", "Article 7"]
+  }
+]

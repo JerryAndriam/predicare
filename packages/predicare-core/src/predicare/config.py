@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # RAG
     embedding_dimension: int = 1536
     rag_top_k: int = 6
-    rag_similarity_threshold: float = 0.72
+    rag_similarity_threshold: float = 0.55
     rag_max_agent_steps: int = 8
     semantic_cache_threshold: float = 0.95
     semantic_cache_ttl_seconds: int = 86400

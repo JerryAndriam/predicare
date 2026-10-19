@@ -40,6 +40,7 @@ class CacheHit:
     sources: list[dict]
     similarity: float
     created_at: float = 0.0
+    vector: list[float] | None = None
 
 
 class SemanticCache:
@@ -72,19 +73,20 @@ class SemanticCache:
         """Retourne une reponse equivalente, ou None."""
         self._purge_expired()
         if not self._entries:
-            # Un cache vide est un succes rate : le compteur doit le dire,
-            # sinon le taux de reutilisation affiche au jury exclut tous les
-            # appels faits avant le premier remplissage, et le gain parait
-            # meilleur qu'il ne l'est.
             metrics.CACHE_EVENTS.labels(SERVICE, "vide").inc()
             metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
             return None
 
-        vector = self._embedder.embed_documents([question])[0]
+        try:
+            vector = self._embedder.embed_documents([question])[0]
+        except Exception:  # noqa: BLE001
+            metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
+            return None
         best_key, best_score = None, 0.0
         for key in self._order:
             entry = self._entries[key]
-            score = _cosine_similarity(vector, self._embedder.embed_documents([entry.question])[0])
+            vecteur_entree = entry.vector if entry.vector is not None else self._embedder.embed_documents([entry.question])[0]
+            score = _cosine_similarity(vector, vecteur_entree)
             if score > best_score:
                 best_key, best_score = key, score
 
@@ -104,12 +106,17 @@ class SemanticCache:
         elif len(self._order) >= self._max_entries:
             self._entries.pop(self._order.pop(0), None)
 
+        try:
+            vecteur = self._embedder.embed_documents([question])[0]
+        except Exception:  # noqa: BLE001
+            vecteur = None
         self._entries[key] = CacheHit(
             question=question,
             answer=answer,
             sources=sources or [],
             similarity=1.0,
             created_at=time.time(),
+            vector=vecteur,
         )
         self._order.append(key)
         metrics.CACHE_EVENTS.labels(SERVICE, "ecriture").inc()

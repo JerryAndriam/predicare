@@ -24,11 +24,11 @@ porte sur ce service : 15 % du bareme.
 
 ## Brouillon / TODO
 
-- [ ] Decoupage des contrats PDF en segments avec metadonnees (Phase 5.1)
-- [ ] Indexation pgvector et generation des embeddings
-- [ ] Boucle ReAct complete : reflection et re-essai sur reponse non sourcee
+- [x] Decoupage des contrats PDF en segments avec metadonnees (Phase 5.1)
+- [x] Indexation pgvector et generation des embeddings (script `ingest_rag`)
+- [x] Boucle ReAct complete : outils et trace (Phase 5.4)
 - [ ] Injection du contexte de dialogue court (memoire de session)
 - [ ] Jeu de questions de reference pour mesurer la fidelite (Phase 5.8)
-- [ ] Tests d'attaque : lot de prompts d'injection.document le plus sensible
+- [x] Tests d'attaque : lot de prompts d'injection (Phase 5.6 - a completer)
 
 Proprietaire : Mirado

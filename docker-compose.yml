@@ -198,6 +198,7 @@ services:
         condition: service_completed_successfully
     networks:
       - core
+      - egress
     logging: *default-logging
 
   # Job d'entrainement : code de job, pas un service. Il n'ecoute sur aucun
@@ -435,6 +436,9 @@ services:
     command: ["python", "-m", "predicare_rag_api.worker"]
     environment:
       <<: *env-common
+      RAG_CORPUS_DIR: /data/rag_corpus
+    volumes:
+      - ./data:/data:ro
     depends_on:
       db:
         condition: service_healthy

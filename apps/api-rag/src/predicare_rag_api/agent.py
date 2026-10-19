@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import time
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.tools import Tool
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import StructuredTool, Tool
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
@@ -30,7 +30,7 @@ SERVICE = "api-rag"
 class RagAnswer:
     """Reponse complete de l'agent, avec ses sources et sa trace."""
 
-    __slots__ = ("answer", "cached", "latency_ms", "sources", "steps", "tokens")
+    __slots__ = ("answer", "cached", "latency_ms", "limite_atteinte", "sources", "steps", "tokens")
 
     def __init__(
         self,
@@ -40,6 +40,7 @@ class RagAnswer:
         latency_ms: float,
         tokens: int,
         cached: bool,
+        limite_atteinte: bool = False,
     ) -> None:
         self.answer = answer
         self.sources = sources
@@ -47,6 +48,7 @@ class RagAnswer:
         self.latency_ms = latency_ms
         self.tokens = tokens
         self.cached = cached
+        self.limite_atteinte = limite_atteinte
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +58,7 @@ class RagAnswer:
             "latence_ms": self.latency_ms,
             "tokens": self.tokens,
             "cache_semantique": self.cached,
+            "limite_atteinte": self.limite_atteinte,
         }
 
 
@@ -74,10 +77,7 @@ class RagAgent:
         self._retriever = retriever
         self._history = history_tool
         self._model_name = model or settings.llm_model
-        # `max_completion_tokens` et non `max_tokens` : depuis langchain-openai
-        # 1.x, le nom a change et l'ancien est silencieusement ignore.
-        # Une cle d'API absente ne doit pas disparaitre des journaux : on passe
-        # par SecretStr, qui masque la valeur dans toute trace.
+        self._max_steps = settings.rag_max_agent_steps
         self._llm = ChatOpenAI(
             base_url=settings.llm_api_base or None,
             api_key=SecretStr(settings.llm_api_key or "not-configured"),
@@ -87,15 +87,14 @@ class RagAgent:
         )
 
     def _tools(self, assure_id: str) -> list[Tool]:
-        """Construit les outils avec l'assure connecte lie par fermeture.
+        def _rechercher(question: str) -> str:
+            return self._retriever.format_sources(self._retriever.search(question))
 
-        Lier `assure_id` dans la fermeture plutot que de le passer comme
-        argument d'outil rend impossible, pour le LLM, de demander
-        l'historique d'un autre assure : l'argument n'existe pas dans le
-        schema de l'outil.
-        """
-        search_documents = Tool.from_function(
-            func=lambda question: self._retriever.format_sources(self._retriever.search(question)),
+        def _consulter(requete_sql: str) -> str:
+            return str(self._history.run(requete_sql, assure_id=assure_id))
+
+        search_documents = StructuredTool.from_function(
+            func=_rechercher,
             name="rechercher_contrats",
             description=(
                 "Recherche un passage de contrat d'assurance (article, garantie, "
@@ -104,14 +103,24 @@ class RagAgent:
             ),
         )
 
-        read_history = Tool.from_function(
-            func=lambda requete_sql: str(self._history.run(requete_sql, assure_id=assure_id)),
+        read_history = StructuredTool.from_function(
+            func=_consulter,
             name="consulter_historique_assure",
             description=(
                 "Lit l'historique des remboursements de l'assure connecte "
                 "(factures, montants, dates, statuts). "
                 "Nutilise que des SELECT sur les tables core.facture et "
-                "core.remboursement. Toute autre requete sera refusee."
+                "core.remboursement. Colonnes disponibles : id, assure_id, "
+                "date_facture, montant_total, montant_pris_en_charge (ou "
+                "montant_rembourse), statut (PAYEE/REJETEE/EN_ATTENTE), "
+                "motif_rejet, date_traitement. "
+                "Forme obligatoire : SELECT <colonnes> FROM core.facture "
+                "WHERE 1=1 AND assure_id = :assure_id [ORDER BY ...] "
+                "[LIMIT n]. Toute autre requete sera refusee. "
+                "Utilise TOUJOURS le parametre :assure_id, jamais de valeur "
+                "numerique. "
+                "Exemple : SELECT montant_total, statut FROM core.facture "
+                "WHERE 1=1 AND assure_id = :assure_id LIMIT 10."
             ),
         )
         return [search_documents, read_history]
@@ -120,18 +129,18 @@ class RagAgent:
         """Repond a une question d'assure en citant ses sources."""
         started = time.perf_counter()
 
-        # 1. La question est traitee comme une DONNEE, pas comme un ordre.
         message = HumanMessage(content=build_user_context_block(question, assure_id))
 
-        # 2. Premier passage : recherche documentaire non outillee. Cela
-        #    garantit des sources meme si l'agent choisit de ne pas appeler
-        #    l'outil de recherche.
         sources: list[Source] = self._retriever.search(question)
         contexte = self._retriever.format_sources(sources)
 
         steps: list[dict] = [
             {"outil": "rechercher_contrats", "sources": len(sources), "resultat": "ok"}
         ]
+
+        tools = self._tools(assure_id or "")
+        tool_map = {tool.name: tool for tool in tools}
+        llm_avec_outils = self._llm.bind_tools(tools)
 
         messages: list = [
             SystemMessage(content=SYSTEM_PROMPT),
@@ -140,10 +149,63 @@ class RagAgent:
         ]
 
         usage_tokens = 0
+        texte = ""
+        limite_atteinte = False
         try:
-            reponse: AIMessage = self._llm.invoke(messages)
-            usage_tokens = _count_tokens(reponse)
-            texte = reponse.content if isinstance(reponse.content, str) else str(reponse.content)
+            for _ in range(self._max_steps):
+                reponse: AIMessage = llm_avec_outils.invoke(messages)
+                usage_tokens += _count_tokens(reponse)
+                messages.append(reponse)
+
+                if not getattr(reponse, "tool_calls", None):
+                    texte = reponse.content if isinstance(reponse.content, str) else str(reponse.content)
+                    break
+
+                for appel in reponse.tool_calls:
+                    nom = appel.get("name")
+                    args = appel.get("args", {}) or {}
+                    outil = tool_map.get(nom)
+                    debut = time.perf_counter()
+                    try:
+                        if outil is None:
+                            resultat = f"Outil inconnu : {nom}"
+                            statut = "inconnu"
+                        else:
+                            resultat = outil.invoke(args)
+                            statut = "ok"
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("agent.outil_erreur", outil=nom, erreur=str(exc))
+                        resultat = f"Erreur outil : {exc}"
+                        statut = "erreur"
+                    duree = (time.perf_counter() - debut) * 1000
+                    steps.append(
+                        {
+                            "outil": nom,
+                            "args": args,
+                            "resultat": statut,
+                            "duree_ms": round(duree, 2),
+                        }
+                    )
+                    messages.append(
+                        ToolMessage(content=str(resultat), tool_call_id=appel.get("id", ""))
+                    )
+            else:
+                limite_atteinte = True
+                # Derniere tentative sans outils pour forcer une reponse.
+                try:
+                    reponse_finale = self._llm.invoke(messages)
+                    usage_tokens += _count_tokens(reponse_finale)
+                    texte = (
+                        reponse_finale.content
+                        if isinstance(reponse_finale.content, str)
+                        else str(reponse_finale.content)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
+                    texte = (
+                        "Le service de reponse est temporairement indisponible. "
+                        "Vos demandes restent enregistrees et seront traitees aussitot."
+                    )
         except Exception as exc:
             logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
             metrics.LLM_CALL_LATENCY.labels(SERVICE, self._model_name, "erreur").observe(
@@ -153,6 +215,12 @@ class RagAgent:
             texte = (
                 "Le service de reponse est temporairement indisponible. "
                 "Vos demandes restent enregistrees et seront traitees aussitot."
+            )
+
+        if not texte:
+            texte = (
+                "Je n'ai pas pu formuler de reponse. "
+                "Reformulez votre question ou contactez votre gestionnaire."
             )
 
         latency_ms = (time.perf_counter() - started) * 1000
@@ -168,6 +236,7 @@ class RagAgent:
             latency_ms=round(latency_ms, 2),
             tokens=usage_tokens,
             cached=False,
+            limite_atteinte=limite_atteinte,
         )
 
 

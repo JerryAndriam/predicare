@@ -49,6 +49,7 @@ class AskResponse(BaseModel):
     latence_ms: float
     tokens: int
     cache_semantique: bool
+    limite_atteinte: bool = False
 
 
 def porteuse(authorization: str = Header(default="")) -> str | None:
@@ -89,6 +90,7 @@ def ask(
             latence_ms=0.0,
             tokens=0,
             cache_semantique=True,
+            limite_atteinte=False,
         )
 
     resultat = agent.ask(question, assure_id=assure_id)

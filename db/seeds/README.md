@@ -7,7 +7,9 @@ job `seed`, joue automatiquement au demarrage.
 
 ```bash
 cp ~/Documents/predicare/CohorteAI_datagen/dataset/*.csv data/raw/
+cp -r ~/Documents/predicare/CohorteAI_datagen/rag_corpus data/rag_corpus
 make reload-data
+make seed-rag
 ```
 
 `data/` est gitignore : 44 Mo de donnees de sante restent hors du depot. Le

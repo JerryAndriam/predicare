@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from predicare import metrics
+from predicare.config import get_settings
 from predicare.logging_config import get_logger
+from pydantic import SecretStr
 
 logger = get_logger("api-rag.retriever")
 
@@ -55,16 +57,14 @@ class ContractRetriever:
         self._threshold = threshold
 
     def search(self, question: str) -> list[Source]:
-        """Retourne les extraits de contrat pertinents, tries par similarite.
-
-        Au-dela du seuil, on prefere ne rien retourner plutot que de
-        retourner un contrat non pertinent : le systeme prompt interdit de
-        repondre hors contexte, donc des sources douteuses produiraient un
-        refus systematique chez l'assure.
-        """
-        resultats = self._store.similarity_search(
-            question, k=self._top_k, score_threshold=self._threshold
-        )
+        """Retourne les extraits de contrat pertinents, tries par similarite."""
+        try:
+            resultats = self._store.similarity_search(
+                question, k=self._top_k, score_threshold=self._threshold
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("rag.recherche_indisponible", erreur=str(exc))
+            return []
 
         sources: list[Source] = []
         for metadata, score in resultats:
@@ -96,21 +96,43 @@ class ContractRetriever:
 
 
 class PgVectorContractStore:
-    """Store pgvector : une seule instance PostgreSQL pour tout le projet.
+    """Store pgvector : une seule instance PostgreSQL pour tout le projet."""
 
-    Choisie sur Qdrant ou ChromaDB : le CDC n'autorise une base vectorielle
-    separee que si le choix est justifie dans le dossier FinOps. Une seule
-    instance rend la sauvegarde et la restauration atomiques.
-    """
-
-    def __init__(self, connection_url: str, *, table: str = "core.document_vectorise") -> None:
+    def __init__(
+        self,
+        connection_url: str,
+        *,
+        table: str = "core.document_vectorise",
+        embedder: object | None = None,
+    ) -> None:
         self._connection_url = connection_url
         self._table = table
+        self._embedder = embedder
+
+    def _obtenir_embedder(self) -> object:
+        if self._embedder is not None:
+            return self._embedder
+        from langchain_openai import OpenAIEmbeddings
+
+        settings = get_settings()
+        self._embedder = OpenAIEmbeddings(
+            base_url=settings.embedding_api_base or None,
+            api_key=SecretStr(settings.embedding_api_key or "not-configured"),
+            model=settings.embedding_model,
+        )
+        return self._embedder
 
     def similarity_search(
         self, query: str, *, k: int, score_threshold: float
     ) -> list[tuple[dict, float]]:
         from sqlalchemy import create_engine, text
+
+        embedder = self._obtenir_embedder()
+        if hasattr(embedder, "embed_query"):
+            vecteur = embedder.embed_query(query)
+        else:
+            vecteur = embedder.embed_documents([query])[0]
+        vecteur_texte = str(list(vecteur))
 
         engine = create_engine(self._connection_url, pool_pre_ping=True)
         try:
@@ -127,7 +149,7 @@ class PgVectorContractStore:
                         LIMIT :k
                         """
                         ),
-                        {"query": query, "seuil": score_threshold, "k": k},
+                        {"query": vecteur_texte, "seuil": score_threshold, "k": k},
                     )
                     .mappings()
                     .all()
