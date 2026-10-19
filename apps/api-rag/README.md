@@ -232,14 +232,15 @@ L'agent n'a aucun outil d'écriture, aucun accès réseau et une mémoire limit�
 
 Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 
-- **Le p95 de latence dépasse la cible de 5 s.** Sur la pile de
-  développement, deux exécutions de l'évaluation de référence (30 questions,
-  cache désactivé) ont donné p50 = 5,7 s / p95 = 9,8 s, puis p50 = 4,3 s /
-  p95 = 6,5 s. La cible n'est donc **pas tenue de façon fiable** : le p95
-  oscille entre environ 6,5 s et 10 s. La latence est dominée par l'appel
-  LLM, pas par la recherche vectorielle (le retriever rend la main en
-  quelques centaines de millisecondes). Les leviers sont le nombre d'étapes
-  ReAct, le modèle retenu et le parallelisme des deux appels d'embeddings.
+- **Le p95 de latence dépasse la cible de 5 s.** Trois exécutions de
+  l'évaluation de référence (30 questions, cache désactivé) sur la pile de
+  développement ont donné p50/p95 = 4,3 s / 6,5 s, puis 4,2 s / 9,5 s, puis
+  6,8 s / 10,4 s. La cible n'est donc **pas tenue de façon fiable** : le p50
+  oscille entre 4,2 s et 6,8 s, le p95 entre 6,5 s et 10,4 s. La latence est
+  dominée par l'appel LLM, pas par la recherche vectorielle (le retriever rend
+  la main en quelques centaines de millisecondes). Les leviers sont le nombre
+  d'étapes ReAct, le modèle retenu et le parallélisme des deux appels
+  d'embeddings.
 - **Redis contient les sessions en clair.** Un tour de session peut citer un
   montant ou une date du dossier de l'assuré : c'est une donnée personnelle.
   Le fichier AOF de Redis conserve ces données **en clair**. La mitigation
