@@ -1,0 +1,193 @@
+"""Decoupage du corpus RAG : nettoyage et metadonnees.
+
+Les tests utilisent les vrais PDF du corpus lorsqu'ils sont presents. Ils
+n'appellent jamais OpenAI : seules les fonctions de lecture et de decoupage
+sont exercees, pas l'indexation.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from predicare_seed import ingest_rag
+
+CORPUS = Path(__file__).resolve().parents[1] / "data" / "rag_corpus"
+CATEGORIES_ARTICLE_5 = (
+    "Consultation",
+    "Pharmacie",
+    "Laboratoire",
+    "Imagerie",
+    "Hospitalisation",
+    "Maternite",
+    "Dentaire",
+    "Optique",
+    "Kinesitherapie",
+)
+SECTIONS_GUIDE = (
+    "PHARMACIES",
+    "GÉNÉRALISTES (CABINETS MÉDICAUX)",
+    "SPÉCIALISTES",
+    "CLINIQUES ET CENTRES MÉDICAUX",
+    "LABORATOIRES",
+    "IMAGERIE MÉDICALE",
+    "DENTISTES",
+    "OPTICIENS",
+    "KINÉSITHÉRAPIE",
+    "MATERNITÉS",
+    "CONTACTS PREDICARE TPA",
+)
+
+
+def _chemin(nom: str) -> Path:
+    chemin = CORPUS / nom
+    if not chemin.exists():
+        pytest.skip(f"PDF absent du corpus : {chemin}")
+    return chemin
+
+
+def test_nettoyage_supprime_le_boilerplate():
+    texte = """
+    DOCUMENT FICTIF – données synthétiques PrediCare TPA – aucune donnée réelle
+    Page 12
+    GUIDE DU RÉSEAU – DONNÉES FICTIVES – noms, adresses et numéros inventés
+    N°
+    Prestataire
+    Horaires
+    Contact
+    Adresse
+    Tarifs
+    Pharmacie Kintana – Lot II W 177 Bis Ilafy
+    Consultation ophtalmologie – tarif élevé
+    """
+    propre = ingest_rag._nettoyer(texte)
+    assert "DOCUMENT FICTIF" not in propre
+    assert "Page 12" not in propre
+    assert "GUIDE DU RÉSEAU" not in propre
+    assert "Prestataire" not in propre
+    assert "Pharmacie Kintana - Lot II W 177 Bis Ilafy" in propre
+    assert "ophtalmologie" in propre
+    assert "élevé" in propre  # les accents sont conserves
+
+
+def test_article_5_une_segment_par_categorie():
+    for nom in (
+        "Conditions_Generales_PREMIUM.pdf",
+        "Conditions_Generales_CONFORT.pdf",
+        "Conditions_Generales_ESSENTIEL.pdf",
+    ):
+        segments = ingest_rag._segments_pour_fichier(_chemin(nom))
+        tableaux = [
+            s
+            for s in segments
+            if s.article.startswith("Article 5") and "vue globale" not in s.article
+        ]
+        assert len(tableaux) == len(CATEGORIES_ARTICLE_5), nom
+        assert {s.garantie for s in tableaux} == set(CATEGORIES_ARTICLE_5), nom
+        for segment in tableaux:
+            assert segment.article == "Article 5 - Tableau des garanties"
+            assert segment.page == 1
+            assert "Article 5 – Tableau des garanties" in segment.texte
+            assert segment.garantie in segment.texte
+            for attendu in (
+                "Taux",
+                "Plafond annuel",
+                "Franchise",
+                "Carence",
+                "Plafond annuel global par bénéficiaire",
+            ):
+                assert attendu in segment.texte, (nom, segment.garantie, attendu)
+
+
+def test_article_5_vue_globale():
+    segments = ingest_rag._segments_pour_fichier(
+        _chemin("Conditions_Generales_PREMIUM.pdf")
+    )
+    global_segment = next(s for s in segments if "vue globale" in s.article)
+    assert global_segment.garantie == "Global"
+    assert "Plafond annuel global par bénéficiaire : 20 000 000 Ar" in global_segment.texte
+
+
+def test_bareme_groupement_par_categorie():
+    segments = ingest_rag._segments_pour_fichier(_chemin("Bareme_Reference_Actes.pdf"))
+    assert len(segments) >= 8
+    categories = {s.garantie for s in segments}
+    for categorie in (
+        "CONSULTATION",
+        "IMAGERIE",
+        "LABORATOIRE",
+        "KINESITHERAPIE",
+        "DENTAIRE",
+        "OPTIQUE",
+        "HOSPITALISATION",
+        "MATERNITE",
+    ):
+        assert categorie in categories
+    for segment in segments:
+        assert segment.contrat == "Bareme_Reference_Actes"
+        assert segment.article == f"Barème - {segment.garantie}"
+        assert segment.texte.startswith(
+            f"Barème de référence des actes – {segment.garantie}"
+        )
+        assert segment.source_fichier == "Bareme_Reference_Actes.pdf"
+        assert "DOCUMENT FICTIF" not in segment.texte
+        assert 0 < len(segment.texte) <= 500
+
+
+def test_guide_decoupage_par_section():
+    for nom in (
+        "Guide_Reseau_Soins_Antananarivo.pdf",
+        "Guide_Reseau_Soins_National.pdf",
+    ):
+        segments = ingest_rag._segments_pour_fichier(_chemin(nom))
+        sections = {s.garantie for s in segments}
+        assert set(SECTIONS_GUIDE) <= sections, nom
+        for segment in segments:
+            assert segment.article == f"Guide - {segment.garantie}"
+            assert segment.contrat == Path(nom).stem
+            assert segment.source_fichier == nom
+            assert segment.texte.startswith(segment.garantie)
+            assert "DOCUMENT FICTIF" not in segment.texte
+            assert 0 < len(segment.texte) <= 500
+
+
+def test_conditions_particulieres_synthese_et_beneficiaires():
+    nom = "CP_CTR-000048.pdf"
+    segments = ingest_rag._segments_pour_fichier(
+        _chemin(f"conditions_particulieres/{nom}")
+    )
+    par_article = {s.article: s for s in segments}
+    assert set(par_article) == {
+        "Conditions particulieres - synthese",
+        "Conditions particulieres - beneficiaires",
+    }
+    synthese = par_article["Conditions particulieres - synthese"]
+    assert synthese.contrat == "CTR-000048"
+    assert synthese.source_fichier == nom
+    for attendu in (
+        "CTR-000048",
+        "POL-2022-2780",
+        "PREMIUM",
+        "Zebu Telecom SARL",
+        "2023-01-16",
+        "20 000 000 Ar",
+        "2 100 000 Ar",
+    ):
+        assert attendu in synthese.texte
+    beneficiaires = par_article["Conditions particulieres - beneficiaires"]
+    assert beneficiaires.contrat == "CTR-000048"
+    assert "ASS-C60624BAFB" in beneficiaires.texte
+    assert "ASSURE_PRINCIPAL" in beneficiaires.texte
+    assert "ENFANT" in beneficiaires.texte
+
+
+def test_segments_generiques_sans_boilerplate():
+    # Le corpus ne contient que des familles connues ; on verifie malgre tout
+    # l'absence de boilerplate sur l'ensemble des PDF lus.
+    for chemin in sorted(CORPUS.rglob("*.pdf")):
+        for segment in ingest_rag._segments_pour_fichier(chemin):
+            assert segment.source_fichier == chemin.name
+            assert "DOCUMENT FICTIF" not in segment.texte
+            assert "GUIDE DU RÉSEAU" not in segment.texte
+            assert len(segment.texte.strip()) > 0

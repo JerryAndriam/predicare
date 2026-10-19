@@ -37,6 +37,7 @@ class Source:
     garantie: str
     extrait: str
     score: float
+    source_fichier: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class Source:
             "garantie": self.garantie,
             "extrait": self.extrait,
             "score": round(self.score, 4),
+            "source_fichier": self.source_fichier,
         }
 
 
@@ -75,6 +77,7 @@ class ContractRetriever:
                     garantie=str(metadata.get("garantie", "-")),
                     extrait=str(metadata.get("texte", "")).strip()[:600],
                     score=float(score),
+                    source_fichier=str(metadata.get("source_fichier") or ""),
                 )
             )
 
@@ -141,7 +144,7 @@ class PgVectorContractStore:
                     connection.execute(
                         text(
                             f"""
-                        SELECT contrat, article, garantie, texte,
+                        SELECT contrat, article, garantie, source_fichier, texte,
                                1 - (embedding <=> CAST(:query AS vector)) AS score
                         FROM {self._table}
                         WHERE 1 - (embedding <=> CAST(:query AS vector)) >= :seuil
