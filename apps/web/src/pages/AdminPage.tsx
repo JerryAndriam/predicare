@@ -1,12 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 import { api, messageErreur } from '../api/client'
-import type {
-  AuditEntry,
-  ModelInfo,
-  NotificationChannel,
-  PlatformHealth,
+import {
+  ROLE_LABELS,
+  type AdminUser,
+  type AdminUserCreate,
+  type AuditEntry,
+  type ModelInfo,
+  type NotificationChannel,
+  type PlatformHealth,
+  type References,
+  type Role,
 } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import {
   Badge,
   Carte,
@@ -19,7 +25,7 @@ import {
   pourcentage,
 } from '../components/ui'
 
-type Onglet = 'seuil' | 'modele' | 'sante' | 'canaux' | 'audit'
+type Onglet = 'seuil' | 'modele' | 'sante' | 'canaux' | 'audit' | 'utilisateurs'
 
 function tonSante(statut: string): 'ok' | 'alerte' | 'neutre' {
   if (statut === 'ok') return 'ok'
@@ -42,6 +48,17 @@ export function AdminPage() {
   const [sante, setSante] = useState<PlatformHealth | null>(null)
   const [canaux, setCanaux] = useState<NotificationChannel[]>([])
   const [journal, setJournal] = useState<AuditEntry[]>([])
+
+  const { profile } = useAuth()
+  const [utilisateurs, setUtilisateurs] = useState<AdminUser[]>([])
+  const [assures, setAssures] = useState<string[]>([])
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+    role: 'assure' as Role,
+    display_name: '',
+    assured_pseudonyme: '',
+  })
 
   async function chargerModele() {
     const etat = await api<ModelInfo>('/api/core/admin/modele')
@@ -66,6 +83,19 @@ export function AdminPage() {
         }
         if (onglet === 'audit') {
           setJournal(await api<AuditEntry[]>('/api/core/audit/journal?limit=200'))
+        }
+        if (onglet === 'utilisateurs') {
+          const [comptes, references] = await Promise.all([
+            api<AdminUser[]>('/api/core/admin/utilisateurs'),
+            api<References>('/api/core/factures/references'),
+          ])
+          setUtilisateurs(comptes)
+          const pseudonymes = references.assures.map((valeur) => valeur.pseudonyme)
+          setAssures(pseudonymes)
+          setForm((precedent) => ({
+            ...precedent,
+            assured_pseudonyme: precedent.assured_pseudonyme || pseudonymes[0] || '',
+          }))
         }
       } catch (probleme) {
         setErreur(messageErreur(probleme))
@@ -108,13 +138,68 @@ export function AdminPage() {
     }
   }
 
+  const creerCompte = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setErreur(null)
+    setSucces(null)
+    setEnCours(true)
+    try {
+      const charge: AdminUserCreate = {
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        display_name: form.display_name.trim() || undefined,
+        assured_pseudonyme:
+          form.role === 'assure' ? form.assured_pseudonyme : undefined,
+      }
+      await api<AdminUser>('/api/core/admin/utilisateurs', {
+        method: 'POST',
+        body: JSON.stringify(charge),
+      })
+      setSucces('Compte cree.')
+      setForm({
+        email: '',
+        password: '',
+        role: 'assure',
+        display_name: '',
+        assured_pseudonyme: assures[0] ?? '',
+      })
+      setUtilisateurs(await api<AdminUser[]>('/api/core/admin/utilisateurs'))
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
+  const changerStatut = async (compte: AdminUser) => {
+    if (compte.is_active && !window.confirm(`Desactiver le compte ${compte.email} ?`)) {
+      return
+    }
+    setErreur(null)
+    setSucces(null)
+    setEnCours(true)
+    try {
+      await api<AdminUser>(`/api/core/admin/utilisateurs/${compte.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: !compte.is_active }),
+      })
+      setSucces(compte.is_active ? 'Compte desactive.' : 'Compte active.')
+      setUtilisateurs(await api<AdminUser[]>('/api/core/admin/utilisateurs'))
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
   return (
     <div className="pile">
       <div className="titre-page">
         <h1>Administration</h1>
         <p>
-          Seuil, versions du modele, sante et journal. Aucun reglage ne demande de
-          redemarrer un conteneur.
+          Seuil, versions du modele, sante, comptes et journal. Aucun reglage ne
+          demande de redemarrer un conteneur.
         </p>
       </div>
 
@@ -125,6 +210,7 @@ export function AdminPage() {
             ['modele', 'Modele'],
             ['sante', 'Sante'],
             ['canaux', 'Canaux'],
+            ['utilisateurs', 'Comptes'],
             ['audit', 'Journal'],
           ] as const
         ).map(([cle, libelle]) => (
@@ -366,6 +452,170 @@ export function AdminPage() {
             Un destinataire « non-configure » signifie que le canal ne peut pas alerter.
           </p>
         </Carte>
+      )}
+
+      {onglet === 'utilisateurs' && (
+        <div className="grille deux-large">
+          <Carte titre={`Comptes (${utilisateurs.length})`}>
+            {utilisateurs.length === 0 ? (
+              <Vide>Aucun compte. Creez le premier a droite.</Vide>
+            ) : (
+              <div className="table-enveloppe">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Role</th>
+                      <th>Nom</th>
+                      <th>Dossier</th>
+                      <th>Etat</th>
+                      <th>Derniere connexion</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {utilisateurs.map((compte) => {
+                      const estMoi =
+                        profile !== null && String(compte.id) === profile.subject
+                      return (
+                        <tr key={compte.id}>
+                          <td className="mono">{compte.email}</td>
+                          <td>{ROLE_LABELS[compte.role]}</td>
+                          <td>{compte.display_name ?? '-'}</td>
+                          <td className="mono">{compte.assured_pseudonyme ?? '-'}</td>
+                          <td>
+                            <Badge ton={compte.is_active ? 'ok' : 'neutre'}>
+                              {compte.is_active ? 'actif' : 'desactive'}
+                            </Badge>
+                          </td>
+                          <td>{dateCourte(compte.last_login)}</td>
+                          <td className="droite">
+                            <button
+                              type="button"
+                              className={compte.is_active ? 'bouton danger' : 'bouton'}
+                              disabled={enCours || (estMoi && compte.is_active)}
+                              title={
+                                estMoi && compte.is_active
+                                  ? 'Vous ne pouvez pas desactiver votre propre compte.'
+                                  : undefined
+                              }
+                              onClick={() => void changerStatut(compte)}
+                            >
+                              {compte.is_active ? 'Desactiver' : 'Activer'}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="aide">
+              La desactivation bloque la prochaine connexion. Un jeton deja emis reste
+              valide jusqu a son expiration.
+            </p>
+          </Carte>
+
+          <Carte titre="Nouveau compte">
+            <form className="formulaire" onSubmit={creerCompte}>
+              <Champ label="Adresse e-mail">
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={(event) =>
+                    setForm((precedent) => ({ ...precedent, email: event.target.value }))
+                  }
+                  placeholder="prenom@predicare.local"
+                />
+              </Champ>
+
+              <Champ
+                label="Mot de passe"
+                aide="Au moins 12 caracteres. Il est hache (Argon2id) avant l enregistrement."
+              >
+                <input
+                  type="password"
+                  required
+                  minLength={12}
+                  maxLength={256}
+                  value={form.password}
+                  onChange={(event) =>
+                    setForm((precedent) => ({ ...precedent, password: event.target.value }))
+                  }
+                />
+              </Champ>
+
+              <Champ label="Role">
+                <select
+                  value={form.role}
+                  onChange={(event) =>
+                    setForm((precedent) => ({
+                      ...precedent,
+                      role: event.target.value as Role,
+                    }))
+                  }
+                >
+                  {(Object.keys(ROLE_LABELS) as Role[]).map((role) => (
+                    <option key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                </select>
+              </Champ>
+
+              <Champ label="Nom affiche">
+                <input
+                  type="text"
+                  maxLength={128}
+                  value={form.display_name}
+                  onChange={(event) =>
+                    setForm((precedent) => ({
+                      ...precedent,
+                      display_name: event.target.value,
+                    }))
+                  }
+                  placeholder="Optionnel"
+                />
+              </Champ>
+
+              {form.role === 'assure' && (
+                <Champ
+                  label="Dossier assure"
+                  aide="Un compte assure doit pointer vers un dossier existant."
+                >
+                  {assures.length === 0 ? (
+                    <p className="aide">
+                      Aucun dossier disponible : lancez d abord le seed des donnees.
+                    </p>
+                  ) : (
+                    <select
+                      required
+                      value={form.assured_pseudonyme}
+                      onChange={(event) =>
+                        setForm((precedent) => ({
+                          ...precedent,
+                          assured_pseudonyme: event.target.value,
+                        }))
+                      }
+                    >
+                      {assures.map((pseudonyme) => (
+                        <option key={pseudonyme} value={pseudonyme}>
+                          {pseudonyme}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Champ>
+              )}
+
+              <button type="submit" className="bouton principal" disabled={enCours}>
+                {enCours ? 'Creation...' : 'Creer le compte'}
+              </button>
+            </form>
+          </Carte>
+        </div>
       )}
 
       {onglet === 'audit' && (

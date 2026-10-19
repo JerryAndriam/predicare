@@ -42,6 +42,13 @@ class UnauthorizedError(PrediCareError):
     http_status = 401
 
 
+class InvalidInputError(PrediCareError):
+    """Entree refusee pour une ressource autre qu'une facture (compte, etc.)."""
+
+    code = "invalid_input"
+    http_status = 422
+
+
 class ForbiddenError(PrediCareError):
     """Role insuffisant, ou tentative d'acces aux donnees d'un autre assure."""
 
@@ -52,6 +59,13 @@ class ForbiddenError(PrediCareError):
 class NotFoundError(PrediCareError):
     code = "not_found"
     http_status = 404
+
+
+class ConflictError(PrediCareError):
+    """Ressource deja existante (adresse e-mail deja utilisee)."""
+
+    code = "conflict"
+    http_status = 409
 
 
 class ModelNotReadyError(PrediCareError):

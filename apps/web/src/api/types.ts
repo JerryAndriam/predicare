@@ -180,6 +180,24 @@ export interface AuditEntry {
   created_at: string
 }
 
+export interface AdminUser {
+  id: number
+  email: string
+  role: Role
+  display_name: string | null
+  is_active: boolean
+  assured_pseudonyme: string | null
+  last_login: string | null
+}
+
+export interface AdminUserCreate {
+  email: string
+  password: string
+  role: Role
+  display_name?: string
+  assured_pseudonyme?: string
+}
+
 export interface InvoiceLineInput {
   code_acte: string
   quantite: number

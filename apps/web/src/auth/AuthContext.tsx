@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Au rechargement de la page, le jeton est encore dans sessionStorage :
   // on redemande le profil au serveur au lieu de faire confiance au jeton
-  // seul. Un compte desactive est donc refuse immediatement.
+  // seul.
   useEffect(() => {
     if (!getToken()) {
       setChargement(false)

@@ -38,6 +38,13 @@ DEMO_PASSWORD='PrediCare2026!' make comptes
 Le compte assure est rattache au premier dossier de `core.assure` : lancez le
 seed des donnees avant `make comptes`, sinon l'historique sera vide.
 
+Le script sert a amorcer la plateforme ; ensuite, un administrateur cree et
+desactive les comptes depuis l'onglet **Comptes** de l'administration. Le mot
+de passe est hache (Argon2id) a l'ecriture et n'est jamais renvoye par l'API.
+Deux garde-fous empechent de se desactiver soi-meme et de retirer le dernier
+administrateur actif. La desactivation bloque la prochaine connexion ; un jeton
+deja emis reste valide jusqu'a son expiration.
+
 ## Structure
 
 ```
