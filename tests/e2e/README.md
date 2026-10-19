@@ -41,12 +41,38 @@ L'environnement de l'hote est monte dans un conteneur du reseau `core` : les
 tests s'executent contre la VRAIE base, avec le venv du depot (l'image de
 production ne contient volontairement pas `pytest`).
 
+## Le parcours RAG
+
+`tests/e2e/test_rag_parcours.py` couvre le parcours assuré de bout en bout
+sur la pile réelle : connexion à api-core, question de garantie avec source
+citée, question d'historique dérivée du SQL, question de suivi dans une
+session, injection refusée, question répétée servie par le cache sémantique.
+
+Il est marqué `e2e` et **ignoré** tant que `PREDICARE_E2E=1` n'est pas
+défini : la suite `pytest` reste verte sans la pile démarrée.
+
+```sh
+PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_rag_parcours.py -q
+```
+
+Le même parcours existe sous forme de script autonome, utile pour un jury
+qui veut voir la trace des vérifications sans pytest :
+
+```sh
+scripts/e2e_rag.sh
+```
+
+Le script sort en erreur dès qu'une vérification échoue et affiche un résumé
+(`11 réussites, 0 échec(s)`). Il ne code en dur aucun secret : le mot de passe
+de démonstration vient de `DEMO_PASSWORD` (avec une valeur par défaut pour la
+pile locale).
+
 ## Brouillon / TODO
 
 - [ ] `conftest.py` : fixture de pile démarrée, avecignor des services absents
 - [ ] Lot de 20 factures inédites, dont au moins 5 invalides
 - [ ] Parcours complet : facture → alerte → rapport SHAP → décision
-- [ ] Parcours assuré : question RAG → réponse sourcée
+- [x] Parcours assuré : question RAG → réponse sourcée
 - [ ] Vérification de la persistance après `make down` puis `make up`
 - [ ] Vérification de la bascule de modèle puis du retour arrière
 

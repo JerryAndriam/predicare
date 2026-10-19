@@ -39,6 +39,84 @@ les reference par la meme cle etrangere, et que la grille melange des codes
 d'acte (`ACC-`, `DEN-`, `IMG-`) et des codes medicament (`MED-`). Le
 discriminant est `unite`. Une table separee aurait oblige a casser cette cle.
 
+## Indexer le corpus de contrats (RAG)
+
+```bash
+make seed-rag
+```
+
+La cible lance `python -m predicare_seed.ingest_rag --apply` dans le service
+`seed`, avec le corpus monte en lecture seule. Le script :
+
+1. vérifie si `core.document_vectorise` contient déjà des segments ;
+2. découpe chaque PDF du corpus (`RAG_CORPUS_DIR`, `/data/rag_corpus` par
+   défaut) en segments — un par article pour les Conditions générales, un par
+   ligne du tableau des garanties pour l'article 5, un par section pour les
+   guides réseau, un par paragraphe sinon ;
+3. calcule les embeddings par lots de 64 et insère tout l'index dans **une
+   seule transaction**.
+
+### `--force` : reindexer
+
+```bash
+make seed-rag                    # sans effet si l'index existe déjà
+docker compose run --rm seed python -m predicare_seed.ingest_rag --apply --force
+```
+
+Sans `--force`, le script **ne relit pas les PDF** et n'ouvre aucune
+transaction d'écriture : il journalise `ingestion.ignoree` et sort avec
+`{'segments': 0, 'ignores': <nombre>, 'force': False}`. C'est le comportement
+idempotent attendu : relancer la commande après un `make up` ne duplique
+rien.
+
+Avec `--force`, l'index existant est vidé (`TRUNCATE core.document_vectorise
+RESTART IDENTITY`) puis reconstruit. **La décision d'idempotence se prend
+avant le découpage** : sans `--force`, aucun PDF n'est même ouvert, et un
+corpus absent ou illisible ne peut pas casser un index déjà valide.
+
+Une indexation est **atomique** : si un lot échoue (embedder indisponible,
+erreur de dimension de vecteur), la transaction est annulée et aucun lot
+partiel ne subsiste. Une relance sans `--force` ne prend donc jamais cet index
+incomplet pour un index complet.
+
+Le seul cas où `--force` est nécessaire : le corpus a changé (nouveau PDF,
+PDF modifié), ou le **modèle d'embeddings** a changé. Des vecteurs produits
+par deux modèles différents n'ont aucun sens de cosinus : le seuil de
+similarité deviendrait du bruit, et la recherche remonterait des segments
+sans rapport.
+
+### `--dry-run` : inspecter sans écrire
+
+```bash
+docker compose run --rm seed python -m predicare_seed.ingest_rag --dry-run
+```
+
+Découpe le corpus, affiche le nombre de segments détectés et un exemple, sans
+toucher à la base. C'est la commande à lancer en premier quand un PDF du
+corpus produit un découpage inattendu.
+
+### La colonne `source_fichier`
+
+Chaque segment indexé porte le nom du PDF dont il est issu
+(`core.document_vectorise.source_fichier`). Sans cette colonne, il est
+impossible de remonter d'un passage cité à la pièce justificative d'origine :
+le découpage produit plusieurs familles de segments — un article, une garantie,
+une section de guide — et seul le nom du fichier les relie au contrat réel.
+
+La colonne a été ajoutée par la migration **0007**
+(`db/migrations/versions/0007_document_source_fichier.py`), sur
+`core.document_vectorise`, nullable pour ne pas casser les index déjà
+construits. Elle est exposée en lecture seule au compte `predicare_ro`,
+comme le reste de la table : l'assistant la cite dans ses réponses.
+
+```bash
+make migrate   # applique 0007 (idempotent)
+```
+
+Un index construit **avant** la migration 0007 a des `source_fichier` nuls :
+il faut le reconstruire avec `--force` pour que les citations soient
+traçables jusqu'au fichier.
+
 ## Pseudonymisation
 
 Les assures sont pseudonymises par HMAC-SHA256 (`predicare.crypto.pseudonymize`),
@@ -136,7 +214,7 @@ garantie unique, et `numero_police` reste dans sa colonne dediee.
 
 ## Brouillon / TODO
 
-- [ ] Ingerer le `rag_corpus/` (31 PDF) dans `core.document_vectorise`
+- [x] Ingerer le `rag_corpus/` (31 PDF) dans `core.document_vectorise` (449 segments)
 - [ ] Cas d'invalidite d'entrainement (`FACTURE_INVALIDE` n'a aucune occurrence)
 - [ ] Contrat de recette sur effectifs, execute a chaque rechargement
 

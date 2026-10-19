@@ -67,9 +67,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Request-Id"],
     )
-    # `service` est un mot-cle : l'annot de `add_middleware` suppose une
-    # factory positionnelle, ce que le type ne peut pas voir.
-    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)  # type: ignore[arg-type]
+    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)
 
     register_exception_handlers(app)
     register_health_route(

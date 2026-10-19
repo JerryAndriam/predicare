@@ -45,6 +45,7 @@ filterwarnings = ["ignore::DeprecationWarning"]
 pythonpath = ["."]
 markers = [
     "integration: test qui exige un service externe (PostgreSQL, conteneur)",
+    "e2e: parcours de bout en bout sur une pile demarree (PREDICARE_E2E=1)",
 ]
 
 [tool.coverage.run]

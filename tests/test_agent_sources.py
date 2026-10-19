@@ -234,6 +234,16 @@ def test_historique_suit_session_max_turns(monkeypatch: pytest.MonkeyPatch) -> N
     assert "Q5" in contenus
 
 
+def test_historique_cap_zero_ne_rejoue_rien() -> None:
+    """`[-0:]` renvoie toute la liste : une borne a zero doit rendre []."""
+    from predicare_rag_api.agent import _historique_messages
+
+    history = [{"question": "Q1", "answer": "R1"}, {"question": "Q2", "answer": "R2"}]
+
+    assert _historique_messages(history, 0) == []
+    assert _historique_messages(history, -1) == []
+
+
 def test_un_tour_invalide_ne_consomme_pas_un_emplacement() -> None:
     """Les tours corrompus sont filtres avant la coupe des N derniers."""
     llm = LlmFictif()
@@ -332,7 +342,11 @@ def test_une_reponse_vide_est_une_degradation() -> None:
 def test_l_echec_du_repli_sans_outils_est_une_degradation() -> None:
     agent = _agent(LlmToujoursOutil())
     agent._max_steps = 1
+    avant = metrics.ERRORS.labels("api-rag", "llm_unavailable")._value.get()
 
     reponse = agent.ask("Question ?", assure_id="assure-A")
 
     assert reponse.succes is False
+    # Le repli sans outils est un second appel LLM : son echec doit aussi
+    # alimenter le compteur d'indisponibilite, sinon la panne est invisible.
+    assert metrics.ERRORS.labels("api-rag", "llm_unavailable")._value.get() - avant == 1

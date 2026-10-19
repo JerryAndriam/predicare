@@ -207,6 +207,15 @@ def test_adresse_redis_masque_le_mot_de_passe() -> None:
     assert adresse_redis("redis://redis:6379/0") == "redis:6379/0"
 
 
+def test_adresse_redis_port_invalide_ne_leve_pas() -> None:
+    """Un journal de demarrage ne doit jamais faire echouer le service.
+
+    `urlsplit(...).port` leve `ValueError` sur « notaport » : l'appel doit
+    rester total et retomber sur un libelle neutre.
+    """
+    assert adresse_redis("redis://redis:notaport/0") == "redis"
+
+
 # --------------------------------------------------------------- Redis
 
 

@@ -68,6 +68,10 @@ def _historique_messages(history: list[dict] | None, max_tours: int) -> list:
     Les sources precedentes ne sont pas rejouees : le contexte contractuel de
     la question courante est reconstruit par le retriever.
     """
+    if max_tours <= 0:
+        # `[-0:]` renvoie la liste ENTIERE : sans cette garde, une borne
+        # configuree a zero rejouerait tout l'historique.
+        return []
     tours = _historique_valide(history)[-max_tours:]
     if not tours:
         return []
@@ -368,6 +372,7 @@ class RagAgent:
                     )
                 except Exception as exc:
                     logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
+                    metrics.ERRORS.labels(SERVICE, "llm_unavailable").inc()
                     succes = False
                     texte = (
                         "Le service de reponse est temporairement indisponible. "

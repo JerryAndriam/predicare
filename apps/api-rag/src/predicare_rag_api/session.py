@@ -50,11 +50,14 @@ def adresse_redis(redis_url: str) -> str:
     """
     try:
         parties = urlsplit(redis_url)
+        hote = parties.hostname or "redis"
+        port = parties.port or 6379
+        base = (parties.path or "/0").lstrip("/") or "0"
     except ValueError:
+        # `urlsplit` et la lecture du port levent tous deux `ValueError` sur
+        # une URL malformee : un journal de demarrage ne doit pas faire
+        # echouer le service.
         return "redis"
-    hote = parties.hostname or "redis"
-    port = parties.port or 6379
-    base = (parties.path or "/0").lstrip("/") or "0"
     return f"{hote}:{port}/{base}"
 
 
