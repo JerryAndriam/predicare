@@ -13,11 +13,13 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import joblib
 import numpy as np
 import pytest
 import xgboost as xgb
 
+from predicare.config import get_settings
 from predicare.errors import ModelNotReadyError
 from predicare.features import (
     NOMS_FEATURES,
@@ -366,6 +368,58 @@ def test_bascule_et_retour_arriere(registre: tuple[ModelRegistry, Path]) -> None
 
     assert model_registry.rollback("1") == "1"
     assert model_registry.active.version == "1"
+
+
+def test_bascule_notifie_une_seule_fois(
+    registre: tuple[ModelRegistry, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Le webhook n8n part une fois par bascule, jamais sur une erreur."""
+    model_registry, racine = registre
+    model_registry.load_version("1")
+    ecrire_artefact(racine / "2", entrainer_un_modele(seed=9), version="2")
+    model_registry.load_version("2", as_candidate=True)
+
+    appels: list[dict] = []
+    monkeypatch.setattr(
+        "predicare_inference_api.registry.notifier_bascule",
+        lambda **kwargs: appels.append(kwargs) or True,
+    )
+
+    assert model_registry.promote_candidate(acteur="admin@predicare.local") == "2"
+    assert appels == [
+        {
+            "version_avant": "1",
+            "version_apres": "2",
+            "acteur": "admin@predicare.local",
+        }
+    ]
+
+    with pytest.raises(ModelNotReadyError, match="candidate"):
+        model_registry.promote_candidate()
+    assert len(appels) == 1, "une promotion refusee ne doit pas notifier"
+
+
+def test_bascule_reussit_si_notification_echoue(
+    registre: tuple[ModelRegistry, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un n8n injoignable ne defait pas une bascule deja appliquee."""
+    model_registry, racine = registre
+    model_registry.load_version("1")
+    ecrire_artefact(racine / "2", entrainer_un_modele(seed=9), version="2")
+    model_registry.load_version("2", as_candidate=True)
+    monkeypatch.setattr(
+        get_settings(),
+        "n8n_bascule_webhook_url",
+        "http://n8n:5678/webhook/bascule-modele",
+    )
+
+    def _post(*args: object, **kwargs: object) -> httpx.Response:
+        raise httpx.ConnectError("n8n down")
+
+    monkeypatch.setattr("predicare_inference_api.notifications.httpx.post", _post)
+
+    assert model_registry.promote_candidate() == "2"
+    assert model_registry.active.version == "2"
 
 
 def test_etat_serialisable(registre: tuple[ModelRegistry, Path]) -> None:

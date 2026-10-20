@@ -30,6 +30,6 @@ maintenant pour que Git les suive.
 - [ ] ADR-002 : trois services API plutot qu'un monolithe
 - [ ] ADR-003 : MLflow hors du chemin d'inference
 - [ ] Guide d'exploitation complet (procedure de reprise incluse)
-- [ ] Dossier de cadrage FinOps : TCO et ROI chiffres, pas estimes
+- [x] [Dossier de cadrage](cadrage/README.md) : TCO et ROI chiffres, pas estimes (PDF 26 pages)
 
 Proprietaire : Jerry

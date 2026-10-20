@@ -21,7 +21,8 @@ Vérifier le modèle :
 curl -s http://localhost:8002/api/inference/modele
 ```
 
-Attendu : `"active_version":"2"`, `"threshold":0.287569522857666`.
+Attendu : `"active_version"` vaut `"1"` ou `"2"` selon la version chargée (les
+deux sont disponibles), et `"threshold":0.287569522857666`.
 
 Créer les comptes si nécessaire :
 
@@ -544,6 +545,67 @@ Script automatique fourni :
 powershell -ExecutionPolicy Bypass -File .\scripts\verifier_back_front.ps1
 ```
 
+### 4.1 Chaîne n8n (Slack et e-mail)
+
+Prérequis : `SLACK_WEBHOOK_URL` renseigné, Mailpit démarré (`make up-email`),
+workflows importés (`make n8n-import`).
+
+```bash
+make e2e-n8n
+```
+
+Vérifications :
+
+1. `PK-Alerte-Fraude` est actif et `POST /webhook/alerte-fraude` est enregistré.
+2. `FAC-JURY-001` (lot F17) répond **200** avec `score_fraude` ≥ 0,8 et
+   `rapport_shap`.
+3. L'e-mail arrive dans Mailpit (`http://localhost:8025`) avec le rapport SHAP.
+4. `execution_entity.status = 'success'` : Slack a répondu 2xx.
+5. Une facture invalide répond **502**, n'ajoute aucun e-mail et laisse
+   l'exécution en `error` : l'échec est journalisé, sans notification fantôme.
+
+La bascule de modèle se prouve avec `POST /webhook/bascule-modele` (payload
+`version_avant` / `version_apres`) : réponse 200, puis Slack et e-mail. Le
+détail et les credentials par poste sont dans `apps/n8n/README.md`.
+
+### 4.2 Rapport de dérive persisté
+
+Prérequis : `worker-ingest` démarré (`make up-workers` ou `make up`).
+
+```bash
+curl -s http://localhost:8002/api/inference/derive | python3 -m json.tool
+```
+
+Attendu :
+
+1. `status: "ok"`, avec `id`, `calcule_le`, `fenetre_jours`, `psi_global`,
+   `variables_concernees`, `score_moyen_reference`, `score_moyen_courant`,
+   `alerte`.
+2. `variables_concernees.observations_reference` et
+   `observations_courantes` sont présents : sans eux, un PSI n'est pas
+   interprétable.
+3. `ml.rapport_derive` contient au moins une ligne :
+
+   ```bash
+   docker compose exec db psql -U predicare -d predicare \
+     -c "SELECT id, calcule_le, psi_global, alerte FROM ml.rapport_derive ORDER BY id DESC LIMIT 3;"
+   ```
+
+4. Après `docker compose restart api-inference`, l'endpoint renvoie toujours
+   le même rapport : il est lu en base, pas gardé en mémoire du worker.
+5. Le worker ne calcule qu'une fois par heure ; pour forcer un calcul :
+
+   ```bash
+   docker compose exec worker-ingest /opt/venv/bin/python -c \
+     "from predicare_inference_api.derive import calculer_et_persister_derive; print(calculer_et_persister_derive(force=True))"
+   ```
+
+Mesure du 20/10/2026 : rapport `id=1`, `5510` notations rétrospectives contre
+`18` notations courantes, `psi_global=6,5287`, `alerte=true`. Le PSI est
+extrême parce que la fenêtre courante contient le lot F17 et les rejeux e2e,
+pas un échantillon de production ; c'est le comportement attendu d'un
+détecteur de dérive, et l'effectif courant permet de le lire correctement.
+
 ---
 
 ## 5. Tests de sécurité (RBAC)
@@ -622,7 +684,9 @@ Vérification après correction :
 | Aucune alerte au départ | `ml.prediction` vide ; les factures historiques ne sont pas notées | normal |
 | Journal vide au départ | aucune action admin effectuée | normal |
 | Journal vide après une décision | seules les actions explicites `/api/core/audit/evenement` alimentent `audit.journal` | écart connu |
-| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer |
+| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer ; prouver avec `make e2e-n8n` |
+| n8n répond 404 après un import | processus démarré avant la publication CLI | `make n8n-import` redémarre n8n ; sinon `docker compose restart n8n` |
+| E-mail n8n en échec après un import | credential SMTP non reliée sur ce poste | rouvrir le nœud e-mail et sélectionner `Mailpit (dev)` |
 | File d'alertes vide après une facture | score < 28,76 % | baisser le seuil pour tester |
 | Front « pas dynamique » | image `web` non reconstruite | `docker compose build web` |
 | Décision impossible | aucune alerte sélectionnée | soumettre une facture d'abord |

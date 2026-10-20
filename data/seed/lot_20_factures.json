@@ -1,0 +1,414 @@
+{
+  "version": 1,
+  "description": "Lot de 20 factures inedites du CDC (F17). 15 valides, dont 7 alertes attendues, et 5 invalides. Source unique consommee par le job predicare_seed.lot_jury et par les tests e2e.",
+  "genere_le": "2026-10-20",
+  "seuil_alerte_reference": 0.2876,
+  "factures": [
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "acte de laboratoire sans ordonnance"
+      },
+      "facture_id": "FAC-JURY-001",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00172",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 11000,
+      "lignes": [
+        {
+          "code_acte": "LAB-NFS",
+          "quantite": 1,
+          "montant_unitaire": 11000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "acte feminin pour un assure masculin"
+      },
+      "facture_id": "FAC-JURY-002",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 35000,
+      "lignes": [
+        {
+          "code_acte": "CONS-GYNECO",
+          "quantite": 1,
+          "montant_unitaire": 35000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "prestataire radie"
+      },
+      "facture_id": "FAC-JURY-003",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00097",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 20500,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "soin un dimanche chez un prestataire ferme"
+      },
+      "facture_id": "FAC-JURY-004",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00002",
+      "date_facture": "2026-10-18T12:00:00+03:00",
+      "montant_total": 20000,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20000,
+          "date_acte": "2026-10-18T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "montant au-dessus du tarif maximal de l'acte"
+      },
+      "facture_id": "FAC-JURY-005",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 60000,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 60000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "acte pediatrique pour un assure adulte"
+      },
+      "facture_id": "FAC-JURY-006",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00096",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 35000,
+      "lignes": [
+        {
+          "code_acte": "CONS-PEDIA",
+          "quantite": 1,
+          "montant_unitaire": 35000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": true,
+        "motif": "montant eleve face au plafond de garantie"
+      },
+      "facture_id": "FAC-JURY-007",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00162",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 1500000,
+      "lignes": [
+        {
+          "code_acte": "IMG-IRM",
+          "quantite": 1,
+          "montant_unitaire": 1500000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation generale au tarif de la grille"
+      },
+      "facture_id": "FAC-JURY-008",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 20500,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation de cardiologie au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-009",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 40000,
+      "lignes": [
+        {
+          "code_acte": "CONS-CARDIO",
+          "quantite": 1,
+          "montant_unitaire": 40000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation de pneumologie au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-010",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 40000,
+      "lignes": [
+        {
+          "code_acte": "CONS-PNEUMO",
+          "quantite": 1,
+          "montant_unitaire": 40000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "soins dentaires au tarif de la grille"
+      },
+      "facture_id": "FAC-JURY-011",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00188",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 84500,
+      "lignes": [
+        {
+          "code_acte": "DENT-CONS",
+          "quantite": 1,
+          "montant_unitaire": 24000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        },
+        {
+          "code_acte": "DENT-SOIN",
+          "quantite": 1,
+          "montant_unitaire": 60500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation ORL au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-012",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 30000,
+      "lignes": [
+        {
+          "code_acte": "CONS-ORL",
+          "quantite": 1,
+          "montant_unitaire": 30000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation ophtalmologique au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-013",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 35000,
+      "lignes": [
+        {
+          "code_acte": "CONS-OPHTA",
+          "quantite": 1,
+          "montant_unitaire": 35000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation de dermatologie au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-014",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 35000,
+      "lignes": [
+        {
+          "code_acte": "CONS-DERMATO",
+          "quantite": 1,
+          "montant_unitaire": 35000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "valide",
+      "attendu": {
+        "alerte": false,
+        "motif": "consultation de gastro-enterologie au tarif de reference"
+      },
+      "facture_id": "FAC-JURY-015",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 40000,
+      "lignes": [
+        {
+          "code_acte": "CONS-GASTRO",
+          "quantite": 1,
+          "montant_unitaire": 40000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "invalide:montant_total",
+      "attendu": {
+        "champ": "montant_total",
+        "motif": "montant total hors bornes (10 000 000 MGA)"
+      },
+      "facture_id": "FAC-JURY-016",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 10000001,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "invalide:lignes.0.code_acte",
+      "attendu": {
+        "champ": "lignes.0.code_acte",
+        "motif": "code d'acte absent du referentiel"
+      },
+      "facture_id": "FAC-JURY-017",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 20000,
+      "lignes": [
+        {
+          "code_acte": "ACTE-INCONNU",
+          "quantite": 1,
+          "montant_unitaire": 20000,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "invalide:lignes.0.date_acte",
+      "attendu": {
+        "champ": "lignes.0.date_acte",
+        "motif": "date d'acte posterieure a la date de facture"
+      },
+      "facture_id": "FAC-JURY-018",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 20500,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-25T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "invalide:lignes.0.quantite",
+      "attendu": {
+        "champ": "lignes.0.quantite",
+        "motif": "quantite nulle"
+      },
+      "facture_id": "FAC-JURY-019",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 0,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 0,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    },
+    {
+      "cas_attendu": "invalide:montant_total",
+      "attendu": {
+        "champ": "montant_total",
+        "motif": "montant total incoherent avec les lignes"
+      },
+      "facture_id": "FAC-JURY-020",
+      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "prestataire_id": "PRE-00062",
+      "date_facture": "2026-10-15T12:00:00+03:00",
+      "montant_total": 999999,
+      "lignes": [
+        {
+          "code_acte": "CONS-GEN",
+          "quantite": 1,
+          "montant_unitaire": 20500,
+          "date_acte": "2026-10-15T10:00:00+03:00"
+        }
+      ]
+    }
+  ]
+}

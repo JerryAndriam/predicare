@@ -28,6 +28,29 @@ Trois consequences concretes :
 
 Etat du compte sur le poste courant : `make n8n-compte`.
 
+## Procedure minimale sur un poste
+
+1. Renseigner `SLACK_WEBHOOK_URL` dans `.env` (Slack > Apps > Incoming
+   Webhooks), puis recreer n8n : `docker compose up -d --force-recreate n8n`.
+2. Creer la credential SMTP **`Mailpit (dev)`** dans l'interface :
+   - Host : `mailpit`
+   - Port : `1025`
+   - SSL/TLS : desactive
+   - Authentification : aucune (Mailpit de developpement)
+
+   En production, creer la credential du vrai SMTP et la selectionner dans le
+   noeud « Notifier par e-mail » des deux workflows.
+3. Importer les workflows (`make n8n-import`), puis ouvrir chaque workflow et
+   verifier que le noeud e-mail pointe bien sur la credential SMTP. Un import
+   sur une machine ou l'ID de credential n'existe pas encore laisse le noeud
+   sans credential valide : c'est un point d'exploitation, pas un bug du
+   workflow.
+4. Prouver la chaine : `make e2e-n8n` (alerte Slack + e-mail Mailpit, puis
+   facture invalide sans notification).
+5. Pour la bascule de modele, ajouter dans `.env` :
+   `N8N_BASCULE_WEBHOOK_URL=http://n8n:5678/webhook/bascule-modele`, puis
+   recreer `api-inference`.
+
 ## Sauvegarder les credentials (a faire avant le jour J)
 
 Dans l'interface n8n :
@@ -54,7 +77,7 @@ a celle utilisee a l'export. C'est pour cela que cette cle est epinglee dans
 ## Verification
 
 - [ ] Les credentials attendues existent dans l'interface apres restauration
-- [ ] Le workflow d'alerte se declenche bien et le message Slack part
+- [ ] `make e2e-n8n` passe (Slack reel + e-mail Mailpit + echec journalise)
 - [ ] `N8N_ENCRYPTION_KEY` du `.env` correspond a celle du fichier exporte
 
 ## Reinitialisation complete

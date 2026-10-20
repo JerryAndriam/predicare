@@ -426,33 +426,41 @@ export function ProPage() {
     // recopier le code dans chaque ligne du fichier.
     const impose = references?.prestataire_du_compte ?? (prestataire || null)
 
-    let factures: InvoiceInput[]
+    let analyse: LotAnalyse
     try {
-      factures = analyserLot(lotTexte, lotNom, impose)
+      analyse = analyserLot(lotTexte, lotNom, impose)
     } catch (probleme) {
       setErreur(probleme instanceof Error ? probleme.message : 'Lot illisible.')
       return
     }
 
-    if (factures.length === 0) {
+    if (analyse.factures.length + analyse.rejetees.length === 0) {
       setErreur('Aucune facture dans le lot.')
       return
     }
-    if (factures.length > 100) {
+    if (analyse.factures.length + analyse.rejetees.length > 100) {
       setErreur('Un lot est limite a 100 factures.')
       return
     }
 
     setLotEnCours(true)
-    const resultats: ResultatLot[] = []
-    for (const [index, facture] of factures.entries()) {
+    // Les lignes rejetees a la LECTURE du fichier sont reportees telles
+    // quelles : une facture fautive ne doit pas disparaitre du bilan.
+    const resultats: ResultatLot[] = analyse.rejetees.map((rejetee) => ({
+      ligne: rejetee.ligne,
+      reference: '-',
+      statut: 'erreur',
+      message: rejetee.message,
+    }))
+
+    for (const entree of analyse.factures) {
       try {
         const prediction = await api<Prediction>('/api/core/factures/soumettre', {
           method: 'POST',
-          body: JSON.stringify(facture),
+          body: JSON.stringify(entree.facture),
         })
         resultats.push({
-          ligne: index + 1,
+          ligne: entree.ligne,
           reference: prediction.facture_id,
           statut: 'ok',
           message: `${pourcentage(prediction.score_fraude)} - ${
@@ -461,17 +469,20 @@ export function ProPage() {
         })
       } catch (probleme) {
         resultats.push({
-          ligne: index + 1,
-          reference: facture.facture_id ?? '-',
+          ligne: entree.ligne,
+          reference: entree.facture.facture_id ?? '-',
           statut: 'erreur',
           message: messageErreur(probleme),
         })
       }
-      setLotResultats([...resultats])
+      setLotResultats([...resultats].sort((a, b) => a.ligne - b.ligne))
     }
     setLotEnCours(false)
     const reussies = resultats.filter((resultat) => resultat.statut === 'ok').length
-    setSucces(`${reussies} facture(s) importee(s) sur ${resultats.length}.`)
+    const refusees = resultats.length - reussies
+    setSucces(
+      `${reussies} facture(s) importee(s), ${refusees} rejetee(s) sur ${resultats.length}.`,
+    )
     chargerSuivi()
   }
 

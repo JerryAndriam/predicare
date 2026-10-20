@@ -1,150 +1,258 @@
 # Workflows n8n
 
-Phase 4 du plan d'action. Le workflow est **constitue dans l'interface n8n**,
-pas ecrit a la main dans ce dossier : l'interface est la source de verite,
-ce qui garantit qu'il est reellement importeable par le jury.
+Phase 4 du plan d'action et chantier C4. Les workflows **versionnés** dans
+`workflows/` sont la source de vérité : ils sont importables sur une machine
+vierge, relus en pull request et restaurés par Git. L'interface n8n sert à les
+éditer et à les exporter (`make n8n-export`), pas à les stocker.
 
-## Domaine 1 - Alerte de fraude (Flux 1)
+## Les deux workflows
 
-Webhook declenche par `api-inference` des qu'une facture depasse le seuil
-(0,8 par defaut). Le noeud HTTP de n8n appelle ensuite l'API et pose une
-condition sur le score. Si elle est vraie, une notification Slack part avec
-le rapport SHAP deja mis en forme, l'e-mail restant une option.
+| Fichier | Webhook | Rôle |
+| --- | --- | --- |
+| `PK-Alerte-Fraude.json` | `POST /webhook/alerte-fraude` | Note une facture, répond le score et le rapport SHAP, puis notifie Slack et e-mail si le score dépasse le seuil de notification. |
+| `PK-Bascule-Modele.json` | `POST /webhook/bascule-modele` | Prévient Slack et e-mail après une bascule de modèle réussie. Appelé par `api-inference`. |
 
-Les secrets (webhook Slack, identifiants SMTP, cle LLM) sont crees comme
-**credentials n8n** dans l'interface, jamais ecrits dans un workflow.
+## Chaîne d'alerte (Flux 1)
+
+Le déclencheur est un appelant externe — écran de gestion, lot du jury, test
+de recette — qui POSTe la facture brute sur le webhook n8n. Le workflow appelle
+ensuite `POST /api/inference/predire` :
+
+```text
+appelant → webhook n8n → api-inference (validation, score, SHAP, persistance)
+        → réponse au client (score + rapport_shap)
+        → IF score >= SEUIL_NOTIFICATION_SLACK
+              vrai  → Slack → e-mail
+              faux  → aucune interruption humaine (la facture reste dans la file)
+```
+
+Deux seuils sont volontairement distincts :
+
+- `FRAUD_ALERT_THRESHOLD` (0,2876) est le **seuil de détection** : il décide de
+  l'entrée dans la file du gestionnaire et de l'écriture dans `ml.prediction`.
+- `SEUIL_NOTIFICATION_SLACK` (0,8) est le **seuil de notification** : une alerte
+  Slack est une interruption humaine, réservée aux cas très nets.
+
+La réponse au client part **avant** Slack et l'e-mail (`Repondre au client`) :
+le score et le rapport SHAP ne dépendent pas de la disponibilité de Slack ou
+du SMTP. `responseMode: responseNode` rend cette réponse déterministe ; avec
+`lastNode`, elle dépendait du dernier nœud exécuté.
+
+## Chaîne de bascule de modèle (Phase 8.2)
+
+`api-inference` appelle le webhook **après** une bascule réussie, depuis
+`ModelRegistry.promote_candidate` — point de passage unique des deux chemins
+(api-core et appel direct `make model-promote`). La notification est
+best-effort : URL vide = désactivée, n8n injoignable = avertissement
+`modele.bascule_non_notifiee`, la bascule reste appliquée.
+
+Payload envoyé par `api-inference` :
+
+```json
+{
+  "evenement": "modele.bascule",
+  "version_avant": "1",
+  "version_apres": "2",
+  "timestamp": "2026-10-20T10:00:00+00:00",
+  "acteur": "admin@predicare.local",
+  "service": "api-inference"
+}
+```
+
+`acteur` est le sujet du jeton administrateur, transmis par api-core via
+l'en-tête `X-Acteur`. Il vaut `null` pour un appel direct au registre.
+
+Configuration, dans `.env` :
+
+```dotenv
+N8N_BASCULE_WEBHOOK_URL=http://n8n:5678/webhook/bascule-modele
+```
+
+L'URL interne utilise le **nom du service Compose**, pas `localhost`. Après
+modification, `docker compose up -d --force-recreate api-inference` (la
+configuration est lue au démarrage). Le workflow doit être importé et actif ;
+sinon n8n répond 404 et l'avertissement est journalisé.
+
+## Gestion d'erreur et journalisation
+
+Le workflow d'alerte a deux branches d'erreur explicites :
+
+| Panne | Comportement | Trace |
+| --- | --- | --- |
+| API d'inférence en 4xx/5xx ou injoignable | `Repondre echec inference` répond **502** avec « aucune notification n'a été envoyée », puis `Inference indisponible` arrête l'exécution. Aucun nœud Slack/e-mail n'est atteint. | `execution_entity.status = 'error'` |
+| Slack en échec | L'e-mail part quand même (`continueRegularOutput`). Après l'e-mail, `Notification en echec ?` inspecte les deux résultats et `Notification en echec` arrête l'exécution. | `execution_entity.status = 'error'` |
+| E-mail en échec | Même contrôle final ; Slack a déjà été tenté. | `execution_entity.status = 'error'` |
+
+C'est la garantie « pas de notification fantôme » : les notifications sont
+**en aval** de la réponse de l'inférence et de la condition de seuil. Une
+facture invalide (422) ne peut pas produire d'alerte.
+
+Le journal d'exploitation est celui de n8n, dans sa propre base PostgreSQL
+(base `n8n`) :
+
+```bash
+docker compose exec -T db psql -U predicare -d n8n -c \
+"SELECT e.id, e.status, e.mode, e.\"startedAt\", e.\"stoppedAt\"
+ FROM execution_entity e
+ JOIN workflow_entity w ON w.id = e.\"workflowId\"
+ WHERE w.name = 'PK-Alerte-Fraude'
+ ORDER BY e.id DESC LIMIT 10;"
+```
+
+Le détail par nœud (message d'erreur, sortie Slack `{data:"ok"}`, réponse SMTP
+`accepted`) est visible dans l'interface :
+
+```text
+http://localhost:5678/workflow/<id>/executions/<execution>
+```
+
+On n'écrit **pas** dans `audit.journal` depuis n8n : cela demanderait de donner
+à l'outil d'orchestration un accès en écriture à la base applicative, ou un
+jeton de service supplémentaire. `execution_entity` est le journal de la
+chaîne d'orchestration ; `audit.journal` reste le journal métier écrit par les
+API.
+
+## Preuve de bout en bout
+
+Prérequis :
+
+- pile démarrée (`make up`) et Mailpit (`make up-email`) ;
+- `SLACK_WEBHOOK_URL` renseigné dans `.env` (Slack → Apps → Incoming Webhooks),
+  puis `docker compose up -d --force-recreate n8n` pour relire l'environnement ;
+- workflows importés et actifs (`make n8n-import`).
+
+```bash
+make e2e-n8n
+```
+
+Le script `scripts/e2e_n8n.sh` vérifie, sur la pile réelle :
+
+1. le workflow est actif et le webhook `POST /webhook/alerte-fraude` enregistré ;
+2. une facture du lot F17 au-dessus du seuil répond **200** avec `score_fraude`
+   et `rapport_shap` ;
+3. l'e-mail réel arrive dans Mailpit avec le rapport SHAP lisible ;
+4. l'exécution n8n est `success` — donc le nœud Slack a répondu 2xx, puisque
+   tout échec Slack/e-mail bascule l'exécution en `error` ;
+5. une facture invalide répond **502**, n'ajoute **aucun** e-mail et laisse
+   l'exécution en `error` : l'échec est journalisé, sans notification fantôme.
+
+Recette du 20/10/2026 sur cette pile : `FAC-JURY-001` notée **0,985813**,
+Slack `{data:"ok"}`, e-mail « Alerte fraude — FAC-JURY-001 (score 0.985813) »
+avec le rapport SHAP, exécution `success`. La facture invalide (montant hors
+bornes) a répondu 502, Mailpit est resté inchangé et l'exécution est passée en
+`error`. La chaîne de bascule a été prouvée séparément : payload `v1 → v2`,
+Slack `{data:"ok"}`, e-mail « Bascule de modèle — v1 → v2 », exécution
+`success` ; un premier essai avec un corps Slack non sérialisé a produit un
+`400 invalid_payload`, l'e-mail est quand même parti et l'exécution a été
+marquée `error` — c'est exactement le comportement attendu de la branche
+d'erreur.
+
+## Credentials et exploitation sur chaque poste
+
+Les workflows ne contiennent **aucun secret**. Ce qui doit exister sur chaque
+poste :
+
+| Élément | Où | Procédure |
+| --- | --- | --- |
+| Webhook Slack | `.env` → `SLACK_WEBHOOK_URL` | Créer un Incoming Webhook dans le Slack de l'équipe, coller l'URL, recréer n8n. |
+| SMTP | Credential n8n `Mailpit (dev)` | Host `mailpit`, port `1025`, sans TLS ni authentification (Mailpit). En production, créer la credential du vrai SMTP et la sélectionner dans le nœud e-mail. |
+| Bascule de modèle | `.env` → `N8N_BASCULE_WEBHOOK_URL` | `http://n8n:5678/webhook/bascule-modele`, puis recréer `api-inference`. |
+| Clé LLM | Credential n8n | Uniquement si un nœud LLM est ajouté ; absente des deux workflows actuels. |
+
+Une credential n8n appartient à un **utilisateur** : elle ne se synchronise
+pas par Git. Après un import sur une nouvelle machine, ouvrir chaque workflow,
+cliquer sur le nœud e-mail et sélectionner la credential SMTP (ou la créer).
+La sauvegarde/restauration chiffrée est décrite dans
+[`credentials/README.md`](credentials/README.md).
 
 ## Nomenclature
 
-| Prefix | Role |
+| Préfixe | Rôle |
 | --- | --- |
-| `PK` | Production - s'execute sur donnees reelles |
-| `Stg` | Staging - jeu de test |
-| `Dev` | Developpement |
+| `PK` | Production — s'exécute sur données réelles |
+| `Stg` | Staging — jeu de test |
+| `Dev` | Développement |
 
 ## Authentification et partage
 
-**Il n'y a pas de mot de passe n8n dans le `.env`, et c'est normal.**
-
-n8n a supprimé l'authentification basique en version 1.x : les variables
-`N8N_BASIC_AUTH_USER` et `N8N_BASIC_AUTH_PASSWORD` ne sont plus lues du
-tout. Vérifié sur le binaire 2.37.10 installé ici : **zéro occurrence** de
-`basicAuth` dans son schéma de configuration.
-
-Le modèle réel est le suivant :
+**Il n'y a pas de mot de passe n8n dans le `.env`, et c'est normal.** n8n a
+supprimé l'authentification basique en version 1.x : `N8N_BASIC_AUTH_USER` et
+`N8N_BASIC_AUTH_PASSWORD` ne sont plus lues. Vérifié sur le binaire 2.37.10 :
+zéro occurrence de `basicAuth` dans son schéma de configuration.
 
 | Question | Réponse |
 | --- | --- |
 | Qui est le propriétaire ? | Le **premier visiteur** de l'URL : n8n affiche un formulaire de création de compte |
 | Le mot de passe est-il dans le `.env` ? | Non. Il est choisi par le visiteur et n'est stocké nulle part |
-| La création est-elle reproductible ? | Non. Elle dépend de qui ouvre l'URL en premier |
 | Deux postes ont-ils le même compte ? | Non, chacun a le sien |
-| Le mot de passe est-il partageable ? | Non. C'est un mot de passe individuel, ce qui est plus sûr |
+| Le mot de passe est-il partageable ? | Non. C'est un mot de passe individuel, plus sûr |
 
-État du compte sur un poste : `make n8n-compte`. Il distingue trois cas —
-aucun compte, un compte dont le formulaire n'a pas été terminé (cas trompeur :
-n8n crée une ligne vide avant que le visiteur ne remplisse le formulaire), et
-un compte complet.
+État du compte sur un poste : `make n8n-compte`. Mot de passe oublié :
+`docker compose exec n8n n8n user-management:reset` — cette commande
+réinitialise **l'instance entière**, workflows compris.
 
-Mot de passe oublié :
-
-```bash
-docker compose exec n8n n8n user-management:reset
-```
-
-Cette commande réinitialise **l'instance entière** : workflows compris.
-
-## Le partage des workflows
-
-**Le partage interne de n8n n'est pas disponible ici.** La table
-`shared_workflow` existe bien dans le schéma, mais le code qui la manipule
-est dans des fichiers `.ee.js` — la convention de n8n pour l'Enterprise
-Edition. Sans licence, l'instance est en **édition Community** et chaque
-compte ne voit que ses propres workflows.
-
-Le partage se fait donc **par Git**, ce qui est de toute façon ce que le CDC
-demande comme livrable :
+Le partage interne de n8n n'est pas disponible en édition Community. Le
+partage se fait **par Git** :
 
 | Acteur | Commandes |
 | --- | --- |
-| Celui qui modifie un workflow | `make n8n-export` puis `git add apps/n8n && git commit && git push` |
-| Jerry, Cherica, Mirado | Rien a faire apres un `git pull` : `make up` / `make start` installe les workflows absents (ou `make n8n-import` a la main) |
-
-L'échange via Git plutôt que via n8n apporte trois choses que le
-partage interne n'aurait pas données : l'historique Git montre **qui** a
-modifié quoi, une pull request permet la relecture, et le workflow est
-restaurable si une machine est réinstallée.
+| Celui qui modifie un workflow | `make n8n-export`, puis `git add apps/n8n && git commit && git push` |
+| Les autres | Après `git pull` : `make n8n-import` (ou `make up` / `make start` pour installer uniquement les workflows absents) |
 
 À ne pas faire : pointer plusieurs machines vers le même PostgreSQL pour
-« partager » les workflows. Les exécutions et leurs identifiants sont liés
-au compte propriétaire — on créerait des conflits pour un gain nul.
+« partager » les workflows. Les exécutions et leurs identifiants sont liés au
+compte propriétaire.
 
-## Workflow de reference
+## Import, mise à jour et amorçage
 
-`workflows/PK-Alerte-Fraude.json` est livre pret a importer : webhook
-d'entree, controle du montant, appel de l'API d'inference, comparaison au
-seuil, rapport SHAP, notification Slack, journalisation.
+```bash
+make n8n-export   # exporte les workflows de l'interface vers apps/n8n/workflows/
+make n8n-import   # installe les absents, met à jour les existants, publie
+```
 
-## Amorcage automatique
+`make n8n-import` met à jour un workflow existant **sur place** : la CLI
+n8n n'a pas de commande « remplacer », mais `import:workflow` fait un upsert
+sur l'`id`. Le script lit l'`id` existant avec `n8n list:workflow` et l'injecte
+dans une copie temporaire ; les fichiers versionnés restent sans `id`, car cet
+identifiant change d'une machine à l'autre. Le workflow est ensuite publié et
+n8n est **redémarré** : la CLI écrit en base, mais un processus déjà démarré
+garde ses anciens webhooks en mémoire (sans redémarrage, le nouveau chemin
+répond 404).
 
-`make up`, `make up-light` et `make start` installent automatiquement les
-workflows **absents** de `workflows/` : le script tourne en mode
-`--if-missing` juste apres le demarrage des services. Il ne supprime ni ne
-remplace jamais rien, meme si `N8N_API_KEY` est configuree — une
-modification faite dans l'interface (workflow renomme, desactive) n'est pas
-écrasée par un redemarrage.
+Avec une `N8N_API_KEY` valide, le script passe par l'API : suppression puis
+recréation, publication à chaud, sans redémarrage. La clé est optionnelle ;
+elle se crée dans **Settings → n8n API**. Une clé présente dans `.env` mais
+non enregistrée côté n8n est détectée (401) et le script bascule sur la CLI.
+
+`make up`, `make up-light` et `make start` utilisent `--if-missing` : ils
+installent uniquement les workflows absents et ne remplacent jamais une
+modification locale. Après un `git pull` qui modifie un workflow existant,
+lancer explicitement `make n8n-import`.
 
 | Situation | Ce qui se passe |
 | --- | --- |
-| Machine avec compte deja cree | Les workflows absents sont installes et publies ; ceux deja presents sont laisses tels quels |
-| Machine vierge (aucun compte) | n8n cree un proprietaire « shell » (sans mot de passe) : l'import et la publication reussissent ; a la premiere visite, le formulaire de creation de compte s'affiche et **revendique ce shell** — le workflow apparait alors dans l'Overview, deja publie |
-| Relance (`make restart`) | Idempotent : « 0 installe, deja present », rien n'est modifie |
+| Machine avec compte déjà créé | Les absents sont installés, les existants mis à jour par `make n8n-import` |
+| Machine vierge (aucun compte) | n8n crée un propriétaire « shell » ; l'import réussit, puis la première visite revendique ce shell |
+| `make restart` | `--if-missing` : idempotent, rien n'est modifié |
 
 ## Persistance
 
 Compte, session et workflows vivent dans **PostgreSQL** (base `n8n`, volume
-des donnees), pas dans le volume `n8ndata` (config et logs seulement).
+des données), pas dans le volume `n8ndata` (config et logs seulement).
 
-- `make down` / `make start` / redemarrage : tout est conserve, on reste
-  connecte.
-- `make clean` (volumes supprimes) : tout est efface ; la premiere visite
-  recrée le compte. C'est le seul cas « repartir de zero ».
+- `make down` / `make start` / redémarrage : tout est conservé.
+- `make clean` (volumes supprimés) : tout est effacé ; la première visite
+  recrée le compte. Seul cas « repartir de zéro ».
 
-## Synchronisation avec Git
+## TODO
 
-```bash
-make n8n-export   # exporte les workflows dans apps/n8n/workflows/ (a commiter)
-make n8n-import   # restaure et publie les workflows apres un pull (manuel)
-```
+- [x] Workflow d'alerte complet, versionné et importable
+- [x] Rapport SHAP dans le message Slack et dans l'e-mail
+- [x] Variante e-mail via Mailpit (`make up-email`)
+- [x] Branche d'erreur et journalisation dans `execution_entity`
+- [x] Webhook de rappel pour la bascule de modèle (Phase 8.2)
+- [x] Preuve de bout en bout automatisée (`make e2e-n8n`)
+- [ ] Créer les credentials Slack/SMTP sur **chaque** poste et refaire
+      `make e2e-n8n` sur le poste du jury
 
-Les deux scripts passent par la **CLI n8n**, pas son API REST : l'API exige
-une cle creee a la main dans l'interface, ce qui rend l'installation
-impossible a automatiser sur une machine vierge. Le seul point d'entree qui
-importe, c'est donc `apps/n8n/workflows/` versionne par Git.
-
-`make n8n-import` reste utile pour une remise a niveau explicite (ou une
-machine ou le compte vient d'etre cree). Sans cle API il ne **remplace** pas
-un workflow deja present (n8n 2.x n'expose aucune suppression en CLI) et le
-signale plutot que de creer un doublon. Avec `N8N_API_KEY` renseignee dans
-le `.env`, le remplacement et l'activation se font par l'API — c'est le seul
-mode qui ecrase un workflow existant, et il n'est jamais lance
-automatiquement.
-
-- `workflows/` est **versionne** : c'est le livrable « workflows n8n
-  importables (.json) » exige par le CDC.
-- `credentials/` est **gitignore** : un export de credentials contient le
-  webhook Slack et la cle LLM. La procedure d'export/import manuel, chiffree
-  par `N8N_ENCRYPTION_KEY`, est decrite dans `credentials/README.md`.
-
-## Brouillon / TODO
-
-- [x] Workflow d'alerte complet, versionne et importable
-- [ ] Creer les credentials Slack, SMTP et LLM sur CHAQUE poste : ils ne
-      se synchronisent pas, seul le workflow est versionne
-- [ ] Verifier le declenchement reel du webhook avec une facture de test
-- [ ] Reporter le rapport SHAP dans le message Slack (noeud deja cable)
-- [ ] Variante e-mail via le SMTP de developpement (Mailpit, `make up-email`)
-- [ ] Gestion d'erreur : noeud de secours et journalisation des echecs
-- [ ] Webhook de rappel pour la bascule de modele (Phase 8.2)
-
-Proprietaire : Mirado
+Propriétaire : Mirado

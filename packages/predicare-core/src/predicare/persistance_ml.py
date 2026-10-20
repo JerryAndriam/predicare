@@ -46,6 +46,11 @@ SEUIL_PAR_DEFAUT = 0.80
 #: la table sans rien ajouter a la justification.
 CONTRIBUTIONS_CONSERVEES = 5
 
+#: Statuts qu'un calcul de score peut poser. Les autres valeurs de
+#: `ml.prediction.statut` viennent des decisions du gestionnaire (`valider`,
+#: `rejeter`, `piece`) et ne sont jamais ecrites par l'inference.
+STATUTS_PREDICTION = ("nouvelle", "archive")
+
 #: Cle du seuil d'alerte dans `audit.parametre`. L'ecran d'administration
 #: ecrit cette cle ; la file du gestionnaire la relit. Une seule verite pour
 #: tout le monde, ce qui evite qu'api-core filtre a 0.8 des alertes emises a
@@ -65,18 +70,20 @@ def _id_facture(session: Session, reference: str) -> int | None:
     ).scalar()
 
 
-def _prediction_en_attente(session: Session, facture_id: int) -> int | None:
-    """Prediction de cette facture encore en attente de decision, s'il y en a."""
+def _prediction_en_attente(
+    session: Session, facture_id: int, statut: str = "nouvelle"
+) -> int | None:
+    """Prediction de cette facture encore dans le statut donne, s'il y en a."""
     return session.execute(
         text(
             """
             SELECT id FROM ml.prediction
-            WHERE facture_id = :facture_id AND statut = 'nouvelle'
+            WHERE facture_id = :facture_id AND statut = :statut
             ORDER BY id DESC
             LIMIT 1
             """
         ),
-        {"facture_id": facture_id},
+        {"facture_id": facture_id, "statut": statut},
     ).scalar()
 
 
@@ -89,14 +96,29 @@ def stocker_prediction(
     seuil: float,
     is_fraud: bool,
     contributions: Iterable[Any],
+    statut: str = "nouvelle",
 ) -> int | None:
     """Ecrit `ml.prediction` et `ml.shap_explication`. Rend l'id, ou None.
+
+    `statut` distingue deux usages :
+
+    - `nouvelle` (defaut) : soumission temps reel, la facture entre dans la
+      file de travail du gestionnaire ;
+    - `archive` : notation RETROSPECTIVE (job `make noter`). Le score est
+      conserve et mesure la qualite du modele, mais la facture n'a jamais ete
+      soumise a un gestionnaire : la compter comme alerte non confirmee
+      ferait afficher 100 % de faux positifs sur l'historique.
 
     None signifie « ignoree, et c'est normal » : la facture n'appartient pas a
     l'historique de la plateforme. Un identifiant inconnu n'est pas une panne,
     c'est une facture d'un autre systeme ; la journaliser en erreur noierait
     les vraies pannes.
     """
+    if statut not in STATUTS_PREDICTION:
+        raise ValueError(
+            f"Statut de prediction inconnu : {statut!r}. Attendu : {STATUTS_PREDICTION}."
+        )
+
     facture_id = _id_facture(session, reference)
     if facture_id is None:
         logger.info("prediction.facture_inconnue", reference=reference)
@@ -110,7 +132,7 @@ def stocker_prediction(
         "is_fraud": is_fraud,
     }
 
-    prediction_id = _prediction_en_attente(session, facture_id)
+    prediction_id = _prediction_en_attente(session, facture_id, statut)
     if prediction_id is None:
         prediction_id = session.execute(
             text(
@@ -118,11 +140,11 @@ def stocker_prediction(
                 INSERT INTO ml.prediction
                     (facture_id, model_version, score_fraude, seuil_applique,
                      is_fraud, statut)
-                VALUES (:facture_id, :version, :score, :seuil, :is_fraud, 'nouvelle')
+                VALUES (:facture_id, :version, :score, :seuil, :is_fraud, :statut)
                 RETURNING id
                 """
             ),
-            valeurs,
+            {**valeurs, "statut": statut},
         ).scalar()
     else:
         # Re-notation : le score precedent n'a plus de sens, et la date doit
@@ -281,6 +303,151 @@ def activer_version(version: str) -> bool:
     except Exception as exc:
         logger.warning("version.statut_non_mis_a_jour", erreur=str(exc), version=version)
         return False
+
+
+#: Nombre de rapports de derive conserves. Le worker calcule au plus une fois
+#: par heure ; garder les 500 derniers couvre environ trois semaines de recul
+#: sans laisser la table grossir indefiniment.
+RAPPORTS_DERIVE_CONSERVES = 500
+
+
+def enregistrer_rapport_derive(
+    session: Session,
+    *,
+    fenetre_jours: int,
+    psi_global: float,
+    variables_concernees: dict[str, Any],
+    score_moyen_reference: float,
+    score_moyen_courant: float,
+    alerte: bool,
+) -> int:
+    """Ecrit un rapport dans `ml.rapport_derive` et purge les plus anciens.
+
+    `variables_concernees` est un JSON libre : il porte la liste des variables
+    en derive, le PSI par variable et la taille des deux echantillons. Le
+    schéma ne prévoit qu'une colonne JSONB ; y mettre aussi les effectifs
+    évite de relire `ml.prediction` pour interpréter un PSI calculé sur 18
+    lignes.
+    """
+    if fenetre_jours < 1:
+        raise ValueError(f"Fenetre de derive invalide : {fenetre_jours}")
+
+    identifiant = session.execute(
+        text(
+            """
+            INSERT INTO ml.rapport_derive
+                (fenetre_jours, psi_global, variables_concernees,
+                 score_moyen_reference, score_moyen_courant, alerte)
+            VALUES (:fenetre_jours, :psi_global, CAST(:variables AS jsonb),
+                    :score_reference, :score_courant, :alerte)
+            RETURNING id
+            """
+        ),
+        {
+            "fenetre_jours": fenetre_jours,
+            "psi_global": float(psi_global),
+            "variables": json.dumps(variables_concernees, ensure_ascii=False, default=str),
+            "score_reference": float(score_moyen_reference),
+            "score_courant": float(score_moyen_courant),
+            "alerte": bool(alerte),
+        },
+    ).scalar_one()
+
+    session.execute(
+        text(
+            """
+            DELETE FROM ml.rapport_derive
+            WHERE id NOT IN (
+                SELECT id FROM ml.rapport_derive
+                ORDER BY calcule_le DESC NULLS LAST, id DESC
+                LIMIT :limite
+            )
+            """
+        ),
+        {"limite": RAPPORTS_DERIVE_CONSERVES},
+    )
+    return int(identifiant)
+
+
+def persister_rapport_derive(**champs: Any) -> int | None:
+    """`enregistrer_rapport_derive` en version « ne leve jamais ».
+
+    Une panne d'ecriture du rapport ne doit pas tuer le worker : le prochain
+    tour reessaiera. L'inference et les alertes ne dependent pas de lui.
+    """
+    try:
+        with session_scope() as session:
+            return enregistrer_rapport_derive(session, **champs)
+    except Exception as exc:
+        logger.warning(
+            "rapport_derive.non_persiste",
+            erreur=str(exc),
+            fenetre_jours=champs.get("fenetre_jours"),
+        )
+        return None
+
+
+def lire_dernier_rapport_derive() -> dict[str, Any] | None:
+    """Dernier rapport persiste, ou None s'il n'y en a pas encore.
+
+    Lecture tolerante : une base injoignable rend `None` et l'endpoint repond
+    `non_calcule`, au lieu d'une 500 sur un ecran de supervision.
+    """
+    try:
+        with session_scope() as session:
+            ligne = (
+                session.execute(
+                    text(
+                        """
+                        SELECT id, calcule_le, fenetre_jours, psi_global,
+                               variables_concernees, score_moyen_reference,
+                               score_moyen_courant, alerte
+                        FROM ml.rapport_derive
+                        ORDER BY calcule_le DESC NULLS LAST, id DESC
+                        LIMIT 1
+                        """
+                    )
+                )
+                .mappings()
+                .first()
+            )
+    except Exception as exc:
+        logger.warning("rapport_derive.lecture_impossible", erreur=str(exc))
+        return None
+
+    if ligne is None:
+        return None
+
+    rapport = dict(ligne)
+    calcule_le = rapport.get("calcule_le")
+    if calcule_le is not None:
+        rapport["calcule_le"] = calcule_le.isoformat()
+    variables = rapport.get("variables_concernees")
+    if isinstance(variables, str):
+        try:
+            rapport["variables_concernees"] = json.loads(variables)
+        except json.JSONDecodeError:
+            logger.warning("rapport_derive.variables_illisibles", rapport_id=rapport.get("id"))
+    return rapport
+
+
+def lire_version_promue(session: Session) -> str | None:
+    """Version active selon le registre `ml.modele_version`, si elle est connue.
+
+    Le registre peut etre vide (base restauree sans lui) : l'appelant retombe
+    alors sur `MODEL_ACTIVE_VERSION`, qui est la source utilisee au demarrage
+    du service.
+    """
+    return session.execute(
+        text(
+            """
+            SELECT version FROM ml.modele_version
+            WHERE statut = 'promu'
+            ORDER BY promu_le DESC NULLS LAST, version DESC
+            LIMIT 1
+            """
+        )
+    ).scalar()
 
 
 def lire_seuil_alerte(session: Session) -> float | None:

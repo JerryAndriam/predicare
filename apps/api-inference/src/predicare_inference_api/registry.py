@@ -18,6 +18,7 @@ from pathlib import Path
 from predicare.errors import ModelNotReadyError
 from predicare.logging_config import get_logger
 from predicare.persistance_ml import SEUIL_PAR_DEFAUT, activer_version
+from predicare_inference_api.notifications import notifier_bascule
 
 logger = get_logger("api-inference.registry")
 
@@ -184,20 +185,37 @@ class ModelRegistry:
         return bundle
 
     # ---------------------------------------------------------------- bascule
-    def promote_candidate(self) -> str:
-        """Bascule la version candidate en version active."""
+    def promote_candidate(self, *, acteur: str | None = None) -> str:
+        """Bascule la version candidate en version active.
+
+        Point de passage UNIQUE des deux chemins de bascule (api-core et appel
+        direct a api-inference) : la notification n8n est emise ici, une seule
+        fois par bascule reussie.
+        """
         with self._swap_lock:
             if self._candidate is None:
                 raise ModelNotReadyError("Aucune version candidate a promouvoir.")
+            precedente = self._active.version if self._active else None
             promotee = self._candidate
             self._active = promotee
             self._candidate = None
-        logger.info("modele.bascule", version=promotee.version)
+        logger.info(
+            "modele.bascule",
+            version=promotee.version,
+            version_avant=precedente,
+        )
         # Le registre de la plateforme suit la bascule : sans cet appel,
         # `ml.modele_version` resterait sur « candidat » et l'ecran
         # d'administration annoncerait une version differente de celle qui
         # repond. Best-effort : la bascule en memoire a deja eu lieu.
         activer_version(promotee.version)
+        # Meme doctrine pour n8n : la bascule est deja faite, la notification
+        # ne peut que manquer (et laisser une trace), jamais la defaire.
+        notifier_bascule(
+            version_avant=precedente,
+            version_apres=promotee.version,
+            acteur=acteur,
+        )
         return promotee.version
 
     def rollback(self, version: str) -> str:

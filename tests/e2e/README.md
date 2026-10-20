@@ -79,12 +79,64 @@ Le script sort en erreur dès qu'une vérification échoue et affiche un résum�
 `DEMO_PASSWORD non defini. Lancez : DEMO_PASSWORD='<mot-de-passe>' make comptes (le mot de passe est affiché une seule fois)`.
 Le mot de passe n'est jamais imprimé dans la sortie.
 
+## Le lot de 20 factures (F17)
+
+`tests/e2e/test_lot_jury_e2e.py` soumet `data/seed/lot_20_factures.json` par la
+même porte que le front (`POST /api/core/factures/soumettre`), puis vérifie :
+
+- les 15 factures valides sont notées, dont 7 alertes attendues ;
+- ces 7 alertes sont visibles dans la file du gestionnaire ;
+- les 5 factures invalides sont rejetées en nommant le champ fautif ;
+- une alerte parcourt le cycle complet : détail SHAP, décision, historique.
+
+Le job `make lot-jury` exécute la même soumission en exploitation, avec un
+rapport lisible et un code de sortie non nul au premier écart.
+
+```sh
+DEMO_PASSWORD='<mot-de-passe>' PREDICARE_E2E=1 \
+  uv run --all-packages pytest tests/e2e/test_lot_jury_e2e.py -q
+```
+
+> Ce parcours **écrit** dans la base de démonstration : c'est le but, le jury
+> doit voir les alertes. Ne pas le lancer sur une base de production.
+
+## La chaîne n8n (Slack et e-mail)
+
+La preuve de la chaîne n8n est un **script shell**, pas un test pytest : elle
+a besoin de Docker, de la base n8n et de Mailpit, et son journal est
+`execution_entity` dans la base `n8n`. Un test pytest devrait shell-out pour
+lire ces éléments, ce qui n'apporte rien par rapport à `scripts/e2e_n8n.sh`.
+
+```sh
+make e2e-n8n
+```
+
+Prérequis : pile démarrée, Mailpit (`make up-email`), `SLACK_WEBHOOK_URL`
+renseigné dans `.env`, workflows importés (`make n8n-import`). Le script
+vérifie :
+
+- le workflow `PK-Alerte-Fraude` est actif et son webhook enregistré ;
+- `FAC-JURY-001` (lot F17) répond 200 avec un score ≥ 0,8 et le rapport SHAP ;
+- l'e-mail réel arrive dans Mailpit avec le rapport SHAP lisible ;
+- l'exécution n8n est `success` (donc Slack a répondu 2xx) ;
+- une facture invalide répond 502, n'ajoute aucun e-mail et laisse l'exécution
+  en `error` : l'échec est journalisé, sans notification fantôme.
+
+Il affiche `Resume : X reussite(s), 0 echec(s)` puis `Parcours n8n : SUCCES`.
+Un échec de configuration (Slack absent, Mailpit arrêté) sort en code 2 avant
+toute requête, avec la commande à lancer.
+
+La chaîne de bascule de modèle (`POST /webhook/bascule-modele`) se prouve avec
+un payload `version_avant`/`version_apres` ; elle répond 200 puis notifie
+Slack et e-mail. Voir `apps/n8n/README.md`.
+
 ## Brouillon / TODO
 
-- [ ] `conftest.py` : fixture de pile démarrée, avecignor des services absents
-- [ ] Lot de 20 factures inédites, dont au moins 5 invalides
-- [ ] Parcours complet : facture → alerte → rapport SHAP → décision
+- [ ] `conftest.py` : fixture de pile démarrée, avec ignor des services absents
+- [x] Lot de 20 factures inédites, dont au moins 5 invalides
+- [x] Parcours complet : facture → alerte → rapport SHAP → décision
 - [x] Parcours assuré : question RAG → réponse sourcée
+- [x] Chaîne n8n : alerte réelle Slack + e-mail, échec journalisé sans fantôme
 - [ ] Vérification de la persistance après `make down` puis `make up`
 - [ ] Vérification de la bascule de modèle puis du retour arrière
 

@@ -10,7 +10,8 @@ Ce que le jury execute, et ce qui casse quand une machine est vierge.
 | `check-health.sh` | `make health` | Sonde `/health` et `/metrics` de chaque service |
 | `smoke-test.sh` | `make smoke` | Parcours de verification de bout en bout |
 | `n8n-export.sh` | `make n8n-export` | Copie les workflows de l'interface vers Git |
-| `n8n-import.sh` | `make n8n-import` | Restaure et reactive les workflows |
+| `n8n-import.sh` | `make n8n-import` | Restaure, met a jour par ID et reactive les workflows |
+| `e2e_n8n.sh` | `make e2e-n8n` | Prouve la chaine n8n reelle : Slack, e-mail Mailpit, echec journalise |
 | `generate-access-file.sh` | `make acces` | Genere la fiche d'identifiants **hors du depot** |
 | `split-workflows.py` | `make n8n-export` | Decoupe l'export n8n en un fichier par workflow |
 | `check-commit-title.sh` | hook pre-commit | Normalise les titres de commit |
@@ -37,6 +38,7 @@ boucles d'attente sont bornees a la main.
 | `check-health.sh` | `curl`, `python3` |
 | `smoke-test.sh` | `docker`, `curl`, `python3` |
 | `n8n-import.sh` / `n8n-export.sh` | `docker`, `curl`, `python3` |
+| `e2e_n8n.sh` | `docker`, `curl`, `jq`, `python3` |
 | `generate-access-file.sh` | `docker`, `git` (le controle de fuite se degrade si git est absent) |
 | `attendre-http.sh` | `curl` |
 

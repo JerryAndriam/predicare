@@ -15,11 +15,11 @@ from predicare import metrics
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.logging_config import get_logger
-from predicare.persistance_ml import persister_prediction
+from predicare.persistance_ml import lire_dernier_rapport_derive, persister_prediction
 from predicare_inference_api.context import resolve_context
-from predicare_inference_api.drift import DriftReport
-from predicare_inference_api.explainability import build_shap_report, shap_to_contributions
+from predicare_inference_api.explainability import build_shap_report
 from predicare_inference_api.features import build_features
+from predicare_inference_api.scoring import Scorer
 from predicare_inference_api.validation import validate_invoice
 
 router = APIRouter(tags=["inference"])
@@ -71,23 +71,10 @@ def predict(payload: dict, request: Request) -> dict:
             references=features.references_manquantes[:10],
         )
 
-    import numpy as np
-
-    estimator = bundle.estimator
-    score = float(estimator.predict_proba(np.array([row]))[0, 1])
-    base_value = bundle.shap_base_value
-
-    shap_values = np.zeros(len(bundle.feature_names))
-    try:
-        import shap
-
-        explainer = shap.TreeExplainer(estimator)
-        shap_values = np.asarray(explainer.shap_values(np.array([row]))).ravel()
-    except Exception as exc:
-        logger.warning("shap.indisponible", erreur=str(exc))
-
-    contributions = shap_to_contributions(bundle.feature_names, shap_values, base_value)
-    is_fraud = score >= seuil
+    notation = Scorer(bundle, seuil=seuil).score(row)
+    score = notation.score
+    contributions = notation.contributions
+    is_fraud = notation.is_fraud
     inference_ms = (time.perf_counter() - started) * 1000
 
     metrics.MODEL_INFERENCE.labels(SERVICE, bundle.version).observe(inference_ms / 1000)
@@ -164,8 +151,13 @@ def load_candidate(version: str, request: Request) -> dict:
 
 @router.post("/modele/bascule")
 def promote(request: Request) -> dict:
-    """Bascule la candidate en version active."""
-    version = request.app.state.registry.promote_candidate()
+    """Bascule la candidate en version active.
+
+    `X-Acteur` est pose par api-core (sujet du jeton administrateur) et recopie
+    tel quel dans la notification n8n. Un appel direct (Makefile) n'en pose
+    pas : l'acteur vaut alors null.
+    """
+    version = request.app.state.registry.promote_candidate(acteur=request.headers.get("X-Acteur"))
     return {"status": "ok", "active_version": version}
 
 
@@ -177,15 +169,21 @@ def rollback(version: str, request: Request) -> dict:
 
 
 @router.get("/derive", response_model=dict)
-def drift(request: Request) -> dict:
-    """Dernier rapport de derive calcule par le worker."""
-    report = request.app.state.drift_report
-    if report is None:
+def drift() -> dict:
+    """Dernier rapport de derive persiste par le worker.
+
+    Le rapport vit dans `ml.rapport_derive` : l'API et le worker sont deux
+    processus, un etat en memoire du worker ne serait jamais visible ici. La
+    lecture est tolerante (base absente = `non_calcule`), pour qu'un ecran de
+    supervision ne tombe pas en 500.
+    """
+    rapport = lire_dernier_rapport_derive()
+    if rapport is None:
         return {
             "status": "non_calcule",
-            "message": "Le worker de derive n'a pas encore produit de rapport.",
+            "message": "Aucun rapport de derive persiste pour le moment.",
         }
-    return {"status": "ok", **report}
+    return {"status": "ok", **rapport}
 
 
 def _somme_prometheus(nom_echantillon: str) -> int:
@@ -276,9 +274,6 @@ def read_threshold(request: Request) -> dict:
         "seuil_impose": get_settings().fraud_alert_threshold,
     }
 
-
-#: Type du rapport de derive conserve en memoire par le worker.
-DriftReportType = DriftReport
 
 #: Repertoire des artefacts de modele partage avec le worker d'entrainement.
 MODEL_DIR = Path(get_settings().model_dir)
