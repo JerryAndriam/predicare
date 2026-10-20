@@ -2,7 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 import { ApiError, api, messageErreur } from '../api/client'
 import type { InvoiceSummary, Page, RagAnswer } from '../api/types'
-import { Badge, Carte, Chargement, Erreur, Vide, dateCourte, montant } from '../components/ui'
+import {
+  Badge,
+  Carte,
+  Chargement,
+  Erreur,
+  Vide,
+  dateCourte,
+  montant,
+  montantOuTiret,
+} from '../components/ui'
 
 type Onglet = 'remboursements' | 'assistant'
 
@@ -14,6 +23,7 @@ interface Message {
 }
 
 const STATUTS: Record<string, string> = {
+  payee: 'Remboursee',
   remboursee: 'Remboursee',
   rembourse: 'Remboursee',
   en_attente: 'En attente',
@@ -24,7 +34,7 @@ const STATUTS: Record<string, string> = {
 }
 
 function libelleStatut(statut: string): string {
-  return STATUTS[statut] ?? statut
+  return STATUTS[statut.trim().toLowerCase()] ?? statut
 }
 
 function Source({ source }: { source: Record<string, unknown> }) {
@@ -101,7 +111,7 @@ export function AssurePage() {
     <div className="pile">
       <div className="titre-page">
         <h1>Mes remboursements</h1>
-        <p>Historique de vos factures et assistant sur vos garanties.</p>
+        <p>Historique de vos factures, de leur prise en charge et assistant sur vos garanties.</p>
       </div>
 
       <div className="onglets" role="tablist">
@@ -139,7 +149,9 @@ export function AssurePage() {
                   <tr>
                     <th>Date</th>
                     <th>Prestataire</th>
-                    <th className="droite">Montant</th>
+                    <th className="droite">Facture</th>
+                    <th className="droite">Pris en charge</th>
+                    <th className="droite">Reste a charge</th>
                     <th>Statut</th>
                     <th>Controle</th>
                   </tr>
@@ -150,12 +162,18 @@ export function AssurePage() {
                       <td>{dateCourte(facture.date_facture)}</td>
                       <td className="mono">{facture.prestataire_id}</td>
                       <td className="droite">{montant(facture.montant_total)}</td>
+                      <td className="droite">
+                        {montantOuTiret(facture.montant_pris_en_charge)}
+                      </td>
+                      <td className="droite">{montantOuTiret(facture.reste_a_charge)}</td>
                       <td>{libelleStatut(facture.statut)}</td>
                       <td>
                         {facture.is_fraud === true ? (
                           <Badge ton="alerte">En verification</Badge>
-                        ) : (
+                        ) : facture.is_fraud === false ? (
                           <Badge ton="ok">Clair</Badge>
+                        ) : (
+                          <Badge ton="neutre">Non controle</Badge>
                         )}
                       </td>
                     </tr>

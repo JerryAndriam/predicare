@@ -102,7 +102,34 @@ if (-not $tAdmin) {
 Ecrire-Titre "2. Endpoints par ecran"
 
 Tester-Get "Profil admin" "/api/core/auth/me" $tAdmin | Out-Null
-Tester-Get "Factures assure" "/api/core/factures?limit=5" $tAssure | Out-Null
+
+$repFactures = Tester-Get "Factures assure" "/api/core/factures?limit=100" $tAssure
+if ($repFactures) {
+    $ficheAssure = $repFactures.Content | ConvertFrom-Json
+    $pseudos = @($ficheAssure.items | ForEach-Object { $_.assure_pseudonyme } | Sort-Object -Unique)
+    if ($pseudos.Count -eq 1 -and $ficheAssure.items.Count -gt 0) {
+        Ecrire-Ok ("Isolation assure : un seul dossier (" + $pseudos[0] + ")")
+    } else {
+        Ecrire-Ko ("Isolation assure : " + $pseudos.Count + " dossier(s) different(s)")
+    }
+
+    $attenduAssure = [int](Sql "SELECT count(*) FROM core.facture f JOIN core.utilisateur u ON u.assured_id = f.assure_id WHERE u.email = 'assure@predicare.local';")
+    if ($ficheAssure.items.Count -eq $attenduAssure) {
+        Ecrire-Ok ("Factures du dossier : " + $attenduAssure + " (aucune fuite)")
+    } else {
+        Ecrire-Ko ("Factures du dossier : API=" + $ficheAssure.items.Count + " SQL=" + $attenduAssure)
+    }
+
+    $payeesAvecMontant = @($ficheAssure.items | Where-Object {
+        $_.statut -eq "PAYEE" -and $null -ne $_.montant_pris_en_charge
+    })
+    if ($payeesAvecMontant.Count -gt 0) {
+        Ecrire-Ok ("Montants de prise en charge presents : " + $payeesAvecMontant.Count + " facture(s) PAYEE")
+    } else {
+        Ecrire-Ko "Montants de prise en charge absents"
+    }
+}
+
 Tester-Get "References pro" "/api/core/factures/references" $tPro | Out-Null
 Tester-Get "File alertes" "/api/core/alertes/file?statut=nouvelle&limit=100" $tGest | Out-Null
 Tester-Get "Historique decisions" "/api/core/alertes/historique?limit=100" $tGest | Out-Null

@@ -42,6 +42,9 @@ export interface InvoiceSummary {
   prestataire_id: string
   date_facture: string
   montant_total: number
+  montant_eligible: number | null
+  montant_pris_en_charge: number | null
+  reste_a_charge: number | null
   statut: string
   score_fraude: number | null
   is_fraud: boolean | null
