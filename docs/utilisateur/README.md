@@ -65,18 +65,21 @@ est alors conservé une heure, cloisonné sur votre seul dossier.
 > « Quel est le taux de remboursement d'une consultation en formule PREMIUM ? »
 > « Et quel est le plafond annuel de l'optique pour cette formule ? »
 
-**Dans l'interface web actuelle, ce suivi n'est pas encore disponible.** Le
-formulaire de l'espace assuré envoie uniquement la question, sans
-`session_id` : chaque question repart donc sans contexte. La mémoire de
-conversation existe côté service (l'API la prend en charge), mais le lien
-avec l'interface n'est pas fait. En attendant, **une question de suivi doit
-être reposée seule** : « Quel est le plafond annuel de l'optique en formule
-PREMIUM ? » et non « Et pour l'optique ? ».
+**Dans l'interface web, ce suivi est actif.** L'onglet Assistant génère un
+identifiant de conversation et le réutilise pour chaque question. Vous pouvez
+donc enchaîner « Et pour l'optique ? » après une question sur une formule.
+Le bouton **Nouvelle conversation** repart sans contexte : il génère un nouvel
+identifiant et efface l'historique affiché.
 
-Le contexte n'est retenu qu'un nombre d'heures, et seulement pour votre
-propre conversation. **Si une question de suivi renvoie une valeur qui ne vous
-parait pas, reposez la question seule** : l'assistant n'aura plus de contexte
-à interpréter.
+Le contexte est retenu une heure, et seulement pour votre propre
+conversation. **Si une question de suivi renvoie une valeur qui ne vous parait
+pas, cliquez sur « Nouvelle conversation » et reposez la question seule** :
+l'assistant n'aura plus de contexte à interpréter.
+
+L'interface affiche aussi, pour chaque réponse, le contrat, l'article, la
+garantie, l'extrait cité et le score de pertinence. La trace de l'agent et les
+détails techniques (latence, tokens, coût, cache) sont repliés sous la
+réponse.
 
 ### Ce que l'assistant refuse
 

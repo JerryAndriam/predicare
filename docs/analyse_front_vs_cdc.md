@@ -12,6 +12,14 @@
 > - diagramme : [`uml/cas_utilisation_front.svg`](uml/cas_utilisation_front.svg)
 > - source éditable : [`uml/cas_utilisation_front.puml`](uml/cas_utilisation_front.puml)
 
+> **Mise à jour du 20/10/2026 (soir)** : la chaîne RAG a été rétablie
+> (image `api-rag` alignée, clés réelles, 470 segments indexés). L'onglet
+> Assistant envoie désormais un `session_id`, affiche les extraits et scores
+> de sources, la trace des outils et les indicateurs FinOps. Les constats
+> § 0.3, § 0.10 et G10 décrivent l'exécution du matin et sont conservés comme
+> historique ; les lignes F05, F06 et F08 sont mises à jour. Le plan de test
+> courant est [`plan_de_test_back_front.md`](plan_de_test_back_front.md).
+
 ---
 
 ## 0. Synthèse
@@ -24,7 +32,7 @@
 6. La **détection des anomalies de prescription** n'existe pas comme cas d'utilisation : le formulaire d'ordonnance est trop pauvre pour alimenter les features du modèle, et aucune alerte dédiée n'est produite.
 7. Les **canaux de notification** et les **secrets** sont en lecture seule ; le seuil, le modèle et les comptes sont, eux, réellement administrables.
 8. Le **journal d'audit** est affiché, mais il n'est pas alimenté automatiquement : après la campagne de test, il contient **une seule entrée** (`test_plan`), alors que 7 décisions et plusieurs connexions ont eu lieu.
-9. Sur les **22 exigences du CDC ayant une traduction attendue dans l'interface**, 8 sont pleinement couvertes, 7 partiellement et 7 absentes, soit environ **52 % de couverture visible**.
+9. Sur les **22 exigences du CDC ayant une traduction attendue dans l'interface**, 11 sont pleinement couvertes, 4 partiellement et 7 absentes, soit environ **59 % de couverture visible** (mise à jour RAG du 20/10 au soir).
 10. Les risques les plus visibles pour un jury sont : le professionnel voit **toutes** les factures (83 dossiers distincts sur les 100 premières lignes), l'en-tête admin affiche **« Version 2 / Seuil 28,76 % » en dur**, une facture contrôlée reste **« En vérification »** pour l'assuré même après décision, et l'assistant RAG tombe en **erreur 500**.
 11. Les tests automatiques sont néanmoins solides : **24 OK / 0 KO** sur le script back/front, **0 erreur** de typecheck, **build Vite réussi**, et **586 tests pytest sur 605** au vert (1 échec lié aux fins de ligne Windows, 18 ignorés).
 
@@ -160,10 +168,10 @@ Légende : **✔** couvert, **◐** partiel, **✖** absent.
 | F02 | Automatiser le contrôle des factures | Scoring synchrone à la saisie ; pas d'import, pas de re-contrôle d'un stock existant | ◐ |
 | F03 | Détecter les anomalies financières en temps réel avec explicabilité | Score, seuil, version et SHAP affichés au professionnel et au gestionnaire | ✔ |
 | F04 | Détecter et alerter les anomalies de prescription (doublons, inadéquation diagnostic) | Formulaire d'ordonnance minimal ; aucune détection ni alerte dédiée | ✖ |
-| F05 | Assistant conversationnel RAG sécurisé | Onglet complet (sources, latence, cache) et garde-fous présents, mais **500 constaté le 20/10** et base vectorielle vide : interface livrée, chaîne non opérationnelle | ◐ |
-| F06 | Agent autonome (ReAct) interrogeant RAG et SQL | L'agent existe (2 outils), mais l'interface n'affiche pas les étapes ni les outils | ◐ |
+| F05 | Assistant conversationnel RAG sécurisé | Onglet complet (sources, extraits, session, latence, cache) et garde-fous présents ; chaîne rétablie le 20/10 au soir. Réserve : p95 6,19 s > 5 s | ✔ |
+| F06 | Agent autonome (ReAct) interrogeant RAG et SQL | L'agent existe (2 outils) et l'interface affiche les étapes, statuts et durées | ✔ |
 | F07 | Flux 1 complet : facture → inférence → SHAP → stockage → n8n → Slack | Le web s'arrête à l'affichage ; n8n est un circuit séparé, avec un seuil différent | ◐ |
-| F08 | Flux 2 : assuré → agent → contrats + SQL → LLM → réponse sourcée | Chaîne codée de bout en bout, mais **non vérifiable en l'état** : `POST /api/rag/question` renvoie 500 et `core.document_vectorise` est vide | ◐ |
+| F08 | Flux 2 : assuré → agent → contrats + SQL → LLM → réponse sourcée | Chaîne opérationnelle de bout en bout : sources citées, SQL, suivi de session, injection refusée ; p95 6,19 s | ✔ |
 | F09 | Flux 3 : dashboard BI temps réel (volumes, économies, taux de détection) | Superset existe, aucun lien ni écran dans le front | ✖ |
 | F10 | Seuil d'alerte modifiable sans redémarrage | Onglet Seuil + motif, propagation au service d'inférence | ✔ |
 | F11 | Canaux de notification modifiables sans code | Lecture seule ; badge `actif` trompeur si le webhook est absent | ✖ |

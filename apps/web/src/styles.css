@@ -893,6 +893,22 @@ textarea {
   text-transform: uppercase;
 }
 
+.bulle-texte {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+}
+
+.bulle.degradee {
+  border-left: 3px solid var(--alerte);
+}
+
+.bulle-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
 .bulle-meta {
   color: var(--encre-douce);
   display: block;
@@ -900,10 +916,64 @@ textarea {
   margin-top: 0.3rem;
 }
 
+.assistant-accueil {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.suggestion {
+  background: #fff;
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  color: var(--encre);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.65rem;
+  text-align: left;
+}
+
+.suggestion:hover:not(:disabled) {
+  border-color: var(--primaire);
+  color: var(--primaire);
+}
+
+.suggestion:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.assistant-attente {
+  color: var(--encre-douce);
+  font-style: italic;
+}
+
+.assistant-pied {
+  color: var(--encre-douce);
+  display: flex;
+  font-size: 0.72rem;
+  justify-content: space-between;
+  margin-top: 0.3rem;
+}
+
 .sources {
   border-top: 1px dashed var(--bord);
   margin-top: 0.5rem;
   padding-top: 0.4rem;
+}
+
+.sources summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .sources ul {
@@ -919,6 +989,109 @@ textarea {
 .sources p {
   color: var(--encre-douce);
   margin: 0.1rem 0;
+}
+
+.liste-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding-left: 0;
+}
+
+.source-carte {
+  background: #fff;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+}
+
+.source-entete {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.source-entete strong {
+  font-size: 0.84rem;
+}
+
+.source-score {
+  color: var(--encre-douce);
+  font-size: 0.72rem;
+  margin-left: auto;
+}
+
+.source-extrait {
+  margin-top: 0.3rem;
+}
+
+.source-extrait summary {
+  color: var(--primaire);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.source-extrait p {
+  color: var(--encre);
+  font-size: 0.8rem;
+  margin: 0.3rem 0 0;
+  white-space: pre-wrap;
+}
+
+.source-fichier {
+  color: var(--encre-douce);
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 0.3rem;
+}
+
+.source-vide {
+  color: var(--encre-douce);
+  font-size: 0.8rem;
+  margin: 0.3rem 0 0;
+}
+
+.liste-etapes {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding-left: 0;
+}
+
+.etape-agent {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.15rem 0;
+}
+
+.etape-duree {
+  color: var(--encre-douce);
+  font-size: 0.72rem;
+  margin-left: auto;
+}
+
+.details-liste {
+  display: grid;
+  font-size: 0.78rem;
+  gap: 0.15rem 0.6rem;
+  grid-template-columns: auto 1fr;
+  margin: 0.35rem 0 0;
+}
+
+.details-liste div {
+  display: contents;
+}
+
+.details-liste dt {
+  color: var(--encre-douce);
+}
+
+.details-liste dd {
+  margin: 0;
 }
 
 /* --------------------------------------------------------------------- sondes */

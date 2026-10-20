@@ -69,6 +69,32 @@ src/
 | Gestionnaire | `GET /api/core/alertes/file`, `GET /api/core/alertes/detail/{id}`, `POST /api/core/alertes/decision`, `GET /api/core/alertes/historique` |
 | Administrateur | `GET/PUT /api/core/admin/seuil`, `GET /api/core/admin/modele`, `POST /api/core/admin/modele/candidat`, `/bascule`, `/retour-arriere`, `GET /api/core/admin/sante`, `GET /api/core/admin/canaux`, `GET /api/core/audit/journal` |
 
+## Assistant RAG (espace assure)
+
+L'onglet **Assistant** de `AssurePage` est porte par
+`components/RagAssistant.tsx` ; il consomme `POST /api/rag/question`.
+
+- **Conversation** : un `session_id` UUID est genere au montage et rejoue a
+  chaque question. Le serveur le cloisonne par assure (`assure_id`) et garde
+  six tours pendant une heure. **Nouvelle conversation** vide l'ecran et
+  genere un nouvel identifiant.
+- **Citations** : chaque source affiche contrat, article, garantie, extrait
+  contractuel replie, score de pertinence et fichier. Le composant
+  `RagSourceCard` ne rend que du texte, jamais de HTML.
+- **Agent** : la trace repliee montre les outils (`rechercher_contrats`,
+  `consulter_historique_assure`), leur statut et leur duree.
+- **FinOps** : les details techniques affichent latence, tokens d'entree et de
+  sortie, coût USD/EUR et indicateur de cache.
+- **Erreurs** : 400, 401, 403, 422, 429, 500/502/503 et panne reseau ont des
+  messages distincts ; une reponse `succes = false` est marquee « Réponse
+  dégradée ».
+- **Accessibilite** : conversation en `role="log"`, `aria-live="polite"`,
+  `aria-busy`, focus rendu au champ apres reponse.
+
+Le backend accepte deja `session_id` ; aucune route supplementaire n'est
+necessaire. Les tests de la chaine restent
+`tests/e2e/test_rag_parcours.py` et `scripts/e2e_rag.sh`.
+
 ## Regles respectees
 
 - **Le controle d'acces est cote API** : les gardes de routes ne sont qu'une

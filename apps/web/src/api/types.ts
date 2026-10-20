@@ -141,14 +141,35 @@ export interface PlatformHealth {
   }
 }
 
+export interface RagSource {
+  contrat: string
+  article: string
+  garantie: string
+  extrait: string
+  score: number
+  source_fichier: string
+}
+
+export interface RagStep {
+  outil: string
+  args?: Record<string, unknown>
+  resultat: string
+  duree_ms?: number
+}
+
 export interface RagAnswer {
   reponse: string
-  sources: Record<string, unknown>[]
-  etapes_agent: Record<string, unknown>[]
+  sources: RagSource[]
+  etapes_agent: RagStep[]
   latence_ms: number
   tokens: number
   cache_semantique: boolean
-  succes?: boolean
+  limite_atteinte: boolean
+  tokens_entree: number
+  tokens_sortie: number
+  cout_estime_usd: number
+  cout_estime_eur: number
+  succes: boolean
 }
 
 export interface ReferenceAssure {

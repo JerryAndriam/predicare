@@ -107,7 +107,7 @@ Attendu : 4 lignes, `is_active = t`.
 | Connexion | POST | `/api/core/auth/login` | public | 200 + token |
 | Profil | GET | `/api/core/auth/me` | connecté | 200 |
 | Assuré | GET | `/api/core/factures?limit=5` | assuré | 200 + `items` |
-| Assuré | POST | `/api/rag/question` | assuré | **500** (voir § 5.4 : image `api-rag` obsolète + base vectorielle vide) |
+| Assuré | POST | `/api/rag/question` | assuré | **200** + sources (voir § 5.4 : session, extraits, cache, injection) |
 | Pro | GET | `/api/core/factures/references` | pro | 200 + listes |
 | Pro | POST | `/api/core/factures/soumettre` | pro | **202** + score + SHAP |
 | Pro | POST | `/api/core/factures/ordonnances` | pro | 201 |
@@ -224,16 +224,27 @@ la bonne réponse.
 #### `POST /api/rag/question`
 
 ```powershell
-$corps = @{ question = "Quelles sont mes garanties ?" } | ConvertTo-Json
+$corps = @{
+  question   = "Quel est le taux de remboursement d'une consultation en formule PREMIUM ?"
+  session_id = "recette-rag-001"
+} | ConvertTo-Json
 Invoke-RestMethod -Uri "http://localhost:8080/api/rag/question" -Method Post -Headers $h -Body $corps -ContentType "application/json"
 ```
 
-**Constaté le 20/10/2026** : **500** `invalid input syntax for type vector`.
-Ce n'est pas la clé LLM qui est en cause : le conteneur `api-rag` exécute un
-`retriever.py` obsolète qui envoie la question brute à `CAST(:query AS vector)`,
-et `core.document_vectorise` contient 0 ligne. Reconstruire l'image, renseigner
-`EMBEDDING_API_KEY` / `LLM_API_KEY`, puis lancer l'ingestion des contrats.
-Une fois corrigé, attendu : 200 + `reponse` + `sources`.
+**Attendu** : 200 avec `reponse`, `sources`, `etapes_agent`, `latence_ms`,
+`tokens`, `cache_semantique` et `succes = true`.
+
+Vérifier ensuite dans l'interface :
+
+1. la source affiche le contrat, l'article, la garantie et, après clic sur
+   **Voir l'extrait**, le passage contractuel ;
+2. la question de suivi « Et pour l'optique ? » réutilise le même
+   `session_id` et reprend le contexte ;
+3. **Nouvelle conversation** génère un autre `session_id` et vide l'écran ;
+4. une tentative d'injection renvoie 400 et un message lisible, sans trace
+   technique ;
+5. le cache sémantique est signalé sur une question répétée dans une nouvelle
+   conversation (une conversation avec historique n'utilise pas le cache).
 
 ---
 
@@ -680,7 +691,7 @@ Vérification après correction :
 
 | Symptôme | Cause | Statut |
 |---|---|---|
-| Assistant RAG → 500 | image `api-rag` obsolète (retriever sans embedding) + `document_vectorise` vide + clés placeholder | à reconstruire / configurer / ingérer |
+| Assistant RAG → 500/503 | image `api-rag` obsolète, clés placeholder ou `document_vectorise` vide | reconstruire l'image, vérifier les clés et `count(*)` ; la chaîne est opérationnelle depuis le 20/10 au soir |
 | Aucune alerte au départ | `ml.prediction` vide ; les factures historiques ne sont pas notées | normal |
 | Journal vide au départ | aucune action admin effectuée | normal |
 | Journal vide après une décision | seules les actions explicites `/api/core/audit/evenement` alimentent `audit.journal` | écart connu |
