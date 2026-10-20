@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from predicare import db
 from predicare.config import get_settings
+from predicare.db import session_scope
 from predicare.http import (
     ObservabilityMiddleware,
     register_exception_handlers,
@@ -18,6 +19,7 @@ from predicare.http import (
 )
 from predicare.logging_config import configure_logging, get_logger
 from predicare.metrics import publish_build
+from predicare.secrets import appliquer_secrets
 from predicare_core_api import SERVICE_NAME, __version__
 from predicare_core_api.admin.router import router as admin_router
 from predicare_core_api.audit.router import router as audit_router
@@ -34,6 +36,18 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         publish_build(SERVICE_NAME, __version__)
+        # Les secrets ecrits en base PRIMENT sur l'environnement : c'est ce
+        # qui permet de corriger un canal depuis l'ecran d'administration
+        # sans redemarrer la plateforme entiere. Le secret de la cle
+        # maitresse (Fernet) reste, lui, dans l'environnement : la base ne
+        # contient que des valeurs chiffrees.
+        try:
+            with session_scope() as session:
+                surcharge = appliquer_secrets(settings, session)
+            if surcharge:
+                logger.info("service.secrets_de_base", secrets=",".join(surcharge))
+        except Exception as exc:  # pragma: no cover - base indisponible
+            logger.warning("service.secrets_illisible", erreur=str(exc))
         logger.info(
             "service.pret",
             version=__version__,

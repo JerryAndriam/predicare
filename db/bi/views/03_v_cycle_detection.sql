@@ -228,20 +228,7 @@ SELECT
 FROM (SELECT 1) base
 LEFT JOIN ml.prediction p ON TRUE
 LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
-<<<<<<< HEAD
 LEFT JOIN core.facture                 f ON f.id            = p.facture_id;
 
 COMMENT ON VIEW bi.v_cdc_global IS
     'Boucle de decision en direct : predictions, alertes en attente (seuil courant), montant expose, decisions, montants confirmes et delai. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere prediction, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire.';
-=======
-LEFT JOIN ml.label_fraude              l ON l.facture_id    = p.facture_id
-LEFT JOIN core.facture                 f ON f.id            = p.facture_id
--- Meme raison que v_faux_positifs : une notation retrospective n'a pas ete
--- soumise a un gestionnaire. La compter dans le rappel ou dans les faux
--- positifs mesurerait l'absence de decision, pas la performance du modele.
--- Le filtre ne retire pas le grain : un agregat sur zero ligne rend UNE ligne.
-WHERE p.statut <> 'archive';
-
-COMMENT ON VIEW bi.v_cdc_global IS
-    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere detection, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire. Aucune decision enregistree a ce jour.';
->>>>>>> origin/dev

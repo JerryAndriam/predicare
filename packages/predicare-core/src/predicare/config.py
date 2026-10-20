@@ -77,6 +77,10 @@ class Settings(BaseSettings):
 
     # RAG
     embedding_dimension: int = 1536
+    #: Calculateur d'embeddings : `auto` (le fournisseur s'il est configure,
+    #: sinon l'empreinte locale), `semantic` (le fournisseur, ou rien) ou
+    #: `empreinte` (toujours local, jamais de sortie reseau).
+    embedding_mode: str = Field(default="auto", alias="EMBEDDING_MODE")
     rag_top_k: int = 6
     rag_similarity_threshold: float = 0.55
     rag_max_agent_steps: int = 8
@@ -181,8 +185,7 @@ class Settings(BaseSettings):
         return [
             name
             for name, value in placeholders.items()
-            if not value.strip()
-            or any(marqueur in value.lower() for marqueur in marqueurs)
+            if not value.strip() or any(marqueur in value.lower() for marqueur in marqueurs)
         ]
 
 

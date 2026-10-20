@@ -202,6 +202,7 @@ export interface RagAnswer {
   cout_estime_usd: number
   cout_estime_eur: number
   succes: boolean
+  mode: 'complet' | 'degrade' | 'indisponible'
 }
 
 export interface ReferenceAssure {
@@ -250,6 +251,15 @@ export interface SecretState {
   variable: string
   configure: boolean
   effet: string
+  /** `base` (ecrit depuis cet ecran) ou `environnement` (valeur de depart). */
+  source: 'base' | 'environnement'
+  /** Les quatre premiers caracteres : pour verifier sans divulguer. */
+  apercu: string
+}
+
+export interface SecretTestResult {
+  ok: boolean
+  message: string
 }
 
 /** Une ligne de facture, avec l'acte qui la porte. */

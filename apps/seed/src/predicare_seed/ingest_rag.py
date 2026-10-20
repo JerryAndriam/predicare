@@ -29,19 +29,15 @@ import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from pydantic import SecretStr
 from pypdf import PdfReader
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from predicare.config import get_settings
 from predicare.db import session_scope
+from predicare.embeddings import Embedder, choisir_embedder, nom_modele
 from predicare.logging_config import configure_logging, get_logger
-
-if TYPE_CHECKING:
-    from langchain_openai import OpenAIEmbeddings
 
 logger = get_logger("seed.ingest_rag")
 
@@ -861,18 +857,14 @@ def _resoudre_contrat_id(session: Session, numero: str) -> int | None:
     return int(row) if row is not None else None
 
 
-def _embedder() -> OpenAIEmbeddings:
-    from langchain_openai import OpenAIEmbeddings
+def _embedder() -> Embedder:
+    """Le calculateur d'embeddings, choisi par la configuration.
 
-    settings = get_settings()
-    cle = settings.embedding_api_key
-    if not cle:
-        raise RuntimeError("EMBEDDING_API_KEY manquante : impossible de calculer les embeddings.")
-    return OpenAIEmbeddings(
-        base_url=settings.embedding_api_base or None,
-        api_key=SecretStr(cle),
-        model=settings.embedding_model,
-    )
+    Sans cle d'embedding, l'indexation ne s'arrete pas : elle utilise
+    l'empreinte lexicale locale. Les contrats restent alors sur la machine,
+    et l'assistant fonctionne (en recherche lexicale) sans aucun tiers.
+    """
+    return choisir_embedder(get_settings())
 
 
 def collecter_segments(corpus_dir: Path) -> list[Segment]:
@@ -922,7 +914,11 @@ def appliquer(
             session.execute(text("TRUNCATE core.document_vectorise RESTART IDENTITY"))
 
         embedder = _embedder()
-        modeles = get_settings().embedding_model
+        # L'espace vectoriel est NOTE dans l'index : une recherche ulterieure
+        # verifie que la question et l'index sont dans le meme espace, plutot
+        # que de renvoyer une erreur de vecteur illisible.
+        modeles = nom_modele(embedder, get_settings())
+        logger.info("ingestion.embedder", modele=modeles)
         inseres = 0
         for debut in range(0, len(segments), BATCH_SIZE):
             lot = segments[debut : debut + BATCH_SIZE]

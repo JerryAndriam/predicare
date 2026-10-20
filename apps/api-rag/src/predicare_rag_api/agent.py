@@ -18,6 +18,7 @@ from pydantic import SecretStr
 
 from predicare import metrics
 from predicare.config import get_settings
+from predicare.embeddings import secret_utilisable
 from predicare.logging_config import get_logger
 from predicare_rag_api.finops import estimer_cout
 from predicare_rag_api.guardrails import SYSTEM_PROMPT, build_user_context_block
@@ -132,6 +133,7 @@ class RagAnswer:
         "cout_estime_usd",
         "latency_ms",
         "limite_atteinte",
+        "mode",
         "sources",
         "steps",
         "succes",
@@ -154,6 +156,7 @@ class RagAnswer:
         cout_estime_usd: float = 0.0,
         cout_estime_eur: float = 0.0,
         succes: bool = True,
+        mode: str = "complet",
     ) -> None:
         self.answer = answer
         self.sources = sources
@@ -165,6 +168,11 @@ class RagAnswer:
         # `succes` distingue une vraie reponse d'un message de degradation :
         # seul un succes doit etre memorise dans l'historique de session.
         self.succes = succes
+        # `mode` distingue une reponse REDIGEE d'une reponse de SECOURS
+        # (extraits bruts, sans LLM). L'ecran doit le dire : une extrait
+        # n'est pas une reponse, et le lecteur ne doit pas croire le
+        # contraire.
+        self.mode = mode
         # Le detail entree/sortie rend le cout estimable sans sous-estimer la
         # part « prompt », qui n'est pas mince sur un agent a outils.
         self.tokens_entree = tokens_entree
@@ -186,6 +194,7 @@ class RagAnswer:
             "cache_semantique": self.cached,
             "limite_atteinte": self.limite_atteinte,
             "succes": self.succes,
+            "mode": self.mode,
         }
 
 
@@ -211,12 +220,92 @@ class RagAgent:
         self._max_tours_historique = min(
             max(0, settings.session_max_turns), HARD_CAP_TOURS_HISTORIQUE
         )
-        self._llm = ChatOpenAI(
+        # Un LLM sans cle reelle ne peut que repondre 401 : inutile d'essayer.
+        # On le note, et l'agent part directement en mode degrade.
+        self._llm_disponible = secret_utilisable(settings.llm_api_key)
+        self._llm_construit = ChatOpenAI(
             base_url=settings.llm_api_base or None,
             api_key=SecretStr(settings.llm_api_key or "not-configured"),
             model=self._model_name,
             temperature=settings.llm_temperature,
             max_completion_tokens=settings.llm_max_tokens,
+            # Pas de re-tentente ni d'attente longue : quand le fournisseur
+            # est absent, l'appel doit echouer vite pour que le mode degrade
+            # rende la main en une seconde, pas en dix.
+            max_retries=0,
+            timeout=15.0,
+        )
+        # L'objet construit est memorise : un test (ou un client de test)
+        # peut remplacer `self._llm` par un faux modele. Le raccourci
+        # « pas de cle, pas d'appel » ne doit pas court-circuiter ce
+        # modele-la.
+        self._llm = self._llm_construit
+
+    def _reponse_sans_llm(self, requete: str) -> RagAnswer:
+        """Reponse sans modele de langage : les passages, rien de plus.
+
+        C'est la reponse du mode degrade SANS LLM : le fournisseur est
+        absent, la recherche est locale, et l'assistant rend ce qu'il a
+        trouve. Aucun appel reseau, aucun token, aucun cout.
+        """
+        started = time.perf_counter()
+        sources = self._retriever.search(requete)
+        if not sources:
+            sources = self._retriever.recherche_lexicale(requete)
+        texte = self._reponse_degradee(requete, sources)
+        latency_ms = (time.perf_counter() - started) * 1000
+        succes = False
+        if not texte:
+            texte = (
+                "Aucun passage de contrat ne correspond a cette question, et le "
+                "modele de langage n'est pas configure pour reformuler la reponse."
+            )
+        # Le mode dit CE QUE L'ON A : des extraits, ou rien. `succes` dit
+        # autre chose : la reponse est-elle une reponse redigee ? Un extrait
+        # n'en est pas une -- elle n'est donc ni memorisee ni mise en cache.
+        return RagAnswer(
+            answer=texte or "",
+            sources=[source.to_dict() for source in sources],
+            steps=[
+                {
+                    "outil": "rechercher_contrats",
+                    "sources": len(sources),
+                    "resultat": "ok" if succes else "vide",
+                }
+            ],
+            latency_ms=round(latency_ms, 2),
+            tokens=0,
+            cached=False,
+            succes=succes,
+            mode="degrade" if texte and sources else "indisponible",
+        )
+
+    def _reponse_degradee(self, requete: str, sources: list[Source]) -> str | None:
+        """Reponse de secours : les passages, sans redaction.
+
+        Elle est construite a partir des sources deja trouvees ; a defaut,
+        la recherche lexicale est tentee, car la recherche vectorielle a
+        pu echouer (embedder absent, index dans un autre espace, base
+        injoignable).
+
+        Aucun appel au modele : c'est ce qui rend cette reponse possible
+        quand le fournisseur est absent, et c'est aussi ce qui la rend
+        gratuite.
+        """
+        passages = list(sources)
+        if not passages:
+            passages = self._retriever.recherche_lexicale(requete)
+        if not passages:
+            return None
+        blocs = "\n\n".join(
+            f"Contrat {passage.contrat} - article {passage.article} "
+            f"(garantie : {passage.garantie})\n{passage.extrait}"
+            for passage in passages
+        )
+        return (
+            "Reponse en mode degrade : le modele de langage n'a pas repondu, "
+            "voici les passages de contrat qui correspondent a votre question.\n\n"
+            f"{blocs}"
         )
 
     def _tools(self, assure_id: str, sources_outils: list[Source]) -> list[BaseTool]:
@@ -270,6 +359,15 @@ class RagAgent:
         # Un suivi se cherche avec le tour precedent : la question seule
         # ("Et pour la pharmacie ?") n'a pas de mots-cles exploitables.
         requete = _requete_de_recherche(question, history)
+
+        if not self._llm_disponible and self._llm is self._llm_construit:
+            # Pas de cle exploitable : pas d'appel externe, meme pas un
+            # delai d'attente reseau. La recherche, elle, fonctionne
+            # (l'empreinte lexicale est locale), donc l'assistant rend les
+            # passages trouves, sans les rediger.
+            logger.info("agent.mode_degrade_sans_llm", modele=self._model_name)
+            return self._reponse_sans_llm(requete)
+
         sources: list[Source] = self._retriever.search(requete)
         contexte = self._retriever.format_sources(sources)
 
@@ -294,6 +392,7 @@ class RagAgent:
         texte = ""
         limite_atteinte = False
         succes = True
+        mode = "complet"
         appels_sql = 0
         try:
             for _ in range(self._max_steps):
@@ -371,20 +470,28 @@ class RagAgent:
                         else str(reponse_finale.content)
                     )
                 except Exception as exc:
-                    logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
+                    logger.warning("llm.erreur", erreur=str(exc), modele=self._model_name)
                     metrics.ERRORS.labels(SERVICE, "llm_unavailable").inc()
+                    secours = self._reponse_degradee(requete, sources)
                     succes = False
-                    texte = (
-                        "Le service de reponse est temporairement indisponible. "
-                        "Vos demandes restent enregistrees et seront traitees aussitot."
+                    mode = "degrade" if secours is not None else "indisponible"
+                    texte = secours or (
+                        "Le service de reponse est temporairement indisponible : "
+                        "aucun passage de contrat n'a pu etre retrouve pour cette question."
                     )
         except Exception as exc:
-            logger.error("llm.erreur", erreur=str(exc), modele=self._model_name)
+            logger.warning("llm.erreur", erreur=str(exc), modele=self._model_name)
             metrics.ERRORS.labels(SERVICE, "llm_unavailable").inc()
+            # Repli : on ne laisse pas l'assistant muet. Les extraits
+            # contractuels trouves par la recherche sont renvoyes tels quels,
+            # avec leurs references. C'est une reponse de secours, pas une
+            # reponse redigee : le mode le dit.
+            secours = self._reponse_degradee(requete, sources)
             succes = False
-            texte = (
-                "Le service de reponse est temporairement indisponible. "
-                "Vos demandes restent enregistrees et seront traitees aussitot."
+            mode = "degrade" if secours is not None else "indisponible"
+            texte = secours or (
+                "Le service de reponse est temporairement indisponible : "
+                "aucun passage de contrat n'a pu etre retrouve pour cette question."
             )
 
         if not texte:
@@ -429,6 +536,7 @@ class RagAgent:
             cout_estime_usd=cout["cout_total_usd"],
             cout_estime_eur=cout["cout_total_eur"],
             succes=succes,
+            mode=mode,
         )
 
 

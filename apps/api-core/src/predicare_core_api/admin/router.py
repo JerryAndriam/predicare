@@ -34,6 +34,16 @@ from predicare.logging_config import get_logger
 from predicare.persistance_ml import activer_version
 from predicare.rbac import Role
 from predicare.schemas import ModelVersionInfo
+from predicare.secrets import (
+    INVENTAIRE,
+    PAR_NOM,
+    lire_secret,
+    masquer,
+    secrets_presents,
+)
+from predicare.secrets import (
+    ecrire_secret as ecrire_valeur,
+)
 
 router = APIRouter(prefix="/admin", tags=["administration"])
 logger = get_logger("api-core.admin")
@@ -353,7 +363,7 @@ def tester_canal(nom: str, _admin: AdminUser) -> TestCanal:
 
 
 class SecretEtat(BaseModel):
-    """Etat d'un secret : configure ou non, et quoi faire sinon."""
+    """Etat d'un secret : configure ou non, d'ou il vient, et quoi faire sinon."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -361,49 +371,123 @@ class SecretEtat(BaseModel):
     variable: str
     configure: bool
     effet: str
+    #: `base` (ecrit depuis l'ecran) ou `environnement` (valeur de depart).
+    source: str = "environnement"
+    #: Les quatre premiers caracteres, pour verifier sans divulguer.
+    apercu: str = ""
 
 
 @router.get("/secrets", response_model=list[SecretEtat])
 def etat_secrets(_admin: AdminUser) -> list[SecretEtat]:
-    """Inventaire des secrets necessaires, avec la variable a renseigner.
+    """Inventaire des secrets : ou ils sont, et quoi faire s'ils manquent.
 
-    Un secret vit dans l'ENVIRONNEMENT du conteneur : il ne peut pas etre
-    ecrit par l'ecran sans redemarrage. L'ecran doit donc dire exactement
-    QUOI renseigner et OU, plutot que se contenter d'afficher « manquant ».
+    Un secret peut venir de l'ENVIRONNEMENT (valeur de depart) ou de la BASE
+    (ecrit depuis cet ecran, prioritaire). Les deux sont signales : l'exploitant
+    doit pouvoir dire d'ou vient la cle qui repond.
     """
     settings = get_settings()
-    return [
-        SecretEtat(
-            nom="Cle LLM",
-            variable="LLM_API_KEY",
-            configure=_secret_configure(settings.llm_api_key),
-            effet="Sans elle, l'assistant conversationnel ne peut pas repondre.",
-        ),
-        SecretEtat(
-            nom="Cle d'embedding",
-            variable="EMBEDDING_API_KEY",
-            configure=_secret_configure(settings.embedding_api_key),
-            effet="Sans elle, aucun contrat ne peut etre indexe ni recherche.",
-        ),
-        SecretEtat(
-            nom="Webhook Slack",
-            variable="SLACK_WEBHOOK_URL",
-            configure=_secret_configure(settings.slack_webhook_url),
-            effet="Sans lui, aucune alerte n'atteint le canal Slack.",
-        ),
-        SecretEtat(
-            nom="Expediteur e-mail",
-            variable="SMTP_FROM",
-            configure=_secret_configure(settings.smtp_from),
-            effet="Sans lui, l'alerte e-mail n'est pas envoyee.",
-        ),
-        SecretEtat(
-            nom="Webhook d'alerte",
-            variable="N8N_ALERTE_WEBHOOK_URL",
-            configure=_secret_configure(settings.n8n_alerte_webhook_url),
-            effet="Sans lui, le parcours web ne declenche aucune notification.",
-        ),
-    ]
+    with session_scope() as session:
+        en_base = secrets_presents(session)
+        etats: list[SecretEtat] = []
+        for secret in INVENTAIRE:
+            valeur = lire_secret(session, secret.nom)
+            if valeur is None:
+                valeur = getattr(settings, secret.variable, "")
+            configure = _secret_configure(str(valeur or ""))
+            etats.append(
+                SecretEtat(
+                    nom=secret.nom,
+                    variable=secret.variable,
+                    configure=configure,
+                    effet=secret.effet,
+                    source="base" if en_base.get(secret.nom) else "environnement",
+                    apercu=masquer(valeur) if configure else "",
+                )
+            )
+    return etats
+
+
+class SecretEcriture(BaseModel):
+    """La valeur d'un secret a ecrire."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    valeur: str = Field(min_length=1, max_length=4096)
+
+
+@router.put("/secrets/{nom}", response_model=SecretEtat)
+def ecrire_secret(
+    nom: str, payload: SecretEcriture, request: Request, _admin: AdminUser
+) -> SecretEtat:
+    """Ecrit un secret en base, chiffre, et journalise l'ecriture.
+
+    L'ecriture ne redemarre rien : les services relisent les secrets au
+    demarrage, et l'administrateur peut forcer la reprise avec
+    `make restart`. C'est le prix d'un secret : on ne le recharge pas a
+    chaque requete.
+    """
+    if nom not in PAR_NOM:
+        raise NotFoundError(f"Secret inconnu : {nom}.")
+    with session_scope() as session:
+        ecrire_valeur(session, nom, payload.valeur, _admin.subject)
+        journaliser(
+            session,
+            acteur=_admin.subject,
+            role=_admin.role.value,
+            action="secret_modifie",
+            cible=f"secret:{nom}",
+            details={"variable": PAR_NOM[nom].variable},
+        )
+    etats = etat_secrets(_admin)
+    return next(etat for etat in etats if etat.nom == nom)
+
+
+class TestSecret(BaseModel):
+    """Le resultat d'un essai de secret."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    message: str
+
+
+@router.post("/secrets/{nom}/test", response_model=TestSecret)
+def tester_secret(nom: str, _admin: AdminUser) -> TestSecret:
+    """Verifie qu'un secret fonctionne, sans l'ecrire.
+
+    Un secret ecrit mais faux est pire qu'un secret absent : il fait
+    echouer la chaine d'alerte en silence. L'essai le dit.
+    """
+    if nom not in PAR_NOM:
+        raise NotFoundError(f"Secret inconnu : {nom}.")
+    settings = get_settings()
+    with session_scope() as session:
+        valeur = str(
+            lire_secret(session, nom) or getattr(settings, PAR_NOM[nom].variable, "") or ""
+        )
+    if not _secret_configure(valeur):
+        return TestSecret(ok=False, message="Aucune valeur configuree pour ce secret.")
+    if nom == "Webhook d'alerte":
+        try:
+            reponse = httpx.get(str(valeur), timeout=5.0)
+            return TestSecret(
+                ok=reponse.status_code < 500,
+                message=f"Le webhook a repondu {reponse.status_code}.",
+            )
+        except httpx.HTTPError as exc:
+            return TestSecret(ok=False, message=f"Webhook injoignable : {exc}")
+    if nom == "Webhook Slack":
+        try:
+            reponse = httpx.post(
+                valeur, json={"text": "PrediCare — essai de configuration."}, timeout=5.0
+            )
+            return TestSecret(
+                ok=reponse.status_code < 300,
+                message=f"Slack a repondu {reponse.status_code}.",
+            )
+        except httpx.HTTPError as exc:
+            return TestSecret(ok=False, message=f"Slack injoignable : {exc}")
+    return TestSecret(ok=True, message="Valeur enregistree.")
 
 
 @router.get("/modele", response_model=ModelVersionInfo)
@@ -538,7 +622,13 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
         documents = 0
 
     rag = sonder(str(request.app.state.rag_url))
-    embedding_ok = _secret_configure(settings.embedding_api_key)
+    # Un embedding local (empreinte lexicale) n'a besoin d'aucune cle : la
+    # seule question est de savoir si l'index et la question sont dans le
+    # meme espace vectoriel, et si la recherche aboutit.
+    embedding_local = settings.embedding_mode.strip().lower() != "semantic" and not (
+        _secret_configure(settings.embedding_api_key)
+    )
+    embedding_ok = _secret_configure(settings.embedding_api_key) or embedding_local
     llm_ok = _secret_configure(settings.llm_api_key)
     if rag["status"] == "ok" and (not embedding_ok or documents == 0):
         rag["status"] = "degraded"
@@ -546,7 +636,9 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
         {
             "documents": documents,
             "embedding_configure": embedding_ok,
+            "embedding_local": embedding_local,
             "llm_configure": llm_ok,
+            "mode_reponse": "degrade" if not llm_ok else "complet",
         }
     )
 

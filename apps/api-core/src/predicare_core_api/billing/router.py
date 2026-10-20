@@ -421,10 +421,10 @@ def list_invoices(
 
     # Filtres de lecture, toujours en plus du perimetre du role.
     if statut is not None and statut.strip():
-        # La base melange les historique (PAYEE, EN_COURS) et les statuts
-        # crees par le front (recue, fraude_confirmee) : la comparaison se
-        # fait donc sans distinction de casse.
-        where += " AND upper(f.statut) = :statut"
+        # Les statuts sont en majuscules, partout : le filtre compare donc
+        # directement, sans passer par `upper()` qui empecherait d'indexer
+        # la colonne.
+        where += " AND f.statut = :statut"
         params["statut"] = statut.strip().upper()
     if prestataire is not None and prestataire.strip():
         where += " AND pr.code = :prestataire_code"
@@ -479,8 +479,6 @@ def list_invoices(
 def current_threshold() -> dict[str, float]:
     """Seuil d'alerte en vigueur, affiche dans l'ecran d'administration."""
     return {"seuil": get_threshold()}
-
-
 
 
 class ReferenceAssure(BaseModel):
@@ -547,8 +545,7 @@ def references(user: SubmitUser) -> References:
             prestataires = (
                 session.execute(
                     text(
-                        "SELECT code, nom, specialite FROM core.prestataire "
-                        "ORDER BY code LIMIT 100"
+                        "SELECT code, nom, specialite FROM core.prestataire ORDER BY code LIMIT 100"
                     )
                 )
                 .mappings()
@@ -591,6 +588,69 @@ class Ordonnance(BaseModel):
     reference: str | None = Field(default=None, max_length=64)
     diagnostic: str | None = Field(default=None, max_length=256)
     validite_jours: int = Field(default=30, ge=1, le=730)
+
+
+def _normaliser(texte: str) -> str:
+    """Minuscules, sans accent : la comparaison doit ignorer la casse ET les
+    accents, sinon « Dermatologie » et « dermatologie » ne se rejoignent pas."""
+    import unicodedata
+
+    sans_accent = "".join(
+        caractere
+        for caractere in unicodedata.normalize("NFD", texte.lower())
+        if unicodedata.category(caractere) != "Mn"
+    )
+    return "".join(c if c.isalnum() else " " for c in sans_accent)
+
+
+def _specialites_du_diagnostic(session: Session, diagnostic: str) -> set[str]:
+    """Les specialites que le diagnostic designe."""
+    texte = _normaliser(diagnostic)
+    if not texte:
+        return set()
+    lignes = session.execute(
+        text("SELECT specialite, mot_cle FROM core.specialite_diagnostic")
+    ).fetchall()
+    trouvees: set[str] = set()
+    for specialite, mot_cle in lignes:
+        if _normaliser(str(mot_cle)) in texte:
+            trouvees.add(str(specialite))
+    return trouvees
+
+
+def _acte_couvre(session: Session, acte_id: int, specialites: set[str]) -> bool:
+    """L'acte couvre-t-il l'une des specialites designees ?
+
+    La specialite d'un acte est son `specialite` quand elle existe, sinon sa
+    `categorie` : les actes de consultation declarent leur specialite
+    (CARDIOLOGIE, PEDIATRIE...), les autres ne portent qu'une categorie
+    (DENTAIRE, OPTIQUE, KINESITHERAPIE...).
+
+    Une categorie neutre (laboratoire, imagerie) ou un generaliste couvre
+    n'importe quel diagnostic.
+    """
+    ligne = (
+        session.execute(
+            text("SELECT code, libelle, specialite, categorie FROM core.acte WHERE id = :acte_id"),
+            {"acte_id": acte_id},
+        )
+        .mappings()
+        .one()
+    )
+    specialite = (ligne["specialite"] or "").strip() or (ligne["categorie"] or "").strip()
+    if not specialite or specialite in CATEGORIES_NEUTRES:
+        return True
+    if specialite in specialites:
+        return True
+    libelle = _normaliser(str(ligne["libelle"] or ""))
+    return any(_normaliser(diagnostic) in libelle for diagnostic in specialites)
+
+
+#: Les categories qui ne sont pas liees a une specialite : une analyse ou
+#: une imagerie sont prescrites par n'importe quel diagnostic, et le
+#: generaliste voit tout. Les autres DOIVENT declarer la specialite du
+#: diagnostic.
+CATEGORIES_NEUTRES: frozenset[str] = frozenset({"LABORATOIRE", "IMAGERIE", "GENERALISTE"})
 
 
 @router.post("/ordonnances", status_code=201)
@@ -649,6 +709,33 @@ def submit_prescription(payload: Ordonnance, user: SubmitUser) -> dict[str, str]
                 "cet acte et ce jour.",
                 details={"type": "doublon_ordonnance", "reference": str(doublon)},
             )
+
+        # Regle d'inadequation diagnostic / acte (CDC, F04). Le diagnostic
+        # designe une specialite ; l'acte prescrit doit la couvrir. Un
+        # diagnostic inconnu ne declenche rien : on refuse ce qu'on sait.
+        if payload.diagnostic:
+            specialites = _specialites_du_diagnostic(session, payload.diagnostic)
+            if specialites and not _acte_couvre(session, acte_id, specialites):
+                acte = (
+                    session.execute(
+                        text("SELECT code, libelle, specialite FROM core.acte WHERE id = :acte_id"),
+                        {"acte_id": acte_id},
+                    )
+                    .mappings()
+                    .one()
+                )
+                raise ConflictError(
+                    f"Acte incompatible avec le diagnostic : l'acte "
+                    f"{acte['code']} ({acte['libelle']}) ne couvre pas la specialite "
+                    f"{', '.join(sorted(specialites))} designee par le diagnostic "
+                    f"« {payload.diagnostic} ».",
+                    details={
+                        "type": "diagnostic_incompatible",
+                        "diagnostic": payload.diagnostic,
+                        "specialites": sorted(specialites),
+                        "acte": str(acte["code"]),
+                    },
+                )
 
         reference = (payload.reference or f"ORD-{uuid4().hex[:10].upper()}").strip()
         deja_utilisee = session.execute(
@@ -820,7 +907,7 @@ def detail_facture(facture_id: str, user: ReadUser) -> FactureDetail:
                 text("SELECT assure_id FROM core.facture WHERE id = :facture_id"),
                 {"facture_id": int(facture_id)},
             ).scalar()
-            if int(possesseur) != int(user.insured_id):
+            if possesseur is None or int(possesseur) != int(user.insured_id):
                 raise NotFoundError("Facture introuvable.")
         elif user.role is Role.PROFESSIONNEL_SANTE:
             propre = _prestataire_du_compte(session, user)
@@ -828,7 +915,7 @@ def detail_facture(facture_id: str, user: ReadUser) -> FactureDetail:
                 text("SELECT prestataire_id FROM core.facture WHERE id = :facture_id"),
                 {"facture_id": int(facture_id)},
             ).scalar()
-            if int(prestataire) != propre:
+            if prestataire is None or int(prestataire) != propre:
                 raise NotFoundError("Facture introuvable.")
 
         lignes = (

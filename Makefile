@@ -360,8 +360,7 @@ score-factures: ## Note les nouvelles factures et alimente la file d'alertes
 
 .PHONY: comptes
 comptes: ## Cree les quatre comptes de demonstration (mot de passe: DEMO_PASSWORD)
-	@$(COMPOSE_CORE) run --rm -e DEMO_PASSWORD="$${DEMO_PASSWORD:-}" seed \
-		python -m predicare_seed.creer_comptes
+	@$(COMPOSE_CORE) run --rm seed python -m predicare_seed.creer_comptes
 
 .PHONY: seed-rag
 seed-rag: ## Indexe le corpus de contrats PDF dans pgvector
@@ -457,7 +456,6 @@ noter: ## Note en lot les factures historiques pour peupler ml.prediction (make 
 .PHONY: lot-jury
 lot-jury: ## Soumet le lot de 20 factures inedites du CDC (F17) par l'API
 	@$(COMPOSE_CORE) run --rm \
-		-e DEMO_PASSWORD="$${DEMO_PASSWORD:-}" \
 		-e API_CORE_URL="http://api-core:8001" \
 		seed python -m predicare_seed.lot_jury $(ARGS)
 

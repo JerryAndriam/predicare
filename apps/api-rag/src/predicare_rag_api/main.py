@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from predicare import db
 from predicare.auth import decode_access_token
 from predicare.config import Settings, get_settings
+from predicare.db import session_scope
 from predicare.errors import AssistantUnavailableError, PrediCareError, UnauthorizedError
 from predicare.http import (
     ObservabilityMiddleware,
@@ -24,6 +25,7 @@ from predicare.http import (
 from predicare.logging_config import configure_logging, get_logger
 from predicare.metrics import publish_build
 from predicare.rbac import ensure_permission
+from predicare.secrets import appliquer_secrets
 from predicare_rag_api import SERVICE_NAME, __version__
 from predicare_rag_api.agent import RagAgent
 from predicare_rag_api.guardrails import sanitize_question
@@ -71,6 +73,10 @@ class AskResponse(BaseModel):
     #: Faux quand l'agent a renvoye un message de degradation : la reponse
     #: n'est alors pas memorisee dans l'historique de session.
     succes: bool = True
+    #: `complet` (reponse redigee), `degrade` (extraits de contrat, sans
+    #: redaction : le fournisseur de LLM est absent) ou `indisponible`.
+    #: L'ecran doit le dire : un extrait n'est pas une reponse.
+    mode: str = "complet"
 
 
 def _tour(question: str, answer: str) -> dict:
@@ -183,21 +189,22 @@ def ask(
     # Le controle porte sur l'agent REEL : les tests injectent un agent
     # fictif, qui n'appelle aucun service externe, et doivent donc pouvoir
     # s'executer sur une machine sans aucune cle configuree.
+    # Seule l'EMBEDDING peut bloquer la reponse : sans lui, aucun passage
+    # ne peut etre retrouve, et il n'y a rien a rendre. Le LLM, lui, n'est
+    # plus bloquant : le mode degrade repond avec les extraits trouves, sans
+    # redaction. C'est ce qui rend l'assistant utilisable sans cle.
     settings = get_settings()
-    manquants = [
-        nom
-        for nom, valeur in (
-            ("EMBEDDING_API_KEY", settings.embedding_api_key),
-            ("LLM_API_KEY", settings.llm_api_key),
-        )
-        if _cle_est_placeholder(valeur)
-    ]
+    manquants: list[str] = []
+    if settings.embedding_mode.strip().lower() == "semantic" and _cle_est_placeholder(
+        settings.embedding_api_key
+    ):
+        manquants.append("EMBEDDING_API_KEY")
     if manquants and _agent_appelle_un_service_externe(request):
         return AskResponse(
             reponse=(
                 "L'assistant n'est pas encore configure : "
                 + " et ".join(manquants)
-                + " doivent etre renseignees. Aucun appel externe n'a ete effectue."
+                + " doit etre renseignee. Aucun appel externe n'a ete effectue."
             ),
             sources=[],
             etapes_agent=[
@@ -274,7 +281,14 @@ def ask(
     # Une degradation ne doit pas etre memorisee : sinon elle serait servie
     # pendant tout le TTL comme une reponse valide, a cette session comme aux
     # suivantes.
-    if not x_rag_no_cache and not suit_une_conversation and resultat.succes:
+    # Une reponse de SECOURS ne se met pas en cache : elle serait servie
+    # pendant 24 heures alors que le fournisseur, lui, est peut-etre revenu.
+    if (
+        not x_rag_no_cache
+        and not suit_une_conversation
+        and resultat.succes
+        and resultat.mode == "complet"
+    ):
         cache.put(
             question,
             resultat.answer,
@@ -346,6 +360,17 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         publish_build(SERVICE_NAME, __version__)
+        # Les secrets ecrits en base priment sur l'environnement : une cle
+        # LLM peut ainsi etre corrigee depuis l'ecran d'administration, sans
+        # redemarrage ni deploiement. Applique AVANT la construction de
+        # l'agent, dont le client LLM lit la configuration a la creation.
+        try:
+            with session_scope() as session:
+                surcharge = appliquer_secrets(settings, session)
+            if surcharge:
+                logger.info("service.secrets_de_base", secrets=",".join(surcharge))
+        except Exception as exc:  # pragma: no cover - base indisponible
+            logger.warning("service.secrets_illisible", erreur=str(exc))
         app.state.sessions = _creer_session_store(settings)
         try:
             store = PgVectorContractStore(settings.db_url)

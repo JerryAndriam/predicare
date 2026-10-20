@@ -15,6 +15,15 @@ import { Carte, Chargement, EtatVide } from '../components/ui'
  * le lien direct plutot que de laisser une page blanche.
  */
 const URL_BI = '/bi'
+// Le tableau lui-meme, pas la page d'accueil de Superset. Le parametre
+// `standalone` masque la navigation de l'outil : le lecteur reste dans la
+// plateforme. Superset sert ses pages sous `/superset/...` ; la passerelle
+// retire le prefixe `/bi` (middleware `stripPrefix`).
+const URL_TABLEAU = `${URL_BI}/superset/dashboard/pilotage-mensuel/?standalone=true`
+// Sonde de disponibilite : l'API de Superset repond en JSON (401 sans
+// session). Une reponse HTML prouverait que c'est l'application web qui a
+// repondu, donc que le service de pilotage est absent.
+const URL_SONDE = `${URL_BI}/api/v1/dashboard/?q=(page:0,page_size=1)`
 
 export function PilotagePage() {
   const [etat, setEtat] = useState<'chargement' | 'ok' | 'indisponible'>('chargement')
@@ -26,14 +35,18 @@ export function PilotagePage() {
     // repli qui explique comment demarrer le profil `bi`.
     const controller = new AbortController()
     const minuteur = setTimeout(() => controller.abort(), 5000)
-    fetch('/bi/health', { signal: controller.signal })
+    fetch(URL_SONDE, { signal: controller.signal })
       .then((reponse) => {
         // La SPA renvoie du HTML pour toute route inconnue : repondre
         // « ok » sur la seule base du code HTTP donnerait un faux
         // positif. Seule une reponse non-HTML atteste que le service de
         // pilotage repond derriere la passerelle.
         const type = reponse.headers.get('content-type') ?? ''
-        setEtat(reponse.ok && !type.includes('text/html') ? 'ok' : 'indisponible')
+        // Sans session, Superset repond 401 en JSON : c'est deja la preuve
+        // que le service repond. Seule une reponse HTML signifie que c'est
+        // l'application web qui a repondu a la place.
+        const json = type.includes('application/json')
+        setEtat(json ? 'ok' : 'indisponible')
       })
       .catch(() => setEtat('indisponible'))
       .finally(() => clearTimeout(minuteur))
@@ -59,7 +72,7 @@ export function PilotagePage() {
             titre="Le service de pilotage n’est pas démarré"
             texte="Le tableau de bord est un profil optionnel de la plateforme. Lancez « make up-bi » pour le démarrer, puis rechargez cette page."
             action={
-              <a className="bouton principal" href={URL_BI} target="_blank" rel="noreferrer">
+              <a className="bouton principal" href={URL_TABLEAU} target="_blank" rel="noreferrer">
                 Ouvrir le tableau de bord
               </a>
             }
@@ -71,14 +84,14 @@ export function PilotagePage() {
         <Carte
           titre="Tableau de bord"
           actions={
-            <a className="bouton discret" href={URL_BI} target="_blank" rel="noreferrer">
+            <a className="bouton discret" href={URL_TABLEAU} target="_blank" rel="noreferrer">
               Ouvrir dans un onglet
             </a>
           }
         >
           <iframe
             className="bi-frame"
-            src={URL_BI}
+            src={URL_TABLEAU}
             title="Tableau de bord décisionnel PrediCare"
           />
         </Carte>

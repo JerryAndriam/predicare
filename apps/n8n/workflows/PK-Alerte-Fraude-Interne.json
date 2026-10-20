@@ -151,7 +151,7 @@
           "conditions": [
             {
               "id": "notification-en-echec",
-              "leftValue": "={{ $('Notifier Slack').first().json.error !== undefined || $json.error !== undefined }}",
+              "leftValue": "={{ $('Notifier par e-mail').first().json.error !== undefined }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -171,7 +171,7 @@
         940,
         -220
       ],
-      "notes": "Slack et e-mail restent en `continueRegularOutput` : une panne Slack n'empeche pas l'e-mail de partir. Ce noeud inspecte les deux resultats apres coup et transforme un echec en execution n8n `error`, ce qui rend la panne visible dans l'exploitation."
+      "notes": "L'execution neechoue que si l'E-MAIL a echoue. Slack et l'e-mail sont deux canaux du meme message : l'un suffit, et un Slack non configure ne doit pas faire passer une alerte delivered pour un echec. L'absence de Slack se voit dans le noeud, pas dans l'etat de l'execution."
     },
     {
       "parameters": {

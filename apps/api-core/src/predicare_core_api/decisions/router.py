@@ -36,10 +36,16 @@ logger = get_logger("api-core.decisions")
 #: Traduction de la decision du gestionnaire vers le statut metier de la
 #: facture. Sans elle, l'assure continuait de voir « recue » apres une fraude
 #: confirmee : la decision restait dans le schema ML, invisible pour lui.
+#:
+#: Les statuts sont en MAJUSCULES, comme ceux du chargement initial. Une
+#: seule convention : la distinction entre le refus a l'instruction et le
+#: refus du gestionnaire se joue sur le SENS, pas sur la casse -- une
+#: difference de casse n'est pas une difference metier, et elle rendait les
+#: requetes de l'agent RAG insensibles au refus du gestionnaire.
 STATUT_FACTURE: dict[str, str] = {
-    "valider_fraude": "fraude_confirmee",
-    "rejeter": "rejetee",
-    "demander_piece": "piece_demandee",
+    "valider_fraude": "FRAUDE_CONFIRMEE",
+    "rejeter": "REJETEE",
+    "demander_piece": "PIECE_DEMANDEE",
 }
 
 AlertReader = Annotated[TokenPayload, Depends(require_permission("alerte:lire"))]
@@ -183,7 +189,9 @@ def file_alertes(
         )
 
     return AlertePage(
-        items=[AlerteSummary(**{**row, "age_minutes": int(row["age_minutes"] or 0)}) for row in rows],
+        items=[
+            AlerteSummary(**{**row, "age_minutes": int(row["age_minutes"] or 0)}) for row in rows
+        ],
         total=total,
         limit=limit,
         offset=offset,

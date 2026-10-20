@@ -15,6 +15,7 @@ import {
   type References,
   type Role,
   type SecretState,
+  type SecretTestResult,
 } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { Barres } from '../components/Barres'
@@ -91,6 +92,8 @@ export function AdminPage() {
   const [filtreActeur, setFiltreActeur] = useState('')
   const [filtreCible, setFiltreCible] = useState('')
   const [secrets, setSecrets] = useState<SecretState[]>([])
+  const [secretEnEdition, setSecretEnEdition] = useState<Record<string, string>>({})
+  const [secretTest, setSecretTest] = useState<Record<string, SecretTestResult>>({})
   const [testCanal, setTestCanal] = useState<ChannelTestResult | null>(null)
   const [testEnCours, setTestEnCours] = useState(false)
 
@@ -382,6 +385,23 @@ export function AdminPage() {
     } finally {
       setEnCours(false)
     }
+  }
+
+  const enregistrerSecret = async (nom: string, valeur: string) => {
+    await api<SecretState>(`/api/core/admin/secrets/${encodeURIComponent(nom)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ valeur }),
+    })
+    setSecrets(await api<SecretState[]>('/api/core/admin/secrets'))
+    setSecretEnEdition({ ...secretEnEdition, [nom]: '' })
+  }
+
+  const testerSecret = async (nom: string) => {
+    const resultat = await api<SecretTestResult>(
+      `/api/core/admin/secrets/${encodeURIComponent(nom)}/test`,
+      { method: 'POST' },
+    )
+    setSecretTest({ ...secretTest, [nom]: resultat })
   }
 
   return (
@@ -742,12 +762,13 @@ export function AdminPage() {
             </p>
           )}
 
-          <h3>Secrets à configurer</h3>
+          <h3>Secrets</h3>
           <p className="aide">
-            Un secret vit dans l’environnement du conteneur : il ne peut pas être écrit
-            depuis cet écran. Le tableau dit quoi renseigner, et où. Une fois la variable
-            renseignée dans le fichier <span className="mono">.env</span>, la plateforme
-            doit être redémarrée.
+            Un secret s’écrit ici, ou dans l’environnement du conteneur. La base passe
+            avant l’environnement : corriger un canal ne demande donc ni déploiement ni
+            édition de fichier. La valeur est chiffrée en base, et l’écriture est
+            journalisée. Les services la relisent au démarrage : après un changement,
+            redémarrez la plateforme pour qu’ils la prennent en compte.
           </p>
           {secrets.length === 0 ? (
             <Chargement />
@@ -763,6 +784,8 @@ export function AdminPage() {
                     <th scope="col">Variable</th>
                     <th scope="col">État</th>
                     <th scope="col">Conséquence si absente</th>
+                    <th scope="col">Valeur</th>
+                    <th scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -774,8 +797,44 @@ export function AdminPage() {
                         <Badge ton={secret.configure ? 'ok' : 'alerte'}>
                           {secret.configure ? 'configuré' : 'manquant'}
                         </Badge>
+                        <span className="aide"> {secret.source}</span>
+                        {secret.apercu ? <span className="mono"> {secret.apercu}</span> : null}
                       </td>
                       <td className="aide">{secret.effet}</td>
+                      <td>
+                        <input
+                          type="password"
+                          aria-label={`Valeur du secret ${secret.nom}`}
+                          placeholder={secret.configure ? secret.apercu : 'à renseigner'}
+                          value={secretEnEdition[secret.nom] ?? ''}
+                          onChange={(event) =>
+                            setSecretEnEdition({ ...secretEnEdition, [secret.nom]: event.target.value })
+                          }
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="bouton discret"
+                          disabled={!secretEnEdition[secret.nom]}
+                          onClick={() => enregistrerSecret(secret.nom, secretEnEdition[secret.nom])}
+                        >
+                          Enregistrer
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="bouton discret"
+                          onClick={() => testerSecret(secret.nom)}
+                        >
+                          Tester
+                        </button>
+                        {secretTest[secret.nom] ? (
+                          <p className={secretTest[secret.nom].ok ? 'aide' : 'erreur'}>
+                            {secretTest[secret.nom].ok ? '✓ ' : '✕ '}
+                            {secretTest[secret.nom].message}
+                          </p>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

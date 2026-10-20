@@ -59,9 +59,7 @@ def main() -> None:
             else:
                 rejetes += 1
                 corps = resultat.json()
-                print(
-                    f"  ligne {numero:>2}  REJET {resultat.status_code}  {corps.get('message')}"
-                )
+                print(f"  ligne {numero:>2}  REJET {resultat.status_code}  {corps.get('message')}")
 
     print()
     print(f"total={len(lot)} acceptes={acceptes} rejetes={rejetes}")

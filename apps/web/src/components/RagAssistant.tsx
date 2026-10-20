@@ -14,6 +14,7 @@ interface Message {
   sources: RagSource[]
   etapes: RagStep[]
   succes: boolean
+  mode?: 'complet' | 'degrade' | 'indisponible'
   limiteAtteinte: boolean
   latenceMs?: number
   tokensEntree?: number
@@ -144,9 +145,12 @@ function MessageBulle({ message }: { message: Message }) {
       <span className="bulle-auteur">{estVous ? 'Vous' : 'Assistant'}</span>
       <p className="bulle-texte">{message.texte}</p>
 
-      {!estVous && (!message.succes || message.limiteAtteinte) && (
+      {!estVous && (!message.succes || message.mode === 'degrade' || message.limiteAtteinte) && (
         <div className="bulle-badges">
           {!message.succes && <Badge ton="alerte">Réponse dégradée</Badge>}
+          {message.mode === 'degrade' && (
+            <Badge ton="info">Extraits de contrat, sans rédaction</Badge>
+          )}
           {message.limiteAtteinte && <Badge ton="info">Limite d’étapes atteinte</Badge>}
         </div>
       )}
@@ -237,6 +241,7 @@ export function RagAssistant() {
           sources: reponse.sources ?? [],
           etapes: reponse.etapes_agent ?? [],
           succes: reponse.succes ?? true,
+          mode: reponse.mode ?? 'complet',
           limiteAtteinte: reponse.limite_atteinte ?? false,
           latenceMs: reponse.latence_ms,
           tokensEntree: reponse.tokens_entree ?? 0,

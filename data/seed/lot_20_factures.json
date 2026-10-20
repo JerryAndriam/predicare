@@ -2,7 +2,7 @@
   "version": 1,
   "description": "Lot de 20 factures inedites du CDC (F17). 15 valides, dont 7 alertes attendues, et 5 invalides. Source unique consommee par le job predicare_seed.lot_jury et par les tests e2e.",
   "genere_le": "2026-10-20",
-  "seuil_alerte_reference": 0.2876,
+  "seuil_alerte_reference": 0.2766,
   "factures": [
     {
       "cas_attendu": "valide",
@@ -11,7 +11,7 @@
         "motif": "acte de laboratoire sans ordonnance"
       },
       "facture_id": "FAC-JURY-001",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00172",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 11000,
@@ -31,7 +31,7 @@
         "motif": "acte feminin pour un assure masculin"
       },
       "facture_id": "FAC-JURY-002",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 35000,
@@ -51,7 +51,7 @@
         "motif": "prestataire radie"
       },
       "facture_id": "FAC-JURY-003",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00097",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 20500,
@@ -71,7 +71,7 @@
         "motif": "soin un dimanche chez un prestataire ferme"
       },
       "facture_id": "FAC-JURY-004",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00002",
       "date_facture": "2026-10-18T12:00:00+03:00",
       "montant_total": 20000,
@@ -91,7 +91,7 @@
         "motif": "montant au-dessus du tarif maximal de l'acte"
       },
       "facture_id": "FAC-JURY-005",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 60000,
@@ -111,7 +111,7 @@
         "motif": "acte pediatrique pour un assure adulte"
       },
       "facture_id": "FAC-JURY-006",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00096",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 35000,
@@ -131,7 +131,7 @@
         "motif": "montant eleve face au plafond de garantie"
       },
       "facture_id": "FAC-JURY-007",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00162",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 1500000,
@@ -151,7 +151,7 @@
         "motif": "consultation generale au tarif de la grille"
       },
       "facture_id": "FAC-JURY-008",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 20500,
@@ -171,7 +171,7 @@
         "motif": "consultation de cardiologie au tarif de reference"
       },
       "facture_id": "FAC-JURY-009",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 40000,
@@ -191,7 +191,7 @@
         "motif": "consultation de pneumologie au tarif de reference"
       },
       "facture_id": "FAC-JURY-010",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 40000,
@@ -211,7 +211,7 @@
         "motif": "soins dentaires au tarif de la grille"
       },
       "facture_id": "FAC-JURY-011",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00188",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 84500,
@@ -237,7 +237,7 @@
         "motif": "consultation ORL au tarif de reference"
       },
       "facture_id": "FAC-JURY-012",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 30000,
@@ -257,7 +257,7 @@
         "motif": "consultation ophtalmologique au tarif de reference"
       },
       "facture_id": "FAC-JURY-013",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 35000,
@@ -277,7 +277,7 @@
         "motif": "consultation de dermatologie au tarif de reference"
       },
       "facture_id": "FAC-JURY-014",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 35000,
@@ -297,7 +297,7 @@
         "motif": "consultation de gastro-enterologie au tarif de reference"
       },
       "facture_id": "FAC-JURY-015",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 40000,
@@ -317,7 +317,7 @@
         "motif": "montant total hors bornes (10 000 000 MGA)"
       },
       "facture_id": "FAC-JURY-016",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 10000001,
@@ -337,7 +337,7 @@
         "motif": "code d'acte absent du referentiel"
       },
       "facture_id": "FAC-JURY-017",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 20000,
@@ -357,7 +357,7 @@
         "motif": "date d'acte posterieure a la date de facture"
       },
       "facture_id": "FAC-JURY-018",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 20500,
@@ -377,7 +377,7 @@
         "motif": "quantite nulle"
       },
       "facture_id": "FAC-JURY-019",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 0,
@@ -397,7 +397,7 @@
         "motif": "montant total incoherent avec les lignes"
       },
       "facture_id": "FAC-JURY-020",
-      "assure_pseudonyme": "assr_ss9jpIl_jyEowrGARpBihp",
+      "assure_pseudonyme": "assr_twb8JsHLw-S4CKFj1vIWR1",
       "prestataire_id": "PRE-00062",
       "date_facture": "2026-10-15T12:00:00+03:00",
       "montant_total": 999999,

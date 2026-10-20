@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -54,9 +54,7 @@ def main() -> None:
     prix = float(sys.argv[4]) if len(sys.argv) > 4 else 25000.0
     sortie = Path(sys.argv[5]) if len(sys.argv) > 5 else Path("lot_factures_20.json")
 
-    lot = [
-        facture(assure=assure, prestataire=prestataire, acte=acte, prix=prix) for _ in range(17)
-    ]
+    lot = [facture(assure=assure, prestataire=prestataire, acte=acte, prix=prix) for _ in range(17)]
 
     # Trois cas invalides, volontairement distincts : le message d'erreur
     # doit nommer un champ different a chaque fois.

@@ -14,6 +14,16 @@ http:
   # --------------------------------------------------------------------
   middlewares:
 
+    # Superset sert ses pages a la racine (`/dashboard/...`, `/health`).
+    # La passerelle expose le tableau sous `/bi` : sans retrait du prefixe,
+    # Superset recoit `/bi/dashboard/...` et repond 404. Les autres routes
+    # (`/api/core`) n'en ont pas besoin : leur prefixe fait partie des
+    # routes de l'application.
+    predicare-bi-strip:
+      stripPrefix:
+        prefixes:
+          - /bi
+
     # En-tetes de securite appliques a toute la plateforme sans cooperation
     # du code React : une seule definition, aucun ecart possible entre deux
     # ecrans. Pertinent pour le cadrage RGPD et AI Act.
@@ -103,6 +113,8 @@ http:
       rule: "PathPrefix(`/bi`)"
       service: predicare-bi
       priority: 10
+      middlewares:
+        - predicare-bi-strip
 
   services:
     predicare-core:

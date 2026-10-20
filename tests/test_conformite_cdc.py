@@ -52,9 +52,9 @@ def test_les_statuts_de_facture_sont_distincts() -> None:
 
 def test_le_statut_de_fraude_remonte_jusqu_a_l_assure() -> None:
     """Le statut doit etre lisible par l'assure dans sa liste de factures."""
-    assert STATUT_FACTURE["valider_fraude"] == "fraude_confirmee"
-    assert STATUT_FACTURE["rejeter"] == "rejetee"
-    assert STATUT_FACTURE["demander_piece"] == "piece_demandee"
+    assert STATUT_FACTURE["valider_fraude"] == "FRAUDE_CONFIRMEE"
+    assert STATUT_FACTURE["rejeter"] == "REJETEE"
+    assert STATUT_FACTURE["demander_piece"] == "PIECE_DEMANDEE"
 
 
 # ---------------------------------------------------------------------------
@@ -292,3 +292,89 @@ def test_le_contrat_du_canal_expose_les_deux_etats() -> None:
 
     assert instance.actif is True
     assert instance.configure is False
+
+
+# ---------------------------------------------------------------------------
+# 3. L'inadequation diagnostic / acte est une REGLE, pas une variable
+# ---------------------------------------------------------------------------
+
+
+class _SessionFactice:
+    """Une session qui repond a deux requetes, sans PostgreSQL.
+
+    Le fichier de tests ne touche pas la base : la regle est donc verifiee
+    sur ses FONCTIONS, avec des reponses preparees.
+    """
+
+    def __init__(self, lignes_specialites: list[tuple[str, str]], acte: dict[str, object]):
+        self._lignes_specialites = lignes_specialites
+        self._acte = acte
+
+    def execute(self, requete, _parametres=None):
+        if "specialite_diagnostic" in str(requete):
+            return _ResultatFactice([tuple(ligne) for ligne in self._lignes_specialites])
+        if "FROM core.acte" in str(requete):
+            return _ResultatFactice([self._acte])
+        raise AssertionError(f"Requete non prevue : {requete}")
+
+
+class _ResultatFactice:
+    def __init__(self, lignes: list[tuple]):
+        self._lignes = lignes
+
+    def fetchall(self) -> list[tuple]:
+        return self._lignes
+
+    def mappings(self):
+        return self
+
+    def one(self) -> dict[str, object]:
+        return dict(self._lignes[0])
+
+
+def test_le_diagnostic_designe_une_specialite() -> None:
+    """Un diagnostic nomme la specialite qu'il designe, accents et casse ignores."""
+    from predicare_core_api.billing.router import _specialites_du_diagnostic
+
+    session = _SessionFactice(
+        [("DERMATOLOGIE", "dermatologie"), ("CARDIOLOGIE", "cardiologie")], {}
+    )
+
+    assert _specialites_du_diagnostic(session, "Dermatologie chronique") == {"DERMATOLOGIE"}
+    assert _specialites_du_diagnostic(session, "cardiologie") == {"CARDIOLOGIE"}
+    assert _specialites_du_diagnostic(session, "Lombalgie aigue") == set()
+
+
+def test_un_acte_incompatible_est_refuse() -> None:
+    """Un acte dentaire ne couvre pas une specialite de dermatologie."""
+    from predicare_core_api.billing.router import _acte_couvre
+
+    session = _SessionFactice(
+        [],
+        {
+            "code": "DENT-CONS",
+            "libelle": "Consultation dentaire",
+            "specialite": None,
+            "categorie": "DENTAIRE",
+        },
+    )
+
+    assert _acte_couvre(session, 1, {"DERMATOLOGIE"}) is False
+    assert _acte_couvre(session, 1, {"DENTAIRE"}) is True
+
+
+def test_un_acte_neutre_couvre_tout_diagnostic() -> None:
+    """Une analyse ou une imagerie ne sont pas liees a une specialite."""
+    from predicare_core_api.billing.router import _acte_couvre
+
+    session = _SessionFactice(
+        [],
+        {
+            "code": "LAB-NFS",
+            "libelle": "Numeration formule sanguine",
+            "specialite": None,
+            "categorie": "LABORATOIRE",
+        },
+    )
+
+    assert _acte_couvre(session, 1, {"DERMATOLOGIE"}) is True
