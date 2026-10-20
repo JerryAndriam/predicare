@@ -202,7 +202,7 @@ services:
       <<: *env-common
       DATA_RAW_DIR: /data/raw
       # Mot de passe des comptes de demonstration : lu dans le `.env` par
-      # Compose. `make comptes` et `make lot-jury` s'en servent sans
+      # Compose. `make comptes` et `make add-invoices` s'en servent sans
       # avoir a le recopier en ligne de commande.
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
     volumes:
@@ -557,6 +557,10 @@ services:
     volumes:
       - ./ops/traefik/static.yml:/etc/traefik/static.yml:ro
       - ./ops/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      # Certificats TLS, presents seulement si un domaine est configure :
+      # le montage est tolerent (un fichier absent ne gene pas le demarrage
+      # en HTTP seul).
+      - ./ops/traefik/generere:/etc/traefik/certs:ro
     networks:
       - edge
     depends_on:

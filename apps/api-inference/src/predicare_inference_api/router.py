@@ -132,6 +132,54 @@ def update_threshold(payload: ThresholdPayload, request: Request) -> dict:
     return {"status": "ok", "seuil": applied}
 
 
+class NoterPayload(BaseModel):
+    """La demande de re-controle d'un stock de factures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    portee: str = Field(default="historique", pattern="^(historique|nouvelles)$")
+    force: bool = False
+    remplacer: bool = False
+
+
+@router.post("/noter")
+async def noter(payload: NoterPayload, request: Request) -> dict:
+    """Lance le scoring en lot, dans un SOUS-PROCES.
+
+    Le re-controle de l'historique porte sur 84 592 factures : il dure deux
+    minutes. Le lancer dans le processus du service le bloquerait, et le
+    proxy HTTP expirerait avant la fin. Un sous-processus rend le service
+    repondant, et l'etat est relu par l'ecran d'administration
+    (`GET /noter`).
+    """
+    import asyncio
+    import sys
+
+    from predicare_inference_api.batch import _ecrire_etat
+
+    arguments = [sys.executable, "-m", "predicare_inference_api.batch", payload.portee]
+    if payload.force:
+        arguments.append("--force")
+    if payload.remplacer:
+        arguments.append("--remplacer")
+    _ecrire_etat("en_cours")
+    process = await asyncio.create_subprocess_exec(
+        *arguments,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    logger.info("recontrole.lance", portee=payload.portee, pid=process.pid)
+    return {"lance": True, "pid": process.pid, "portee": payload.portee}
+
+
+@router.get("/noter")
+def etat_noter() -> dict:
+    """L'etat du dernier re-controle : en cours, termine, ou le resume."""
+    from predicare_inference_api.batch import lire_resume
+
+    return lire_resume()
+
+
 @router.get("/modele")
 def model_state(request: Request) -> dict:
     """Etat du registre : version active, candidate, versions disponibles."""

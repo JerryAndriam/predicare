@@ -28,7 +28,7 @@ Usage :
         python -m predicare_seed.lot_jury
 
     # ou, depuis l'hote, avec un mot de passe connu :
-    DEMO_PASSWORD='...' make lot-jury
+    DEMO_PASSWORD='...' make add-invoices
 """
 
 from __future__ import annotations

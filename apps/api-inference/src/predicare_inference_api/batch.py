@@ -18,10 +18,11 @@ requetes par facture transformeraient le backfill en dizaines de minutes.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -406,6 +407,68 @@ def _shap_alertes(
     return contributions
 
 
+def _ecrire_etat(valeur: str) -> None:
+    """L'etat du job de re-controle : en_cours, termine, echec."""
+    from predicare.db import session_scope
+
+    with session_scope() as session:
+        session.execute(
+            text(
+                """
+                INSERT INTO audit.parametre (cle, valeur, modifie_par, modifie_at)
+                VALUES ('recontrole_etat', :valeur, 'batch', now())
+                ON CONFLICT (cle) DO UPDATE
+                SET valeur = EXCLUDED.valeur, modifie_at = now()
+                """
+            ),
+            {"valeur": valeur},
+        )
+
+
+def _ecrire_resume(resume: dict[str, object]) -> None:
+    """Ecrit le resume du dernier passage dans `audit.parametre`.
+
+    C'est cet etat que l'ecran d'administration relit pendant que le job
+    tourne : sans lui, un re-controle de deux minutes serait une boite
+    noire.
+    """
+    from predicare.db import session_scope
+
+    with session_scope() as session:
+        session.execute(
+            text(
+                """
+                INSERT INTO audit.parametre (cle, valeur, modifie_par, modifie_at)
+                VALUES ('recontrole_resultat', :valeur, 'batch', now())
+                ON CONFLICT (cle) DO UPDATE
+                SET valeur = EXCLUDED.valeur, modifie_at = now()
+                """
+            ),
+            {"valeur": json.dumps(resume, ensure_ascii=False)},
+        )
+
+
+def lire_resume() -> dict[str, object]:
+    """Le resume du dernier passage, et l'etat du job en cours."""
+    from predicare.db import session_scope
+
+    with session_scope() as session:
+        ligne = session.execute(
+            text("SELECT valeur FROM audit.parametre WHERE cle = 'recontrole_resultat'")
+        ).scalar()
+        etat = session.execute(
+            text("SELECT valeur FROM audit.parametre WHERE cle = 'recontrole_etat'")
+        ).scalar()
+    resume: dict[str, object] = {}
+    if ligne:
+        try:
+            resume = json.loads(str(ligne))
+        except json.JSONDecodeError:
+            resume = {}
+    etat_lu: str = str(etat) if etat else "inconnu"
+    return {"etat": etat_lu, "resume": resume}
+
+
 def _executer(
     *,
     historiques: bool,
@@ -416,6 +479,7 @@ def _executer(
 ) -> int:
     settings = get_settings()
 
+    _ecrire_etat("en_cours")
     with session_scope() as session:
         if historiques and remplacer:
             session.execute(
@@ -535,6 +599,16 @@ def _executer(
                 print(f"  ecriture : {index}/{len(factures)}", flush=True)
 
     print(f"  predictions ecrites : {ecrites}", flush=True)
+    resume: dict[str, object] = {
+        "portee": "historique" if historiques else "nouvelles",
+        "modele": bundle.version,
+        "seuil": seuil,
+        "factures": len(factures),
+        "predictions": ecrites,
+        "alertes": alertes,
+        "termine_le": datetime.now(UTC).isoformat(),
+    }
+    _ecrire_resume(resume)
     return 0
 
 
@@ -560,13 +634,21 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
-        return _executer(
+        code = _executer(
             historiques=args.mode == "historique",
             limite=args.limite,
             dry_run=args.dry_run,
             force=getattr(args, "force", False),
             remplacer=getattr(args, "remplacer", False),
         )
+    except Exception:
+        # L'etat doit dire ECHEC : un job qui disparait sans laisser de trace
+        # laisse l'ecran d'administration attendre indefiniment.
+        _ecrire_etat("echec")
+        raise
+    else:
+        _ecrire_etat("termine")
+        return code
     finally:
         dispose_engine()
 

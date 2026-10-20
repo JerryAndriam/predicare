@@ -34,7 +34,10 @@ pytestmark = pytest.mark.e2e
 
 API_CORE_URL = os.getenv("API_CORE_URL", "http://localhost:8001").rstrip("/")
 LOT = Path("data/seed/lot_20_factures.json")
-PRO_EMAIL = os.getenv("DEMO_EMAIL_PRO", "pro@predicare.local")
+#: Le lot couvre plusieurs prestataires : un professionnel ne peut deposer
+#: que pour le sien, il refuse donc le lot. C'est l'administrateur qui passe :
+#: c'est le role qui n'a pas de perimetre impose.
+ADMIN_EMAIL = os.getenv("DEMO_EMAIL_ADMIN", "admin@predicare.local")
 GESTIONNAIRE_EMAIL = os.getenv("DEMO_EMAIL_GESTIONNAIRE", "gestionnaire@predicare.local")
 TIMEOUT = float(os.getenv("E2E_TIMEOUT", "60"))
 
@@ -79,7 +82,7 @@ def resultats(mot_de_passe: str, lot: list[CasLot]) -> list[Resultat]:
     prediction en attente au lieu de la dupliquer.
     """
     with httpx.Client(base_url=API_CORE_URL, timeout=TIMEOUT) as http:
-        _login(http, PRO_EMAIL, mot_de_passe)
+        _login(http, ADMIN_EMAIL, mot_de_passe)
         return executer(http, lot, deja_notees=set())
 
 
@@ -90,9 +93,18 @@ def gestionnaire(mot_de_passe: str) -> httpx.Client:
 
 
 def _file_alertes(client: httpx.Client) -> list[dict]:
+    """La file d'alertes du gestionnaire.
+
+    La reponse est PAGEE : `{"items": [...], "total": N}`. Iterer sur la
+    reponse brute iterait sur les CLES du dictionnaire -- et le test
+    echouait sur un `TypeError` qui n'avait rien a voir avec la fraude.
+    """
     reponse = client.get(f"{API_CORE_URL}/api/core/alertes/file", params={"limit": 200})
     assert reponse.status_code == 200, reponse.text
-    return reponse.json()
+    corps = reponse.json()
+    if isinstance(corps, dict):
+        return list(corps.get("items") or [])
+    return list(corps)
 
 
 def test_les_15_valides_sont_notees(resultats: list[Resultat]) -> None:
@@ -173,6 +185,8 @@ def test_une_alerte_parcourt_le_cycle_complet(
         f"{API_CORE_URL}/api/core/alertes/historique", params={"limit": 200}
     )
     assert historique.status_code == 200, historique.text
-    lignes = [item for item in historique.json() if item["prediction_id"] == prediction_id]
+    corps = historique.json()
+    elements = corps.get("items") if isinstance(corps, dict) else corps
+    lignes = [item for item in (elements or []) if item["prediction_id"] == prediction_id]
     assert lignes, "la decision doit etre tracee dans audit.decision_gestionnaire"
     assert lignes[0]["decision"] == "rejeter"

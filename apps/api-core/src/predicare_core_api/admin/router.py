@@ -506,7 +506,13 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
         )
 
 
-def _appeler_inference(request: Request, chemin: str, *, acteur: str | None = None) -> dict:
+def _appeler_inference(
+    request: Request,
+    chemin: str,
+    *,
+    acteur: str | None = None,
+    payload: dict[str, object] | None = None,
+) -> dict:
     """Appelle le registre du Flux 1, en traduisant une panne en 503 metier.
 
     `acteur` est le sujet du jeton administrateur. Il traverse api-core ->
@@ -515,7 +521,12 @@ def _appeler_inference(request: Request, chemin: str, *, acteur: str | None = No
     inference_url = str(request.app.state.inference_api_url).rstrip("/")
     headers = {"X-Acteur": acteur} if acteur else None
     try:
-        response = httpx.post(f"{inference_url}{chemin}", headers=headers, timeout=10.0)
+        response = httpx.post(
+            f"{inference_url}{chemin}",
+            headers=headers,
+            json=payload,
+            timeout=10.0,
+        )
         response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("admin.modele_action_impossible", chemin=chemin, erreur=str(exc))
@@ -523,6 +534,58 @@ def _appeler_inference(request: Request, chemin: str, *, acteur: str | None = No
             "Le service d'inference n'a pas pu appliquer l'operation sur le modele."
         ) from exc
     return response.json()
+
+
+def _lire_inference(request: Request, chemin: str) -> dict[str, object]:
+    """Lit un etat dans le service d'inference."""
+    inference_url = str(request.app.state.inference_api_url).rstrip("/")
+    try:
+        response = httpx.get(f"{inference_url}{chemin}", timeout=10.0)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("admin.modele_lecture_impossible", chemin=chemin, erreur=str(exc))
+        raise ModelNotReadyError("Le service d'inference n'a pas pu repondre.") from exc
+    return response.json()
+
+
+class RecontrolePayload(BaseModel):
+    """La demande de re-controle d'un stock de factures."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    portee: str = Field(default="historique", pattern="^(historique|nouvelles)$")
+    force: bool = False
+    remplacer: bool = False
+
+
+@router.post("/modele/recontroler")
+def recontroler(
+    payload: RecontrolePayload, request: Request, _admin: AdminUser
+) -> dict[str, object]:
+    """Relance le scoring en lot sur un stock de factures.
+
+    C'est le « controle automatise » du CDC, expose a l'exploitant : le
+    re-controle de l'historique porte sur 84 592 factures et dure deux
+    minutes, donc il part dans un sous-processus et l'ecran relit l'etat
+    (`GET /modele/recontroler/etat`).
+    """
+    resultat = _appeler_inference(
+        request,
+        "/noter",
+        payload={
+            "portee": payload.portee,
+            "force": payload.force,
+            "remplacer": payload.remplacer,
+        },
+    )
+    _journaliser_modele(_admin, "modele_recontrole_lance", payload.portee, resultat)
+    return resultat
+
+
+@router.get("/modele/recontroler/etat")
+def etat_recontrole(request: Request, _admin: AdminUser) -> dict[str, object]:
+    """L'etat du re-controle en cours, et le resume du dernier passe."""
+    return _lire_inference(request, "/noter")
 
 
 @router.post("/modele/candidat")

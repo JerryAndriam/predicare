@@ -21,8 +21,13 @@ log() {
     echo "[restore $(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
 }
 
+CLE="${BACKUP_CLE_FILE:-/run/secrets/backup_key}"
+
 if [ -z "${FILE}" ]; then
-    FILE="$(ls -1t "${BACKUP_DIR}"/predicare_*.sql.gz 2>/dev/null | head -n 1 || true)"
+    FILE="$(ls -1t "${BACKUP_DIR}"/predicare_*.sql.gz.enc 2>/dev/null | head -n 1 || true)"
+    if [ -z "${FILE}" ]; then
+        FILE="$(ls -1t "${BACKUP_DIR}"/predicare_*.sql.gz 2>/dev/null | head -n 1 || true)"
+    fi
 fi
 
 if [ -z "${FILE}" ] || [ ! -f "${FILE}" ]; then
@@ -53,7 +58,20 @@ log "Sauvegarde de securite avant restauration : ${SECURITE}"
 pg_dump --clean --if-exists --no-owner --no-privileges | gzip -9 > "${SECURITE}"
 
 log "Restauration en cours..."
-if gzip -dc "${FILE}" | psql -d "${TARGET_DB}" -v ON_ERROR_STOP=1 -q; then
+case "${FILE}" in
+    *.enc)
+        if [ ! -f "${CLE}" ]; then
+            log "ECHEC : sauvegarde chiffree, mais aucune cle (${CLE})"
+            exit 1
+        fi
+        DECHIFFRE="openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:${CLE}"
+        ;;
+    *)
+        DECHIFFRE="cat"
+        ;;
+esac
+
+if ${DECHIFFRE} "${FILE}" 2>/dev/null | gzip -dc | psql -d "${TARGET_DB}" -v ON_ERROR_STOP=1 -q; then
     log "Restauration reussie"
 else
     log "ECHEC de la restauration. La sauvegarde de securite est dans ${SECURITE}"

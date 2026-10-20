@@ -86,6 +86,7 @@ secrets: ## Regenere les secrets cryptographiques du .env
 
 .PHONY: up
 up: ## Demarre toute la plateforme, tooling de demonstration inclus
+	@scripts/generer-traefik.sh
 	@scripts/bootstrap.sh
 	@$(MAKE) --no-print-directory build
 	# Une seule invocation `compose` pour le core ET les overlays. Avant, les
@@ -284,6 +285,10 @@ bi-requetes: ## Peuple l'historique SQL Lab et les requetes enregistrees de Supe
 	@scripts/build-bi.sh superset-requetes
 	@$(COMPOSE_BI) run --rm superset-requetes
 
+.PHONY: purge
+purge: ## Purge les donnees hors durees de conservation (apercu ; --appliquer pour executer)
+	@$(COMPOSE_CORE) run --rm api-core python -m predicare_core_api.rgpd.purge $(ARGS)
+
 .PHONY: bi-compte-demo
 bi-compte-demo: ## Cree le compte Superset de demonstration, en lecture seule
 	@scripts/build-bi.sh superset-requetes
@@ -346,17 +351,9 @@ reload-data: ## Recharge les donnees depuis ./data/raw et reapplique la couche B
 	@$(COMPOSE_CORE) run --rm seed
 	@bash db/bi/load.sh
 
-.PHONY: import-factures
-import-factures: ## Importe le lot CSV du jour J depuis ./data/import (schema data/raw)
-	@$(COMPOSE_CORE) run --rm seed python -m predicare_seed.import_factures --dossier /data/import
-
 .PHONY: score-historique
 score-historique: ## Note le jeu etiquete en statut historique (backfill idempotent)
 	@$(COMPOSE_CORE) run --rm api-inference python -m predicare_inference_api.batch historique
-
-.PHONY: score-factures
-score-factures: ## Note les nouvelles factures et alimente la file d'alertes
-	@$(COMPOSE_CORE) run --rm api-inference python -m predicare_inference_api.batch nouvelles
 
 .PHONY: comptes
 comptes: ## Cree les quatre comptes de demonstration (mot de passe: DEMO_PASSWORD)
@@ -453,11 +450,15 @@ noter: ## Note en lot les factures historiques pour peupler ml.prediction (make 
 		$(if $(RESCORER),--rescorer,) \
 		$(ARGS)
 
-.PHONY: lot-jury
-lot-jury: ## Soumet le lot de 20 factures inedites du CDC (F17) par l'API
+.PHONY: add-invoices
+add-invoices: ## Ajoute des factures a la plateforme (JSON ou CSV, un ou plusieurs fichiers)
+	# Une seule porte pour tous les formats : le depot par l'API, comme le
+	# formulaire du professionnel. Une facture deja presente est IGNOREE
+	# (rien n'est ecrase) ; une facture invalide est REJETEE en nommant le
+	# champ. Le lot du jury du CDC (F17) est le format par defaut.
 	@$(COMPOSE_CORE) run --rm \
 		-e API_CORE_URL="http://api-core:8001" \
-		seed python -m predicare_seed.lot_jury $(ARGS)
+		seed python -m predicare_seed.add_invoices $(ARGS)
 
 .PHONY: model-promote
 model-promote: ## Bascule la version N en service (make model-promote VERSION=2)

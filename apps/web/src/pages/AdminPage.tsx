@@ -45,6 +45,7 @@ type Onglet =
   | 'observabilite'
   | 'audit'
   | 'utilisateurs'
+  | 'rgpd'
 
 function tonSante(statut: string): 'ok' | 'alerte' | 'neutre' {
   if (statut === 'ok') return 'ok'
@@ -92,6 +93,11 @@ export function AdminPage() {
   const [filtreActeur, setFiltreActeur] = useState('')
   const [filtreCible, setFiltreCible] = useState('')
   const [secrets, setSecrets] = useState<SecretState[]>([])
+  const [recontrole, setRecontrole] = useState<{ etat: string; resume: Record<string, unknown> } | null>(
+    null,
+  )
+  const [pseudonymeRgpd, setPseudonymeRgpd] = useState('')
+  const [messageRgpd, setMessageRgpd] = useState('')
   const [secretEnEdition, setSecretEnEdition] = useState<Record<string, string>>({})
   const [secretTest, setSecretTest] = useState<Record<string, SecretTestResult>>({})
   const [testCanal, setTestCanal] = useState<ChannelTestResult | null>(null)
@@ -387,6 +393,59 @@ export function AdminPage() {
     }
   }
 
+  const requeteRgpd = async (chemin: string, options: { methode: string; corps?: unknown } = { methode: 'GET' }) => {
+    const reponse = await api<unknown>(`/api/core/rgpd${chemin}`, {
+      method: options.methode,
+      body: options.corps ? JSON.stringify(options.corps) : undefined,
+    })
+    setMessageRgpd('Operation effectuee.')
+    return reponse
+  }
+
+  const exporterDossier = async () => {
+    if (!pseudonymeRgpd) return
+    const dossier = await api<Record<string, unknown>>(
+      `/api/core/rgpd/assures/${encodeURIComponent(pseudonymeRgpd)}/export`,
+    )
+    // Le dossier est telecharge en JSON : c'est le format que la personne
+    // peut relire, et le seul que l'API maintient.
+    const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const lien = document.createElement('a')
+    lien.href = url
+    lien.download = `dossier-${pseudonymeRgpd}.json`
+    lien.click()
+    URL.revokeObjectURL(url)
+    setMessageRgpd('Export telecharge.')
+  }
+
+  const effacerDossier = async () => {
+    if (!pseudonymeRgpd) return
+    if (
+      !window.confirm(
+        `Effacer definitivement le dossier ${pseudonymeRgpd} ? Cette operation est irreversible.`,
+      )
+    ) {
+      return
+    }
+    await requeteRgpd(`/assures/${encodeURIComponent(pseudonymeRgpd)}`, { methode: 'DELETE' })
+  }
+
+  const lancerRecontrole = async (portee: 'historique' | 'nouvelles') => {
+    setRecontrole({ etat: 'en_cours', resume: {} })
+    await api('/api/core/admin/modele/recontroler', {
+      method: 'POST',
+      body: JSON.stringify({ portee }),
+    })
+    const timer = setInterval(async () => {
+      const etat = await api<{ etat: string; resume: Record<string, unknown> }>(
+        '/api/core/admin/modele/recontroler/etat',
+      )
+      setRecontrole(etat)
+      if (etat.etat !== 'en_cours') clearInterval(timer)
+    }, 3000)
+  }
+
   const enregistrerSecret = async (nom: string, valeur: string) => {
     await api<SecretState>(`/api/core/admin/secrets/${encodeURIComponent(nom)}`, {
       method: 'PUT',
@@ -444,6 +503,7 @@ export function AdminPage() {
             ['observabilite', 'Observabilite'],
             ['utilisateurs', 'Comptes'],
             ['audit', 'Journal'],
+            ['rgpd', 'Droits des personnes'],
           ] as const
         ).map(([cle, libelle]) => (
           <button
@@ -541,6 +601,43 @@ export function AdminPage() {
                 )}
               </div>
             )}
+          </Carte>
+
+          <Carte titre="Re-contrôler un stock de factures">
+            <p className="aide">
+              Le contrôle automatisé du CDC : re-noter toutes les factures déjà
+              présentes. L’historique compte 84 592 factures, le passage dure
+              environ deux minutes — il part dans un sous-processus et le service
+              reste disponible. Les notes de l’historique ne nourrissent pas la
+              file du gestionnaire.
+            </p>
+            <div className="boutons-ligne">
+              <button
+                type="button"
+                className="bouton"
+                disabled={recontrole?.etat === 'en_cours'}
+                onClick={() => lancerRecontrole('historique')}
+              >
+                {recontrole?.etat === 'en_cours' ? 'Re-contrôle en cours…' : 'Re-contrôler l’historique'}
+              </button>
+              <button
+                type="button"
+                className="bouton discret"
+                disabled={recontrole?.etat === 'en_cours'}
+                onClick={() => lancerRecontrole('nouvelles')}
+              >
+                Re-contrôler les nouvelles
+              </button>
+            </div>
+            {recontrole && recontrole.etat !== 'en_cours' && recontrole.resume && Object.keys(recontrole.resume).length > 0 ? (
+              <ul className="liste-simple">
+                {Object.entries(recontrole.resume).map(([cle, valeur]) => (
+                  <li key={cle}>
+                    <span className="mono">{cle}</span> : {String(valeur)}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </Carte>
 
           <Carte titre="Deploiement sans interruption">
@@ -1039,6 +1136,73 @@ export function AdminPage() {
             </div>
           </div>
         )
+      )}
+
+      {onglet === 'rgpd' && (
+        <div className="grille deux">
+          <Carte titre="Droits des personnes">
+            <p className="aide">
+              L&apos;export, la rectification, l&apos;opposition et l&apos;effacement
+              d&apos;un dossier. L&apos;export rend l&apos;identité en clair : c&apos;est le droit
+              d&apos;accès de la personne. L&apos;effacement supprime les données métier et
+              anonymise le journal — la trace reste, la personne part.
+            </p>
+            <div className="formulaire">
+              <Champ label="Pseudonyme du dossier" aide="Le pseudonyme affiché dans l'historique de l'assuré.">
+                <input
+                  type="text"
+                  value={pseudonymeRgpd}
+                  onChange={(event) => setPseudonymeRgpd(event.target.value)}
+                  placeholder="assr_..."
+                />
+              </Champ>
+              <div className="boutons-ligne">
+                <button
+                  type="button"
+                  className="bouton"
+                  disabled={!pseudonymeRgpd}
+                  onClick={exporterDossier}
+                >
+                  Exporter
+                </button>
+                <button
+                  type="button"
+                  className="bouton discret"
+                  disabled={!pseudonymeRgpd}
+                  onClick={() =>
+                    requeteRgpd(`/assures/${encodeURIComponent(pseudonymeRgpd)}/identite`, {
+                      methode: 'PUT',
+                      corps: { nom: `Rectifie ${new Date().toISOString().slice(0, 10)}` },
+                    })
+                  }
+                >
+                  Rectifier
+                </button>
+                <button
+                  type="button"
+                  className="bouton discret"
+                  disabled={!pseudonymeRgpd}
+                  onClick={() =>
+                    requeteRgpd(`/assures/${encodeURIComponent(pseudonymeRgpd)}/opposition`, {
+                      methode: 'POST',
+                    })
+                  }
+                >
+                  Opposer
+                </button>
+                <button
+                  type="button"
+                  className="bouton discret"
+                  disabled={!pseudonymeRgpd}
+                  onClick={effacerDossier}
+                >
+                  Effacer
+                </button>
+              </div>
+              {messageRgpd ? <p className="aide">{messageRgpd}</p> : null}
+            </div>
+          </Carte>
+        </div>
       )}
 
       {onglet === 'utilisateurs' && (

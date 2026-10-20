@@ -208,6 +208,25 @@ def _verifier_references(invoice: InvoiceSubmission, user: TokenPayload) -> None
                 )
 
 
+def _verifier_opposition(session: Session, assure_id: int) -> None:
+    """Refuse de servir un dossier dont la personne s'y est oppose.
+
+    L'opposition n'efface rien : elle arrete la SERVITION. Sans ce garde,
+    une opposition enregistree par l'administrateur ne changerait rien au
+    dossier, et le droit serait declaratif.
+    """
+    oppose = session.execute(
+        text("SELECT opposition FROM core.assure WHERE id = :assure_id"),
+        {"assure_id": assure_id},
+    ).scalar()
+    if oppose:
+        raise ForbiddenError(
+            "Ce dossier fait l'objet d'une opposition : les donnees ne sont "
+            "plus servies. L'effacement reste une decision distincte.",
+            details={"type": "opposition"},
+        )
+
+
 def _prestataire_du_compte(session: Session, user: TokenPayload) -> int:
     """Prestataire rattache au compte professionnel, ou 403 explicite.
 
@@ -410,6 +429,11 @@ def list_invoices(
             )
         where = "AND f.assure_id = :assure_id"
         params["assure_id"] = user.insured_id
+        # Opposition : le dossier n'est plus servi. Le garde est pose AVEC
+        # le filtre de perimetre, pour qu'un opposition ne soit visible
+        # que par la personne concernee.
+        with session_scope() as session:
+            _verifier_opposition(session, int(user.insured_id))
     elif user.role is Role.PROFESSIONNEL_SANTE:
         # Perimetre du professionnel : ses propres depots uniquement. Le
         # rattachement vit en base, pas dans le jeton, pour qu'un changement

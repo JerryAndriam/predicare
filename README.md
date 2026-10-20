@@ -182,6 +182,8 @@ une migration ajoutée après le premier démarrage resterait non appliquée, et
 | `make bi-requetes` | Peuple l'historique SQL Lab et les requêtes enregistrées de Superset. |
 | `make bi-compte-demo` | Crée le compte Superset de démonstration, en lecture seule. |
 | `make bi-graphiques` | Exécute la requête de chaque graphique, vérifie qu'elle aboutit et qu'aucune dérive ne s'est installée. |
+| `make purge` | Aperçu de la purge des données hors durées de conservation. |
+| `scripts/test-intrusion.sh` | Vérifie que les surfaces d'attaque connues sont fermées. |
 | `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
 
 Aucun port TCP n'atteint PostgreSQL : tout passe par `docker compose exec`, donc
@@ -205,14 +207,12 @@ s'entraîne et ce qui sert.
 | `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts + rapports). |
 | `make evaluate` | Compare SMOTE / `scale_pos_weight` / aucun traitement et produit l'audit d'équité. |
 | `make noter LIMITE=500` | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic. |
-| `make lot-jury` | Soumet les 20 factures inédites du CDC (F17) par la même porte que le front. 15 valides dont 7 alertes attendues, 5 invalides rejetées avec le champ fautif. `ARGS=--rescorer` pour rejouer, `ARGS=--dry-run` pour simuler. |
+| `make add-invoices` | Ajoute des factures par la **même porte que le front** (validation, notation, SHAP, alerte). Accepte le JSON du lot du CDC (F17), le CSV du front et le CSV du chargement initial : le format est détecté, pas imposé. Une facture déjà présente est **ignorée**, une facture invalide est **rejetée en nommant le champ**. `ARGS=--fichier <chemin>` (répétable) pour un fichier précis. |
 | `make model-state` | Version active du modèle et seuil courant. |
 | `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
 | `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
 | `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
 | `make score-historique` | Rejoue le jeu étiqueté (backfill idempotent, statut `historique`). |
-| `make score-factures` | Note les nouvelles factures et alimente la file d'alertes. |
-| `make import-factures` | Importe le lot CSV du jour J depuis `data/import/`. |
 
 `make noter` est le seul job qui **écrit en masse** dans `ml.prediction`. Par
 défaut il marque ses prédictions `statut = 'archive'` : ce sont des notations
@@ -223,7 +223,7 @@ feraient afficher un taux de faux positifs de 100 % et un délai de décision de
 plusieurs années. `STATUT=nouvelle` force l'entrée en file, pour une
 démonstration sur un petit lot.
 
-`make lot-jury` porte le lot de 20 factures du CDC (F17) : il lit
+`make add-invoices` porte le lot de 20 factures du CDC (F17) : il lit
 `data/seed/lot_20_factures.json`, source unique et versionnée, et le soumet à
 `POST /api/core/factures/soumettre`. Ce n'est pas un raccourci : la validation,
 la vérification des référentiels, la notation et la persistance passent par le

@@ -378,3 +378,41 @@ def test_un_acte_neutre_couvre_tout_diagnostic() -> None:
     )
 
     assert _acte_couvre(session, 1, {"DERMATOLOGIE"}) is True
+
+
+def test_les_statuts_sont_toutes_en_majuscules() -> None:
+    """Une seule convention de casse, pour toutes les decisions."""
+    assert all(valeur.isupper() for valeur in STATUT_FACTURE.values())
+
+
+def test_les_quatre_droits_des_personnes_sont_exposes() -> None:
+    """Acces, rectification, opposition, effacement : les quatre routes.
+
+    Un droit non expose n'existe pas pour la personne concernee : le
+    registre des routes est donc la preuve la plus simple.
+    """
+    from predicare_core_api.rgpd.router import router
+
+    chemins = {route.path for route in router.routes}
+    assert "/rgpd/assures/{pseudonyme}/export" in chemins
+    assert "/rgpd/assures/{pseudonyme}/identite" in chemins
+    assert "/rgpd/assures/{pseudonyme}/opposition" in chemins
+    assert "/rgpd/assures/{pseudonyme}" in chemins
+    assert "/rgpd/moi/export" in chemins
+
+
+def test_l_opposition_est_signalee_par_un_code_dedie() -> None:
+    """L opposition a un motif propre : ce n'est pas un 403 generique."""
+    from predicare_core_api.billing.router import _verifier_opposition
+
+    class _SessionFactice:
+        def execute(self, _requete, _parametres=None):
+            class _Resultat:
+                def scalar(self):
+                    return True
+
+            return _Resultat()
+
+    with pytest.raises(Exception) as excinfo:
+        _verifier_opposition(_SessionFactice(), 1)  # type: ignore[arg-type]
+    assert "opposition" in str(excinfo.value).lower()

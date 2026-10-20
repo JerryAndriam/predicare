@@ -61,3 +61,4 @@ local/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
+ops/traefik/generere/

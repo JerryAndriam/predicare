@@ -59,6 +59,13 @@ PERMISSIONS: dict[str, frozenset[Role]] = {
     "seuil:modifier": frozenset({Role.ADMINISTRATEUR}),
     "secret:modifier": frozenset({Role.ADMINISTRATEUR}),
     "modele:bascule": frozenset({Role.ADMINISTRATEUR}),
+    # Re-controler un stock de factures : c'est un long traitement, mais il
+    # n'ecrit que des predictions. Reserve a l'administrateur.
+    "modele:recontroler": frozenset({Role.ADMINISTRATEUR}),
+    # Droits des personnes : export, rectification, opposition, effacement.
+    # Ces operations sont IRREVERSIBLES : elles sont reservees a
+    # l'administrateur, et chacune est journalisee.
+    "rgpd:administrer": frozenset({Role.ADMINISTRATEUR}),
     "audit:lire": frozenset({Role.GESTIONNAIRE, Role.ADMINISTRATEUR}),
     "rag:interroger": frozenset({Role.ASSURE, Role.GESTIONNAIRE, Role.ADMINISTRATEUR}),
     "metriques:lire": frozenset({Role.ADMINISTRATEUR, Role.GESTIONNAIRE}),

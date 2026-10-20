@@ -26,6 +26,7 @@ from predicare_core_api.audit.router import router as audit_router
 from predicare_core_api.billing.router import router as billing_router
 from predicare_core_api.decisions.router import router as decisions_router
 from predicare_core_api.identity.router import router as identity_router
+from predicare_core_api.rgpd.router import router as rgpd_router
 
 
 def create_app() -> FastAPI:
@@ -95,7 +96,14 @@ def create_app() -> FastAPI:
         probes={"database": db.check_database},
     )
 
-    for router in (identity_router, billing_router, decisions_router, admin_router, audit_router):
+    for router in (
+        identity_router,
+        billing_router,
+        decisions_router,
+        admin_router,
+        audit_router,
+        rgpd_router,
+    ):
         app.include_router(router, prefix="/api/core")
 
     return app

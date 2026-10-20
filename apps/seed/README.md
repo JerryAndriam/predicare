@@ -95,9 +95,8 @@ par le front.
 
 ```sh
 DEMO_PASSWORD='<mot-de-passe>' make comptes    # une seule fois
-DEMO_PASSWORD='<mot-de-passe>' make lot-jury
-make lot-jury ARGS=--dry-run                   # lecture seule
-make lot-jury ARGS=--rescorer                  # rejoue les factures déjà notées
+DEMO_PASSWORD='<mot-de-passe>' make add-invoices
+make add-invoices ARGS=--fichier <chemin>      # JSON, CSV (front) ou CSV (data/raw)
 ```
 
 Le job est idempotent : une facture qui a déjà une prédiction est ignorée

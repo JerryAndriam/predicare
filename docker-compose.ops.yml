@@ -23,6 +23,13 @@ services:
       PGDATABASE: ${POSTGRES_DB:-predicare}
       RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      # La cle de chiffrement des sauvegardes est un FICHIER monte en
+      # lecture seule : elle n'apparait jamais dans une ligne de commande
+      # ni dans l'environnement d'un processus. Son absence ne bloque pas la
+      # sauvegarde (elle reste alors en clair, et le journal le dit).
+      BACKUP_CLE_FILE: /run/secrets/backup_key
+    secrets:
+      - backup_key
     volumes:
       - ./db/backup:/backup:ro
       - ./backups:/backups
@@ -43,3 +50,10 @@ services:
       resources:
         limits:
           memory: 96M
+
+secrets:
+  # La cle de chiffrement des sauvegardes. Le fichier est cree par
+  # `make secrets` ; s'il est absent, la sauvegarde reste en clair et le
+  # journal le signale.
+  backup_key:
+    file: ./backups/.backup_key

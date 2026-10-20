@@ -89,7 +89,7 @@ même porte que le front (`POST /api/core/factures/soumettre`), puis vérifie :
 - les 5 factures invalides sont rejetées en nommant le champ fautif ;
 - une alerte parcourt le cycle complet : détail SHAP, décision, historique.
 
-Le job `make lot-jury` exécute la même soumission en exploitation, avec un
+Le job `make add-invoices` exécute la même soumission en exploitation, avec un
 rapport lisible et un code de sortie non nul au premier écart.
 
 ```sh
