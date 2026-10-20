@@ -135,8 +135,10 @@ def test_quantite_hors_plafond_rejetee(facture_valide: dict) -> None:
 
 
 def test_montant_unitaire_hors_plafond_rejete(facture_valide: dict) -> None:
-    facture_valide["lignes"][0]["montant_unitaire"] = 99_000.0
-    facture_valide["montant_total"] = 99_000.0 * 2
+    # Plafond metier et plafond de schema valent 10 000 000 MGA : on depasse
+    # la borne, qui doit etre refusee avec un message nommant le champ.
+    facture_valide["lignes"][0]["montant_unitaire"] = 10_000_001.0
+    facture_valide["montant_total"] = 10_000_001.0 * 2
 
     with pytest.raises(InvalidInvoiceError) as erreur:
         validate_invoice(facture_valide)
@@ -185,19 +187,18 @@ def test_plusieurs_problemes_metier_remontes_ensemble(facture_valide: dict) -> N
     defauts d'un coup, sinon il fait autant d'allers-retours qu'il y a de
     problemes.
     """
-    # Valeurs choisies pour depasser les plafonds METIER tout en restant
-    # dans les bornes de schema : le test doit isoler la regle de gestion,
-    # pas declencher une erreur de forme.
+    # Deux regles metier independentes, sans sortir des bornes de schema :
+    # le test doit isoler la regle de gestion, pas declencher une erreur de
+    # forme.
     facture_valide["lignes"][0]["quantite"] = 150
-    facture_valide["lignes"][0]["montant_unitaire"] = 50_000.0
-    facture_valide["montant_total"] = 150 * 50_000.0
+    facture_valide["montant_total"] = 999.0
 
     with pytest.raises(InvalidInvoiceError) as erreur:
         validate_invoice(facture_valide)
 
     message = str(erreur.value)
     assert "quantite" in message
-    assert "montant_unitaire" in message
+    assert "montant_total" in message
 
 
 def test_erreurs_de_schema_remontees_ensemble(facture_valide: dict) -> None:

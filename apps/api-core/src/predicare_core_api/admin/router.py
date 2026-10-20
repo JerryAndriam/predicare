@@ -98,7 +98,7 @@ def _propagate_threshold(request: Request, seuil: float) -> str:
     prochain redemarrage. Preferer un seuil en base et un seuil non
     propage (aucune alerte) vaut mieux qu'un seuil applique a moitie.
     """
-    inference_url = request.app.state.inference_url
+    inference_url = str(request.app.state.inference_api_url).rstrip("/")
     try:
         httpx.put(f"{inference_url}/seuil", json={"seuil": seuil}, timeout=5.0).raise_for_status()
     except httpx.HTTPError as exc:
@@ -136,7 +136,7 @@ def list_channels(_admin: AdminUser) -> list[NotificationChannel]:
 @router.get("/modele", response_model=ModelVersionInfo)
 def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
     """Etat du modele : version active, version candidate, metriques."""
-    inference_url = request.app.state.inference_url
+    inference_url = request.app.state.inference_api_url
     try:
         response = httpx.get(f"{inference_url}/modele", timeout=5.0)
         response.raise_for_status()
@@ -151,7 +151,7 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
 
 def _appeler_inference(request: Request, chemin: str) -> dict:
     """Appelle le registre du Flux 1, en traduisant une panne en 503 metier."""
-    inference_url = str(request.app.state.inference_url).rstrip("/")
+    inference_url = str(request.app.state.inference_api_url).rstrip("/")
     try:
         response = httpx.post(f"{inference_url}{chemin}", timeout=10.0)
         response.raise_for_status()

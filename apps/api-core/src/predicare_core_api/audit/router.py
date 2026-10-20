@@ -7,6 +7,7 @@ est en lecture seule et filtre sur l'assure connecte.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, Query
@@ -83,7 +84,7 @@ def log_event(payload: dict, user: CurrentUser) -> dict[str, str]:
             text(
                 """
                 INSERT INTO audit.journal (acteur, role, action, cible, details)
-                VALUES (:acteur, :role, :action, :cible, :details)
+                VALUES (:acteur, :role, :action, :cible, CAST(:details AS jsonb))
                 """
             ),
             {
@@ -91,7 +92,9 @@ def log_event(payload: dict, user: CurrentUser) -> dict[str, str]:
                 "role": str(user.role),
                 "action": str(payload.get("action", "inconnu"))[:64],
                 "cible": str(payload.get("cible"))[:128] if payload.get("cible") else None,
-                "details": payload.get("details") or {},
+                # psycopg n'adapte pas un dict Python a une colonne jsonb :
+                # on serialise explicitement, sinon l'insertion leve un 500.
+                "details": json.dumps(payload.get("details") or {}, ensure_ascii=False),
             },
         )
     return {"status": "ok"}
