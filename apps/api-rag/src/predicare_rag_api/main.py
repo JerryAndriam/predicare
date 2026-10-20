@@ -316,7 +316,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)
+    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)  # type: ignore[arg-type]
 
     register_exception_handlers(app)
     register_health_route(

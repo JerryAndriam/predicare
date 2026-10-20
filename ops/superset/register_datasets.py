@@ -74,6 +74,11 @@ DATASETS: dict[str, dict[str, str | None]] = {
         "definition": "Prestataires classes par montant expose, avec taux de fraude et convention.",
         "vide_jusqua": None,
     },
+    "Top 5 prestataires": {
+        "vue": "v_top5_prestataires",
+        "definition": "Les cinq prestataires les plus exposes par montant, pour le tableau de bord. La limite est structurelle (vue), pas un indice du frontal.",
+        "vide_jusqua": None,
+    },
     "Points de controle": {
         "vue": "v_controle_points",
         "definition": "Motifs de non-paiement : rejets metadataires et hors couverture.",
@@ -100,10 +105,18 @@ DATASETS: dict[str, dict[str, str | None]] = {
         "definition": "Matrice de confusion metier : prediction du modele contre decision humaine.",
         "vide_jusqua": "premiere execution du modele et premiere decision gestionnaire",
     },
+    "Performance du modele": {
+        "vue": "v_modele_performance",
+        "definition": (
+            "Metriques de TEST de la version promue : rappel, faux positifs, precision, "
+            "gain metier. Pas un rejeu in-sample de l'historique."
+        ),
+        "vide_jusqua": "promotion d'une version du modele",
+    },
     "Boucle de decision": {
         "vue": "v_cdc_global",
         "definition": (
-            "Rappel, taux de faux positifs, montants economises confirmes et delai de decision. "
+            "Alertes en attente, montant expose, decisions, montants confirmes et delai. "
             "Toujours une ligne, meme vide : une tuile « en attente » se voit, une absence non."
         ),
         "vide_jusqua": "premiere execution du modele et premiere decision gestionnaire",

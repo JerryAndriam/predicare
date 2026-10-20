@@ -110,16 +110,16 @@ def _validate_amounts(invoice: InvoiceSubmission) -> None:
         if ligne.montant_unitaire > MONTANT_MAX_SINGULIER:
             problems.append(
                 f"lignes.{index}.montant_unitaire : superieur au maximum "
-                f"de {MONTANT_MAX_SINGULIER:.0f} EUR"
+                f"de {MONTANT_MAX_SINGULIER:.0f} MGA"
             )
 
     montant_calcule = invoice.montant_calcule
     ecart = abs(montant_calcule - invoice.montant_total)
-    # Tolerance de 1 % ou 1 EUR : les barèmes comportent des arrondis.
+    # Tolerance de 1 % ou 1 MGA : les barèmes comportent des arrondis.
     if montant_calcule > 0 and ecart > max(1.0, montant_calcule * 0.01):
         problems.append(
-            f"montant_total : {invoice.montant_total:.2f} EUR incoherent avec le detail "
-            f"des lignes ({montant_calcule:.2f} EUR)"
+            f"montant_total : {invoice.montant_total:.2f} MGA incoherent avec le detail "
+            f"des lignes ({montant_calcule:.2f} MGA)"
         )
 
     if problems:

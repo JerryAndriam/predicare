@@ -145,6 +145,16 @@ def stocker_prediction(
             {"prediction_id": prediction_id},
         )
 
+    if prediction_id is None:
+        raise RuntimeError("INSERT ... RETURNING id n'a retourne aucune prediction.")
+    _inserer_contributions(session, prediction_id, contributions)
+    return prediction_id
+
+
+def _inserer_contributions(
+    session: Session, prediction_id: int, contributions: Iterable[Any]
+) -> None:
+    """Ecrit les contributions SHAP numerotees d'une prediction."""
     for rang, contribution in enumerate(contributions, start=1):
         if rang > CONTRIBUTIONS_CONSERVEES:
             break
@@ -171,6 +181,54 @@ def stocker_prediction(
                 "libelle": contribution.human_readable,
             },
         )
+
+
+def stocker_prediction_historique(
+    session: Session,
+    *,
+    facture_id: int,
+    model_version: str,
+    score: float,
+    seuil: float,
+    is_fraud: bool,
+    created_at: Any,
+    contributions: Iterable[Any] = (),
+) -> int | None:
+    """Ecrit le score d'une facture DÉJÀ en base, sans toucher à la file.
+
+    Le backfill rejoue l'historique : ces predictions portent le statut
+    `historique` et leur date d'origine. Elles ne doivent donc jamais
+    apparaitre dans la file des alertes (`statut = 'nouvelle'`) ni écraser
+    une prediction vivante. `WHERE NOT EXISTS` rend le rejeu idempotent.
+    """
+    prediction_id = session.execute(
+        text(
+            """
+            INSERT INTO ml.prediction
+                (facture_id, model_version, score_fraude, seuil_applique,
+                 is_fraud, statut, created_at)
+            SELECT :facture_id, :version, :score, :seuil, :is_fraud,
+                   'historique', :created_at
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ml.prediction WHERE facture_id = :facture_id
+            )
+            RETURNING id
+            """
+        ),
+        {
+            "facture_id": facture_id,
+            "version": model_version,
+            "score": score,
+            "seuil": seuil,
+            "is_fraud": is_fraud,
+            "created_at": created_at,
+        },
+    ).scalar()
+    if prediction_id is None:
+        return None
+    if prediction_id is None:
+        raise RuntimeError("INSERT ... RETURNING id n'a retourne aucune prediction.")
+    _inserer_contributions(session, prediction_id, contributions)
     return prediction_id
 
 

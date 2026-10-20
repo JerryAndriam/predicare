@@ -107,6 +107,67 @@ services:
       # le conteneur du job.
       SUPERSET_URL: http://superset:8088
     command: ["python", "/app/register_dashboard.py"]
+    # L'archive du tableau est versionnee dans le depot : le job la lit pour
+    # reappliquer l'etat de reference.
+    volumes:
+      - ./ops/superset/dashboards:/app/dashboards
+    depends_on:
+      superset:
+        condition: service_healthy
+    networks:
+      - core
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Historique SQL Lab et requetes enregistrees : le job qui les remplit.
+  # ---------------------------------------------------------------------------
+  superset-requetes:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset-requetes
+    environment:
+      <<: *superset-env
+      SUPERSET_URL: http://superset:8088
+      # Mot de passe du compte de demonstration, lu dans le `.env` par
+      # Compose. Il n'est jamais code en dur, et jamais dans le depot.
+      SUPERSET_DEMO_PASSWORD: ${SUPERSET_DEMO_PASSWORD:-}
+      SUPERSET_DEMO_USERNAME: ${SUPERSET_DEMO_USERNAME:-demo}
+    command: ["python", "/app/charger_requetes.py"]
+    depends_on:
+      superset:
+        condition: service_healthy
+    networks:
+      - core
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # Archive de l'etat du tableau de bord : le depot versionne la mise en page
+  # et les filtres natifs, que le job d'enregistrement ne possede pas.
+  # ---------------------------------------------------------------------------
+  superset-export:
+    build:
+      context: .
+      dockerfile: ops/superset/Dockerfile
+    image: predicare-superset:latest
+    container_name: predicare-superset-export
+    environment:
+      <<: *superset-env
+      SUPERSET_URL: http://superset:8088
+    command: ["python", "/app/exporter_dashboard.py", "export"]
+    volumes:
+      - ./ops/superset/dashboards:/app/dashboards
     depends_on:
       superset:
         condition: service_healthy

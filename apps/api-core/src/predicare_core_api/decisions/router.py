@@ -170,7 +170,7 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
                 "prediction_id": prediction_id,
             },
         )
-        if mise_a_jour.rowcount == 0:
+        if getattr(mise_a_jour, "rowcount", 0) == 0:
             raise NotFoundError("Alerte introuvable.")
 
         session.execute(

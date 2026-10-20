@@ -1,0 +1,877 @@
+{
+  "version": 1,
+  "slug": "pilotage-mensuel",
+  "titre": "Pilotage mensuel — PrediCare TPA",
+  "exporte_le": null,
+  "tuiles": [
+    {
+      "id": 1,
+      "titre": "Factures traitees",
+      "viz_type": "big_number",
+      "vue": "v_kpi_global",
+      "params": {
+        "metric": {
+          "label": "Factures traitees",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "nb_factures",
+            "type": "BIGINT"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": ",d",
+        "subheader": "Sur 24 mois",
+        "datasource_id": 15,
+        "datasource": "15__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 12,
+      "titre": "Montant presente (MGA)",
+      "viz_type": "big_number",
+      "vue": "v_kpi_global",
+      "params": {
+        "metric": {
+          "label": "Montant presente (MGA)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "montant_total_mga",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": "~s",
+        "subheader": "Ariary",
+        "datasource_id": 15,
+        "datasource": "15__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 3,
+      "titre": "Taux de fraude observe (%)",
+      "viz_type": "big_number",
+      "vue": "v_kpi_global",
+      "params": {
+        "metric": {
+          "label": "Taux de fraude observe (%)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "taux_fraude_pct",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": ".2f",
+        "subheader": "Prevalence terrain",
+        "datasource_id": 15,
+        "datasource": "15__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 13,
+      "titre": "Delai moyen de traitement (jours)",
+      "viz_type": "big_number",
+      "vue": "v_kpi_global",
+      "params": {
+        "metric": {
+          "label": "Delai moyen de traitement (jours)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "delai_moyen_jours",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": ".1f",
+        "subheader": "Pondere par facture",
+        "datasource_id": 15,
+        "datasource": "15__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 14,
+      "titre": "Montants economises confirmes (MGA)",
+      "viz_type": "big_number",
+      "vue": "v_cdc_global",
+      "params": {
+        "metric": {
+          "label": "Montants economises confirmes (MGA)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "montant_economise_mga",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": "~s",
+        "subheader": "En attente : aucune decision gestionnaire enregistree",
+        "datasource_id": 16,
+        "datasource": "16__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 15,
+      "titre": "Taux de detection du modele (%)",
+      "viz_type": "big_number",
+      "vue": "v_modele_performance",
+      "params": {
+        "metric": {
+          "label": "Taux de detection du modele (%)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "rappel_test_pct",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": ".2f",
+        "subheader": "Test temporel v2 : 3 derniers mois (10 086 factures)",
+        "datasource_id": 17,
+        "datasource": "17__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 17,
+      "titre": "Taux de faux positifs du modele (%)",
+      "viz_type": "big_number",
+      "vue": "v_modele_performance",
+      "params": {
+        "metric": {
+          "label": "Taux de faux positifs du modele (%)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "faux_positifs_test_pct",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "adhoc_filters": [],
+        "row_limit": 1,
+        "time_range": "No filter",
+        "granularity_sqla": "periode",
+        "y_axis_format": ".2f",
+        "subheader": "Test temporel v2 (precision 59,77 %)",
+        "datasource_id": 17,
+        "datasource": "17__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 5,
+      "titre": "Montant present par mois (MGA)",
+      "viz_type": "echarts_timeseries",
+      "vue": "v_kpi_mensuel",
+      "params": {
+        "metrics": [
+          {
+            "label": "Montant present (MGA)",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "montant_total_mga",
+              "type": "NUMERIC"
+            },
+            "aggregate": "SUM"
+          }
+        ],
+        "x_axis": "mois",
+        "groupby": [],
+        "granularity_sqla": "mois",
+        "time_grain_sqla": "P1M",
+        "order_desc": true,
+        "row_limit": 24,
+        "y_axis_format": "~s",
+        "rich_tooltip": true,
+        "line_type": "linear",
+        "show_labels": false,
+        "datasource_id": 6,
+        "datasource": "6__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 6,
+      "titre": "Fraude par mecanisme (24 mois)",
+      "viz_type": "echarts_timeseries_bar",
+      "vue": "v_fraude_par_type",
+      "params": {
+        "metrics": [
+          {
+            "label": "Nombre de factures",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "nb_fraudes",
+              "type": "BIGINT"
+            },
+            "aggregate": "SUM"
+          }
+        ],
+        "x_axis": "type_fraude",
+        "groupby": [],
+        "timeseries_limit_metric": {
+          "label": "Nombre de factures",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "nb_fraudes",
+            "type": "BIGINT"
+          },
+          "aggregate": "SUM"
+        },
+        "sort_series_type": "sum",
+        "stack": "Stack",
+        "order_desc": true,
+        "row_limit": 20,
+        "orientation": "horizontal",
+        "show_value": true,
+        "datasource_id": 8,
+        "datasource": "8__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 7,
+      "titre": "Cinq prestataires les plus exposes (MGA)",
+      "viz_type": "table",
+      "vue": "v_top5_prestataires",
+      "params": {
+        "metrics": [
+          {
+            "label": "Montant expose (MGA)",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "montant_expose_mga",
+              "type": "NUMERIC"
+            },
+            "aggregate": "SUM"
+          },
+          {
+            "label": "Taux de fraude (%)",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "taux_fraude_pct",
+              "type": "NUMERIC"
+            },
+            "aggregate": "SUM"
+          }
+        ],
+        "groupby": [
+          "prestataire_nom"
+        ],
+        "timeseries_limit_metric": {
+          "label": "Montant expose (MGA)",
+          "expressionType": "SIMPLE",
+          "column": {
+            "column_name": "montant_expose_mga",
+            "type": "NUMERIC"
+          },
+          "aggregate": "SUM"
+        },
+        "order_desc": true,
+        "row_limit": 5,
+        "page_length": 10,
+        "datasource_id": 18,
+        "datasource": "18__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 11,
+      "titre": "Evolution du delai de traitement",
+      "viz_type": "echarts_timeseries",
+      "vue": "v_kpi_mensuel",
+      "params": {
+        "metrics": [
+          {
+            "label": "Delai moyen (jours)",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "delai_traitement_jours",
+              "type": "NUMERIC"
+            },
+            "aggregate": "SUM"
+          }
+        ],
+        "x_axis": "mois",
+        "groupby": [],
+        "granularity_sqla": "mois",
+        "time_grain_sqla": "P1M",
+        "order_desc": true,
+        "row_limit": 24,
+        "y_axis_format": ".1f",
+        "line_type": "linear",
+        "rich_tooltip": true,
+        "datasource_id": 6,
+        "datasource": "6__table"
+      },
+      "cache_timeout": null
+    },
+    {
+      "id": 9,
+      "titre": "Motifs de non-paiement par mois",
+      "viz_type": "echarts_timeseries_bar",
+      "vue": "v_controle_points",
+      "params": {
+        "metrics": [
+          {
+            "label": "Factures",
+            "expressionType": "SIMPLE",
+            "column": {
+              "column_name": "nb_factures",
+              "type": "BIGINT"
+            },
+            "aggregate": "SUM"
+          }
+        ],
+        "x_axis": "mois",
+        "groupby": [
+          "motif"
+        ],
+        "stack": "Stack",
+        "order_desc": true,
+        "row_limit": 10000,
+        "orientation": "vertical",
+        "show_value": false,
+        "datasource_id": 10,
+        "datasource": "10__table"
+      },
+      "cache_timeout": null
+    }
+  ],
+  "position_json": {
+    "CHART-1": {
+      "children": [],
+      "id": "CHART-1",
+      "meta": {
+        "chartId": 1,
+        "height": 2,
+        "sliceName": "Factures traitees",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0",
+        "COLUMN-0-1"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-0-1": {
+      "children": [
+        "CHART-1"
+      ],
+      "id": "COLUMN-0-1",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-12": {
+      "children": [],
+      "id": "CHART-12",
+      "meta": {
+        "chartId": 12,
+        "height": 2,
+        "sliceName": "Montant presente (MGA)",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0",
+        "COLUMN-0-12"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-0-12": {
+      "children": [
+        "CHART-12"
+      ],
+      "id": "COLUMN-0-12",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-3": {
+      "children": [],
+      "id": "CHART-3",
+      "meta": {
+        "chartId": 3,
+        "height": 2,
+        "sliceName": "Taux de fraude observe (%)",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0",
+        "COLUMN-0-3"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-0-3": {
+      "children": [
+        "CHART-3"
+      ],
+      "id": "COLUMN-0-3",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-13": {
+      "children": [],
+      "id": "CHART-13",
+      "meta": {
+        "chartId": 13,
+        "height": 2,
+        "sliceName": "Delai moyen de traitement (jours)",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0",
+        "COLUMN-0-13"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-0-13": {
+      "children": [
+        "CHART-13"
+      ],
+      "id": "COLUMN-0-13",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 3
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-0"
+      ],
+      "type": "COLUMN"
+    },
+    "ROW-0": {
+      "children": [
+        "COLUMN-0-1",
+        "COLUMN-0-12",
+        "COLUMN-0-3",
+        "COLUMN-0-13"
+      ],
+      "id": "ROW-0",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT"
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID"
+      ],
+      "type": "ROW"
+    },
+    "CHART-14": {
+      "children": [],
+      "id": "CHART-14",
+      "meta": {
+        "chartId": 14,
+        "height": 2,
+        "sliceName": "Montants economises confirmes (MGA)",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1",
+        "COLUMN-1-14"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-1-14": {
+      "children": [
+        "CHART-14"
+      ],
+      "id": "COLUMN-1-14",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-15": {
+      "children": [],
+      "id": "CHART-15",
+      "meta": {
+        "chartId": 15,
+        "height": 2,
+        "sliceName": "Taux de detection du modele (%)",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1",
+        "COLUMN-1-15"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-1-15": {
+      "children": [
+        "CHART-15"
+      ],
+      "id": "COLUMN-1-15",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-17": {
+      "children": [],
+      "id": "CHART-17",
+      "meta": {
+        "chartId": 17,
+        "height": 2,
+        "sliceName": "Taux de faux positifs du modele (%)",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1",
+        "COLUMN-1-17"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-1-17": {
+      "children": [
+        "CHART-17"
+      ],
+      "id": "COLUMN-1-17",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 4
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-1"
+      ],
+      "type": "COLUMN"
+    },
+    "ROW-1": {
+      "children": [
+        "COLUMN-1-14",
+        "COLUMN-1-15",
+        "COLUMN-1-17"
+      ],
+      "id": "ROW-1",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT"
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID"
+      ],
+      "type": "ROW"
+    },
+    "CHART-5": {
+      "children": [],
+      "id": "CHART-5",
+      "meta": {
+        "chartId": 5,
+        "height": 6,
+        "sliceName": "Montant present par mois (MGA)",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-2",
+        "COLUMN-2-5"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-2-5": {
+      "children": [
+        "CHART-5"
+      ],
+      "id": "COLUMN-2-5",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-2"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-6": {
+      "children": [],
+      "id": "CHART-6",
+      "meta": {
+        "chartId": 6,
+        "height": 7,
+        "sliceName": "Fraude par mecanisme (24 mois)",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-2",
+        "COLUMN-2-6"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-2-6": {
+      "children": [
+        "CHART-6"
+      ],
+      "id": "COLUMN-2-6",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-2"
+      ],
+      "type": "COLUMN"
+    },
+    "ROW-2": {
+      "children": [
+        "COLUMN-2-5",
+        "COLUMN-2-6"
+      ],
+      "id": "ROW-2",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT"
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID"
+      ],
+      "type": "ROW"
+    },
+    "CHART-7": {
+      "children": [],
+      "id": "CHART-7",
+      "meta": {
+        "chartId": 7,
+        "height": 7,
+        "sliceName": "Cinq prestataires les plus exposes (MGA)",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-3",
+        "COLUMN-3-7"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-3-7": {
+      "children": [
+        "CHART-7"
+      ],
+      "id": "COLUMN-3-7",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-3"
+      ],
+      "type": "COLUMN"
+    },
+    "CHART-11": {
+      "children": [],
+      "id": "CHART-11",
+      "meta": {
+        "chartId": 11,
+        "height": 6,
+        "sliceName": "Evolution du delai de traitement",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-3",
+        "COLUMN-3-11"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-3-11": {
+      "children": [
+        "CHART-11"
+      ],
+      "id": "COLUMN-3-11",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 6
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-3"
+      ],
+      "type": "COLUMN"
+    },
+    "ROW-3": {
+      "children": [
+        "COLUMN-3-7",
+        "COLUMN-3-11"
+      ],
+      "id": "ROW-3",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT"
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID"
+      ],
+      "type": "ROW"
+    },
+    "CHART-9": {
+      "children": [],
+      "id": "CHART-9",
+      "meta": {
+        "chartId": 9,
+        "height": 8,
+        "sliceName": "Motifs de non-paiement par mois",
+        "width": 12
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-4",
+        "COLUMN-4-9"
+      ],
+      "type": "CHART"
+    },
+    "COLUMN-4-9": {
+      "children": [
+        "CHART-9"
+      ],
+      "id": "COLUMN-4-9",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 12
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID",
+        "ROW-4"
+      ],
+      "type": "COLUMN"
+    },
+    "ROW-4": {
+      "children": [
+        "COLUMN-4-9"
+      ],
+      "id": "ROW-4",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT"
+      },
+      "parents": [
+        "ROOT_ID",
+        "GRID_ID"
+      ],
+      "type": "ROW"
+    },
+    "GRID_ID": {
+      "children": [
+        "ROW-0",
+        "ROW-1",
+        "ROW-2",
+        "ROW-3",
+        "ROW-4"
+      ],
+      "id": "GRID_ID",
+      "parents": [
+        "ROOT_ID"
+      ],
+      "type": "GRID"
+    },
+    "ROOT_ID": {
+      "children": [
+        "GRID_ID"
+      ],
+      "id": "ROOT_ID",
+      "type": "ROOT"
+    },
+    "DASHBOARD_VERSION_KEY": "v2"
+  },
+  "json_metadata": {
+    "timed_refresh_immune_slices": [],
+    "expanded_slices": {},
+    "refresh_frequency": 0,
+    "color_scheme": "",
+    "label_colors": {},
+    "shared_label_colors": [],
+    "map_label_colors": {},
+    "color_scheme_domain": [],
+    "cross_filters_enabled": true
+  }
+}

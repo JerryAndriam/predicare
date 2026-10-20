@@ -176,7 +176,11 @@ une migration ajoutée après le premier démarrage resterait non appliquée, et
 | `make db-sql Q="SELECT …"` | Exécute une requête. |
 | `make db-sql FILE=analyse.sql` | Exécute un fichier SQL de l'hôte. |
 | `make bi` | Vérifie que les vues de la couche sémantique BI compilent. |
-| `make bi-graphiques` | Exécute la requête de chaque graphique et vérifie qu'elle aboutit. |
+| `make bi-dashboard` | Réapplique le tableau de bord archivé dans le dépôt (après une manip dans l'interface). |
+| `make bi-export` | Archive les douze tuiles, la mise en page et les filtres natifs dans `ops/superset/dashboards/`. |
+| `make bi-requetes` | Peuple l'historique SQL Lab et les requêtes enregistrées de Superset. |
+| `make bi-compte-demo` | Crée le compte Superset de démonstration, en lecture seule. |
+| `make bi-graphiques` | Exécute la requête de chaque graphique, vérifie qu'elle aboutit et qu'aucune dérive ne s'est installée. |
 | `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
 
 Aucun port TCP n'atteint PostgreSQL : tout passe par `docker compose exec`, donc
@@ -203,6 +207,9 @@ s'entraîne et ce qui sert.
 | `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
 | `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
 | `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
+| `make score-historique` | Rejoue le jeu étiqueté (backfill idempotent, statut `historique`). |
+| `make score-factures` | Note les nouvelles factures et alimente la file d'alertes. |
+| `make import-factures` | Importe le lot CSV du jour J depuis `data/import/`. |
 
 L'entraînement écrit quatre fichiers par version :
 
@@ -219,23 +226,23 @@ grille tarifaire** que celle utilisée à l'entraînement : un changement de
 tarif impose un ré-entraînement, explicite, plutôt qu'un modèle qui dérive en
 silence.
 
-Résultats du modèle v1 sur le jeu de test (10 086 factures, la période la plus
+Résultats du modèle v2 sur le jeu de test (10 086 factures, la période la plus
 récente lue une seule fois) :
 
 | Métrique | Valeur |
 | --- | --- |
-| ROC-AUC | 0,950 |
-| PR-AUC | 0,891 |
-| Rappel au seuil retenu | 0,870 |
-| Précision au seuil retenu | 0,597 |
-| Seuil appliqué | 0,2876 |
+| ROC-AUC | 0,951 |
+| PR-AUC | 0,893 |
+| Rappel au seuil retenu | 0,875 |
+| Précision au seuil retenu | 0,598 |
+| Seuil appliqué | 0,2766 |
 
 Le seuil est **calculé, pas choisi** : il minimise le coût métier sous
 contrainte de rappel ≥ 90 % (exigence du Module 2). Le seuil historique de 0,8
 a été abandonné — avec 8,7 % de fraude dans la population, il laissait passer
 une part importante des vraies fraudes. Le détail de l'arbitrage est dans
-[`reports/modele_v1.md`](reports/modele_v1.md) et l'audit d'équité dans
-[`reports/equite_v1.md`](reports/equite_v1.md).
+[`reports/modele_v2.md`](reports/modele_v2.md) et l'audit d'équité dans
+[`reports/equite_v2.md`](reports/equite_v2.md).
 
 ### n8n
 

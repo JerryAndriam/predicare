@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Request-Id"],
     )
-    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)
+    app.add_middleware(ObservabilityMiddleware, service=SERVICE_NAME)  # type: ignore[arg-type]
 
     register_exception_handlers(app)
     register_health_route(

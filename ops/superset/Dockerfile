@@ -53,6 +53,10 @@ ENV SUPERSET_CONFIG_PATH=/app/pythonpath/superset_config.py \
 COPY ops/superset/superset_config.py /app/pythonpath/superset_config.py
 COPY ops/superset/register_datasets.py /app/register_datasets.py
 COPY ops/superset/register_dashboard.py /app/register_dashboard.py
+COPY ops/superset/charger_requetes.py /app/charger_requetes.py
+COPY ops/superset/exporter_dashboard.py /app/exporter_dashboard.py
+COPY ops/superset/dashboard_etat.py /app/dashboard_etat.py
+COPY ops/superset/creer_compte_demo.py /app/creer_compte_demo.py
 COPY ops/superset/init.sh /app/init.sh
 
 # Les vues de la couche semantique voyagent dans l'image : le job BI doit

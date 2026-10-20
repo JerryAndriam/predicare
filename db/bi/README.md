@@ -1,8 +1,8 @@
 # Pilotage decisionnel
 
 Couche semantique du tableau de bord Superset, et documentation des
-indicateurs (Phase 7.3 du plan d'action : « Documenter chaque indicateur :
-definition, source, frequence de mise a jour »).
+indicateurs (CDC, Flux 3 : « volumes traites, montants economises et taux de
+detection »).
 
 ## Principe : des vues, pas des graphiques construits a la main
 
@@ -27,7 +27,7 @@ chaque retouche de libelle decourage de corriger, donc les indicateurs
 vieillissent. Elles restent versionnees dans Git et rejouables sur une
 machine vierge.
 
-## Les dix vues
+## Les douze vues
 
 | Vue | Grain | Role |
 | --- | --- | --- |
@@ -36,32 +36,41 @@ machine vierge.
 | `v_factures_detail` | 1 ligne / facture | socle d'exploration, dimensions denormalisees |
 | `v_fraude_par_type` | type x mois | les mecanismes de fraude et leur montant expose |
 | `v_prestataires_risque` | 1 ligne / prestataire | classe par montant expose |
+| `v_top5_prestataires` | 1 ligne / prestataire, 5 lignes | les cinq plus exposes : la limite est dans la vue |
 | `v_controle_points` | motif x mois | motifs de non-paiement |
 | `v_detection_mensuel` | 1 ligne / mois | volume de predictions du modele |
 | `v_delai_decision` | 1 ligne / mois | alerte -> decision gestionnaire |
 | `v_montants_economises` | 1 ligne / mois | fraude confirmee par un gestionnaire |
 | `v_faux_positifs` | prediction x decision | matrice de confusion metier |
-| `v_cdc_global` | 1 ligne | la boucle de decision : rappel, faux positifs, economises, delai |
+| `v_modele_performance` | 1 ligne | rappel et faux positifs du modele, sur son TEST temporel |
+| `v_cdc_global` | 1 ligne | la boucle en direct : alertes, montant expose, decisions, delai |
 
 ## Les cinq indicateurs du CDC
 
-La Phase 7 exige volumes, montants economises, taux de detection, delai de
-traitement et taux de faux positifs. Deux d'entre eux n'existent pas encore
-dans les donnees : `ml.prediction` et `audit.decision_gestionnaire` sont
-vides.
+Le CDC exige volumes, montants economises, taux de detection, delai de
+traitement et taux de faux positifs. Attention a ne pas confondre deux
+choses :
 
-Les vues correspondantes sont **livrees quand meme, et vides**. Une brique
-absente est invisible ; une brique vide avec son etat affiche est un
-indicateur de donnees manquant, que le jury peut constater et discusser. Le
-tableau se remplira seul a la premiere execution du modele.
+* la **performance du modele** (rappel, faux positifs) se lit sur son jeu de
+  TEST temporel, jamais vu a l'entrainement. Un rejeu de tout l'historique
+  serait in-sample et flatterait le modele. C'est `v_modele_performance`,
+  alimentee par `ml.modele_version.metriques` ;
+* la **boucle en direct** (alertes en attente, montant expose, decisions,
+  delai) se lit sur `v_cdc_global`, alimentee par `ml.prediction` et
+  `audit.decision_gestionnaire`.
+
+Les vues correspondantes sont **livrees quand meme, et vides** au premier
+demarrage. Une brique absente est invisible ; une brique vide avec son etat
+affiche est un indicateur de donnees manquant, que le jury peut constater et
+discuter. Le tableau se remplit ensuite avec le scoring et les decisions.
 
 | Indicateur CDC | Vue | Etat | Source |
 | --- | --- | --- | --- |
 | Volumes | `v_kpi_mensuel` | **peuple** | `core.facture` |
 | Delai de traitement | `v_kpi_mensuel` | **peuple** — 8,5 jours reels | `core.facture.date_reception` -> `date_traitement` |
-| Montants economises | `v_kpi_mensuel.montant_fraude_mga` | **peuple** — fraude identifiee sur le jeu | `core.facture` x `ml.label_fraude` |
-| Taux de detection | `v_detection_mensuel` | vide | `ml.prediction` |
-| Taux de faux positifs | `v_faux_positifs` | vide | `ml.prediction` + `audit.decision_gestionnaire` |
+| Montants economises | `v_cdc_global.montant_economise_mga` | **en attente** — decisions humaines | `audit.decision_gestionnaire` |
+| Taux de detection | `v_modele_performance.rappel_test_pct` | **peuple** — 87,47 % (test v2) | `ml.modele_version.metriques` |
+| Taux de faux positifs | `v_modele_performance.faux_positifs_test_pct` | **peuple** — 40,23 % (test v2) | `ml.modele_version.metriques` |
 
 ## Unite : ariary, jamais euros
 
@@ -69,7 +78,7 @@ Le jeu de l'encadrement est en **MGA**. Une colonne nommee `montant_eur`
 serait fausse d'un facteur d'environ 57 000. Toutes les colonnes portent
 `mga` dans leur nom, et les titres de graphiques le rappelent.
 
-## Cinq pieges que les tests ne voient pas
+## Sept pieges que les tests ne voient pas
 
 Chacun a fait afficher « there was an issue » sur des graphiques dont la
 requete etait pourtant correcte. Tous meritaient d'etre ecrits.
@@ -190,7 +199,7 @@ Deux consequences dans ce depot :
 
 * `granularity_sqla` est ecrit explicitement dans les `params` de chaque
   graphique qui en a besoin -- `mois` sur `v_kpi_mensuel`, `periode` ailleurs ;
-* `v_kpi_global` et `v_cdc_global` portent une colonne `periode`. Une tuile de
+* `v_kpi_global`, `v_modele_performance` et `v_cdc_global` portent une colonne `periode`. Une tuile de
   valeur unique n'en a pas besoin pour calculer, mais le frontal la reclame
   pour construire sa requete : c'est ce qui date le total, et sans elle la
   tuile n'a pas de colonne de temps a lui donner.
@@ -202,12 +211,76 @@ colonne de temps. Une verification qui complete ce qu'elle verifie ne verifie
 rien : la version precedente deduisait `granularity` du `groupby`, et validait
 donc 200 les neuf tuiles que le navigateur recevait en 400.
 
+### 6. L'interface est la source de verite a l'execution
+
+Les `params` d'un graphique vits **en base**, pas dans le depot. Le depot les
+ecrit au moment de l'enregistrement ; ensuite, l'interface peut les
+reecrire. Enregister une tuile depuis « Explore » ecrase la definition du
+code, et le symptome est un « ! » sur la tuile : rien ne dit d'ou il vient.
+
+Le cas rencontre : deux tuiles portaient un `adhoc_filters` incoherent --
+`{'operator': 'TEMPORAL_RANGE', 'comparator': 'No filter'}` -- que le serveur
+refuse :
+
+```
+POST /api/v1/chart/data -> 400
+"Request is incorrect: {'queries': {0: {'filters': {0: {'col': ['Missing data
+ for required field.'], ...
+```
+
+Le meme filtre fait reapparaitre le « ! » des qu'on change le type de
+graphique dans l'interface : le frontal renvoie les `adhoc_filters` stockes.
+
+Le modele a change : **les tuiles se creent dans l'interface**, et le depot
+archive ce qu'elle produit. La procedure est dans
+`docs/exploitation/creer_tableau_bord_superset.md`.
+
+Trois parades, l'une curative et les deux autres preventives :
+
+* `make bi-dashboard` rejoue l'archive : les douze tuiles redeviennent
+  exactement celles du depot en une commande ;
+* `make bi-graphiques` verifie la **derive** -- il compare les `params` stockes
+  aux definitions canoniques, ET la mise en page a l'etat archive, et nomme
+  la tuile et le parametre fautifs. Sans ce controle, la divergence ne se
+  voit qu'a l'ecran, au pire moment ;
+* `make bi-export` archive la mise en page et les filtres natifs dans
+  `ops/superset/dashboards/`. Le depot hold alors l'etat COMPLET du tableau :
+  les requetes des tuiles (par le code) et la mise en page (par l'archive).
+  Le cycle est complet : on modifie dans l'interface, on archive, le depot
+  devient la reference ; on restaure, le depot s'impose.
+
+Un compte de demonstration en lecture seule (`make bi-compte-demo`) complete
+le dispositif : le serveur refuse toute sauvegarde sur les graphiques, donc
+la divergence ne peut pas survenir pendant une demonstration. Les roles
+standards ne conviennent pas -- `Gamma` a `can_write` sur les graphiques --
+d'ou un role metier construit droit par droit.
+
+Regle pour l'interface : experimenter sur une tuile, c'est changer son type de
+graphique **sans enregistrer**. Enregistrer, c'est choisir la version
+ definitive -- et alors, autant la porter dans le code.
+
+### 7. Une limite de lignes porte par la donnee, pas par le frontal
+
+`row_limit` est un *indice* envoye par le navigateur : un changement de type de
+graphique, une copie, une edition, et il disparait. La tuile « Cinq
+prestataires les plus exposes » rendait alors les 251 lignes de la vue au lieu
+de cinq.
+
+La regle : quand un titre annonce un nombre (« les cinq... »), ce nombre doit
+etre dans la **vue**, pas dans les controles de l'interface. D'ou
+`v_top5_prestataires`, qui limite a cinq lignes dans le SQL. Le graphique garde
+`row_limit: 5` en doublon de securite, et `timeseries_limit_metric` pour que
+le tri porte sur le montant expose et non sur l'ordre alphabétique.
+
 ### Les cinq indicateurs du CDC, tous affiches
 
-Les trois derniers sont des tuiles sur `v_cdc_global`, qui renvoie toujours
-une ligne. Tant que le modele n'a pas tourne, elles affichent « en attente »
-avec le sous-titre qui dit pourquoi -- plutot que d'etre absentes du tableau.
-Une brique vide se constate ; une brique manquante passe pour un oubli.
+Le bandeau melange volontairement deux sources : les montants economises
+viennent des decisions humaines (`v_cdc_global`), la detection et les faux
+positifs viennent du test temporel du modele (`v_modele_performance`). Les
+deux vues renvoient toujours une ligne. Tant que le modele n'a pas tourne,
+les montants affichent « en attente » avec le sous-titre qui dit pourquoi --
+plutot que d'etre absents du tableau. Une brique vide se constate ; une
+brique manquante passe pour un oubli.
 
 ## Securite : la frontiere `audit`
 

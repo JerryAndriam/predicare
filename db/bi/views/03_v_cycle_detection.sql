@@ -1,5 +1,5 @@
 -- ============================================================================
--- Couche de pilotage alignedee sur la Phase 7 du plan d'action
+-- Couche de pilotage decisionnel (CDC, Flux 3)
 -- ----------------------------------------------------------------------------
 -- Le CDC exige cinq indicateurs : volumes, montants economises, taux de
 -- detection, delai de traitement, taux de faux positifs.
@@ -8,19 +8,16 @@
 -- contient reellement : le volume, le delai et la prevalence de la fraude
 -- sortent de `core.facture` et `ml.label_fraude`.
 --
--- Les vues de ce fichier couvrent les DEUX indicateurs qui n'existent pas
--- encore dans les donnees : le taux de detection d'un modele et le taux de
--- faux positifs face a la decision humaine. Elles lisent `ml.prediction` et
--- `audit.decision_gestionnaire`, tous deux vides a ce jour.
+-- Ce fichier mesure la BOUCLE DE DECISION en direct : alertes en attente,
+-- montants exposes, decisions, montants confirmes et delai. Il lit
+-- `ml.prediction` et `audit.decision_gestionnaire`.
 --
--- Elles sont livrees quand meme, et vides.
+-- Les deux ratios de performance du modele (rappel et faux positifs) sont
+-- dans `04_v_modele_performance.sql`. Ils viennent des metriques de TEST du
+-- modele promu, pas d'un rejeu in-sample de tout l'historique.
 --
--- Pourquoi ne pas les escamoter : le tableau de bord doit avoir la forme
--- attendue par le CDC le jour J. Une brique absente est invisible ; une
--- brique vide avec son etat affiche (« en attente de modele ») est un
--- indicateur de donnees manquant, ce que le jury peut constater et
--- discusser. Le tableau se remplira seul des la premiere execution du modele
--- et de la premiere decision gestionnaire.
+-- Les tuiles restent presentes meme vides : une brique vide avec son etat
+-- (« en attente ») se discute ; une brique absente se confond avec un oubli.
 --
 -- ---------------------------------------------------------------------------
 -- Le probleme de securite, et sa solution
@@ -163,65 +160,70 @@ COMMENT ON VIEW bi.v_faux_positifs IS
 
 
 -- ============================================================================
--- bi.v_cdc_global : grain = 1 ligne, les trois indicateurs de la boucle
+-- bi.v_cdc_global : grain = 1 ligne, la boucle de decision en direct
 -- ============================================================================
--- Rappel, faux positifs et montants economises confirmes : ce sont les trois
--- indicateurs qu'on ne peut pas lire sur `core` seul, parce qu'ils comparent
--- une PREDICTION a une VERITE HUMAINE.
+-- La file d'alertes est vivante : alertes en attente, montant expose, puis
+-- decisions humaines (montants confirmes, delai). C'est ce que le gestionnaire
+-- voit dans l'interface, agrege pour le pilotage.
+--
+-- Le seuil d'alerte est relu dans `audit.parametre` a chaque requete : un
+-- changement depuis l'ecran d'administration s'applique immediatement, comme
+-- la file de `api-core` (condition « Configurable » du CDC).
 --
 -- Grain = 1 LIGNE, toujours, meme vide. Une tuile qui affiche « en attente »
 -- est informative ; une tuile sans aucune ligne ne se distingue pas d'une
 -- tuile cassee. D'ou le LEFT JOIN et l'absence de filtre `WHERE` : la vue
 -- renvoie une ligne, avec des NULL explicites.
 --
--- MEME MESURE DE PRECISION QUE v_faux_positifs et v_montants_economises, en
--- global plutot que par mois -- et donc comme eux sans ponderation abusive :
--- un ratio se recalcule, il ne se somme pas.
---
 -- SECURITY DEFINER : lecture agregee de `audit`, sans en exposer le detail.
-CREATE OR REPLACE VIEW bi.v_cdc_global
+-- Un DROP est necessaire : la vue change de colonnes, et CREATE OR REPLACE
+-- ne sait pas retirer une colonne existante.
+DROP VIEW IF EXISTS bi.v_cdc_global CASCADE;
+
+CREATE VIEW bi.v_cdc_global
 WITH (security_invoker = false) AS
+WITH seuil AS (
+    SELECT COALESCE(
+        (SELECT valeur::numeric FROM audit.parametre WHERE cle = 'seuil_alerte'),
+        0.8::numeric
+    ) AS valeur
+)
 SELECT
     COUNT(p.id)                                               AS nb_predictions,
 
-    -- RAPPEL : part des vraies fraudes que la boucle a effectivement
-    -- attrapees. Denominateur = les VRAIES fraudes, pas les predictions.
-    ROUND(100.0 * COUNT(*) FILTER (
-              WHERE l.label = 1 AND p.is_fraud AND d.decision = 'valider_fraude')
-          / NULLIF(COUNT(*) FILTER (WHERE l.label = 1), 0), 2)
-                                                            AS taux_detection_pct,
+    -- File d'alerte : meme filtre que `GET /api/core/alertes/file`.
+    COUNT(*) FILTER (
+        WHERE p.statut = 'nouvelle'
+          AND p.score_fraude >= (SELECT valeur FROM seuil)
+    )                                                         AS nb_alertes_en_attente,
 
-    -- FAUX POSITIFS : part des alertes que le gestionnaire a ecartees.
-    -- Une prediction sans decision compte comme faux positif : le systeme a
-    -- alerte, personne n'a confirme.
-    ROUND(100.0 * COUNT(*) FILTER (
-              WHERE p.is_fraud
-                AND (d.decision IS NULL OR d.decision <> 'valider_fraude'))
-          / NULLIF(COUNT(*) FILTER (WHERE p.is_fraud), 0), 2)
-                                                            AS taux_faux_positifs_pct,
+    ROUND(COALESCE(SUM(f.montant_total) FILTER (
+        WHERE p.statut = 'nouvelle'
+          AND p.score_fraude >= (SELECT valeur FROM seuil)
+    ), 0), 2)                                                 AS montant_en_attente_mga,
 
-    -- MONTANTS ECONOMISES : ce qu'un gestionnaire a reellement confirme.
-    ROUND(SUM(f.montant_total) FILTER (WHERE d.decision = 'valider_fraude'))
+    -- Boucle humaine : ce qu'un gestionnaire a reellement tranche.
+    COUNT(d.prediction_id)                                    AS nb_decisions,
+
+    ROUND(SUM(f.montant_total) FILTER (WHERE d.decision = 'valider_fraude'), 2)
                                                             AS montant_economise_mga,
 
-    -- DELAI DE DECISION : alerte -> decision gestionnaire.
     ROUND(AVG(EXTRACT(EPOCH FROM (d.decided_at - p.created_at))) / 3600.0, 2)
                                                             AS delai_decision_heures,
 
     -- Temps
     -- -----
-    -- `periode` = mois de la derniere detection. Meme role que dans
+    -- `periode` = mois de la derniere prediction. Meme role que dans
     -- v_kpi_global : c'est la colonne temporelle que le frontal Superset
     -- reclame pour toute requete de serie temporelle, et `big_number` en
     -- construit toujours une. Sans elle : 400 « Datetime column not
     -- provided ». NULL tant que `ml.prediction` est vide -- la vue rend
     -- quand meme une ligne, et la tuile affiche « en attente ».
-    -- En DERNIERE position : un CREATE OR REPLACE VIEW n'ajoute qu'a la fin.
     MAX(date_trunc('month', p.created_at))::date            AS periode
-FROM ml.prediction p
+FROM (SELECT 1) base
+LEFT JOIN ml.prediction p ON TRUE
 LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
-LEFT JOIN ml.label_fraude              l ON l.facture_id    = p.facture_id
 LEFT JOIN core.facture                 f ON f.id            = p.facture_id;
 
 COMMENT ON VIEW bi.v_cdc_global IS
-    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere detection, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire. TODO : modele non entraine, aucune decision enregistree.';
+    'Boucle de decision en direct : predictions, alertes en attente (seuil courant), montant expose, decisions, montants confirmes et delai. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere prediction, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire.';

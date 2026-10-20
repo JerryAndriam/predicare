@@ -178,6 +178,9 @@ restart: down start ## Redemarre SANS reconstruire (utilise `make restart up` ap
 up-bi: ## Demarre le pilotage decisionnel (Superset, ~900 Mo)
 	@$(COMPOSE_BI) build superset
 	@$(COMPOSE_BI) up -d superset superset-init superset-import
+	# `--force-recreate` : un job deja termine n'est pas relance par `up -d`,
+	# et le tableau garderait les graphiques de la veille.
+	@$(COMPOSE_BI) up -d --force-recreate superset-dashboard
 	@scripts/attendre-http.sh "http://localhost:$${SUPERSET_PORT:-8088}/health" 180 "Superset"
 	@echo "Superset : http://localhost:$${SUPERSET_PORT:-8088}"
 
@@ -263,6 +266,29 @@ bi: ## Verifie que les vues de la couche semantique compilent
 	done
 	@echo "  Vues BI : $$(ls db/bi/views/*.sql | wc -l) fichier(s) applique(s)."
 
+.PHONY: bi-dashboard
+bi-dashboard: ## Reapplique le tableau de bord de reference (apres une manip dans l'interface)
+	# Les tuiles sont creees dans l'interface, puis archivees dans le depot
+	# (`make bi-export`). Cette cible rejoue cette archive : le tableau
+	# redevient exactement celui du depot, mise en page et filtres compris.
+	@scripts/build-bi.sh superset-dashboard
+	@$(COMPOSE_BI) run --rm superset-dashboard
+
+.PHONY: bi-export
+bi-export: ## Archive l'etat du tableau de bord (mise en page, filtres natifs) dans le depot
+	@scripts/build-bi.sh superset-export
+	@$(COMPOSE_BI) run --rm superset-export
+
+.PHONY: bi-requetes
+bi-requetes: ## Peuple l'historique SQL Lab et les requetes enregistrees de Superset
+	@scripts/build-bi.sh superset-requetes
+	@$(COMPOSE_BI) run --rm superset-requetes
+
+.PHONY: bi-compte-demo
+bi-compte-demo: ## Cree le compte Superset de demonstration, en lecture seule
+	@scripts/build-bi.sh superset-requetes
+	@$(COMPOSE_BI) run --rm superset-requetes python /app/creer_compte_demo.py
+
 .PHONY: bi-graphiques
 bi-graphiques: ## Verifie que chaque graphique rend une requete reussie
 	@uv run python ops/superset/verifier_graphiques.py
@@ -319,6 +345,18 @@ reload-data: ## Recharge les donnees depuis ./data/raw et reapplique la couche B
 	@$(COMPOSE_CORE) up -d db
 	@$(COMPOSE_CORE) run --rm seed
 	@bash db/bi/load.sh
+
+.PHONY: import-factures
+import-factures: ## Importe le lot CSV du jour J depuis ./data/import (schema data/raw)
+	@$(COMPOSE_CORE) run --rm seed python -m predicare_seed.import_factures --dossier /data/import
+
+.PHONY: score-historique
+score-historique: ## Note le jeu etiquete en statut historique (backfill idempotent)
+	@$(COMPOSE_CORE) run --rm api-inference python -m predicare_inference_api.batch historique
+
+.PHONY: score-factures
+score-factures: ## Note les nouvelles factures et alimente la file d'alertes
+	@$(COMPOSE_CORE) run --rm api-inference python -m predicare_inference_api.batch nouvelles
 
 .PHONY: comptes
 comptes: ## Cree les quatre comptes de demonstration (mot de passe: DEMO_PASSWORD)
