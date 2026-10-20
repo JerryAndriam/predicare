@@ -13,6 +13,7 @@ import {
   type Role,
 } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { SchemaProjet } from '../components/SchemaProjet'
 import {
   Badge,
   Carte,
@@ -195,12 +196,27 @@ export function AdminPage() {
 
   return (
     <div className="pile">
-      <div className="titre-page">
-        <h1>Administration</h1>
-        <p>
+      <div className="titre-page" style={{
+        background: 'linear-gradient(160deg, #0e1a27 0%, #0f766e 70%, #0b5c56 100%)',
+        color: '#fff',
+        padding: '1.8rem 1.5rem 1.4rem',
+        borderRadius: 'var(--rayon)',
+        boxShadow: 'var(--ombre-levite)',
+        marginBottom: '1.2rem',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <h1 style={{ fontSize: '1.8rem', letterSpacing: '-0.03em', marginBottom: '0.2rem', color: '#fff' }}>Administration</h1>
+        <p style={{ opacity: 0.9, maxWidth: '60ch', color: '#e8f0f6', marginBottom: '0.6rem' }}>
           Seuil, versions du modele, sante, comptes et journal. Aucun reglage ne
           demande de redemarrer un conteneur.
         </p>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.82rem', opacity: 0.8 }}>
+          <span>Role : <strong style={{ color: '#2dd4bf' }}>Administrateur</strong></span>
+          <span>Version : <strong style={{ color: '#2dd4bf' }}>2</strong></span>
+          <span>Seuil : <strong style={{ color: '#2dd4bf' }}>28,76 %</strong></span>
+        </div>
+        <SchemaProjet />
       </div>
 
       <div className="onglets" role="tablist">

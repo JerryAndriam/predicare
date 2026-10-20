@@ -16,9 +16,11 @@ from pydantic import ValidationError
 from predicare.errors import InvalidInvoiceError
 from predicare.schemas import InvoiceSubmission
 
-#: Plage de validite business. Hors de ces bornes, la facture est rejetee
-#: meme si le JSON est valide : le referentiel des actes fait foi.
-MONTANT_MAX_SINGULIER = 10_000.0
+#: Plafond metier d'une ligne. Les montants sont en ariary (MGA) : le
+#: referentiel contient des actes jusqu'a 2 500 000 MGA et l'historique des
+#: lignes jusqu'a 5 460 000 MGA. Un plafond a 10 000 rejetait donc presque
+#: toutes les factures reelles.
+MONTANT_MAX_SINGULIER = 10_000_000.0
 QUANTITE_MAX_LIGNE = 100
 DUREE_MAX_RETROACTIVE_JOURS = 365 * 2
 DUREE_MAX_ANTICIPATION_JOURS = 1
@@ -61,17 +63,30 @@ def validate_invoice(
 
 
 def _validate_dates(invoice: InvoiceSubmission, now: datetime) -> None:
-    """Coherence temporelle : une facture ne peut pas venir du futur, ni d'il y a six ans."""
+    """Coherence temporelle : une facture ne peut pas venir du futur, ni d'il y a six ans.
+
+    Le front envoie des dates `datetime-local`, donc naives. On les normalise
+    avant comparaison : sans cela, Python leve `TypeError` (naif vs conscient)
+    et la facture finit en 500 au lieu d'etre notee.
+    """
     problems: list[str] = []
 
-    if invoice.date_facture > now + timedelta(days=DUREE_MAX_ANTICIPATION_JOURS):
+    def _naif_utc(valeur: datetime) -> datetime:
+        if valeur.tzinfo is None:
+            return valeur
+        return valeur.astimezone(UTC).replace(tzinfo=None)
+
+    maintenant = _naif_utc(now)
+    date_facture = _naif_utc(invoice.date_facture)
+
+    if date_facture > maintenant + timedelta(days=DUREE_MAX_ANTICIPATION_JOURS):
         problems.append("date_facture : date dans le futur")
 
-    if invoice.date_facture < now - timedelta(days=DUREE_MAX_RETROACTIVE_JOURS):
+    if date_facture < maintenant - timedelta(days=DUREE_MAX_RETROACTIVE_JOURS):
         problems.append("date_facture : date anterieure a la duree de conservation")
 
     for index, ligne in enumerate(invoice.lignes):
-        if ligne.date_acte > invoice.date_facture + timedelta(days=1):
+        if _naif_utc(ligne.date_acte) > date_facture + timedelta(days=1):
             problems.append(
                 f"lignes.{index}.date_acte : posterieure de plus d'un jour a la date de facture"
             )

@@ -123,11 +123,11 @@ def submission_de_test(**champs) -> dict:
     """Payload de soumission VALIDE au regard de `api-inference/validation.py`.
 
     Deux bornes de ce module a respecter : un montant unitaire de ligne ne
-    peut pas depasser 10 000 (la grille tarifaire du jeu de l'encadrement
-    étant en ariary, une consultation a 18 000 serait rejetee), et le total
-    doit rester coherent avec le detail des lignes. On travaille donc sur une
-    facture de 2 lignes de 4 500, ce qui teste la structure sans frôler les
-    limites.
+    peut pas depasser 10 000 000 MGA (la grille tarifaire du jeu de
+    l'encadrement est en ariary, une consultation a 18 000 doit donc etre
+    acceptee), et le total doit rester coherent avec le detail des lignes. On
+    travaille donc sur une facture de 2 lignes de 4 500, ce qui teste la
+    structure sans frôler les limites.
     """
     base = {
         "facture_id": "FAC-TEST-001",

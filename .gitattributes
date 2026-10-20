@@ -1,0 +1,5 @@
+# Les scripts shell et le Makefile doivent rester en LF, meme sur Windows.
+# Un shebang termine par CRLF donne dans WSL/Linux :
+#   env: 'bash\r': No such file or directory
+*.sh text eol=lf
+Makefile text eol=lf

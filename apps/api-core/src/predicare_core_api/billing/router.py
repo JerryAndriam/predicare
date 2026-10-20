@@ -164,7 +164,7 @@ def _appeler_inference(request: Request, payload: dict) -> dict:
     gestionnaire verrait une panne technique la ou il faut lui dire
     exactement ce qui manque.
     """
-    url = str(request.app.state.inference_url).rstrip("/")
+    url = str(request.app.state.inference_api_url).rstrip("/")
     try:
         response = httpx.post(f"{url}/predire", json=payload, timeout=15.0)
     except httpx.HTTPError as exc:
