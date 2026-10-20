@@ -15,6 +15,7 @@ peut etre remplace sans redemarrer le reste de la plateforme.
 | `registry.py` | Versions de modele, bascule a chaud, retour arriere |
 | `explainability.py` | Valeurs SHAP traduites en francais lisible |
 | `drift.py` | PSI par variable, detection de derive |
+| `derive.py` | Calcul du rapport de derive et ecriture dans `ml.rapport_derive` |
 | `router.py` | Endpoints : predire, seuil, modele, derive |
 | `noter.py` | Job de notation en lot de l'historique (`make noter`) |
 
@@ -50,6 +51,62 @@ Deux choix structurants :
   prediction. Relancer sur le meme lot ne renote rien et ne cree aucun
   doublon. `RESCORER=1` leve le filtre et met a jour la prediction existante.
 
+## Rapport de derive
+
+Le worker `worker-ingest` calcule un rapport au demarrage, puis au plus une
+fois par heure. Il l'ecrit dans `ml.rapport_derive` ; l'API et le worker etant
+deux processus, un etat en memoire du worker ne serait jamais visible depuis
+`GET /api/inference/derive`. La lecture en base rend aussi le rapport
+consultable apres un redemarrage.
+
+Faute de feature store, le calcul compare ce que `ml.prediction` conserve
+reellement, sur la version de modele active :
+
+| Variable | Source |
+| --- | --- |
+| `score_fraude` | `ml.prediction` |
+| `montant_total` | `core.facture` |
+| `nb_lignes` | `count(core.ligne_facture)` |
+| `montant_moyen_ligne` | `avg(montant_unitaire * quantite)` |
+
+La reference est la notation retrospective (`statut = 'archive'`) ; la fenetre
+courante exclut ces archives et se limite aux `DRIFT_WINDOW_DAYS` derniers
+jours. Le PSI suit les seuils conventionnels : stable sous 0,10, derive
+moderee de 0,10 a 0,25, forte au-dela. Les effectifs des deux echantillons
+sont stockes avec le rapport : un PSI calcule sur 18 lignes n'a pas la meme
+portee que sur 5 000.
+
+```bash
+curl -s http://localhost:8002/api/inference/derive | python3 -m json.tool
+```
+
+```json
+{
+  "status": "ok",
+  "id": 1,
+  "calcule_le": "2026-10-20T12:11:15.591786+02:00",
+  "fenetre_jours": 30,
+  "psi_global": 6.5287,
+  "variables_concernees": {
+    "concernees": ["score_fraude", "montant_moyen_ligne", "montant_total", "nb_lignes"],
+    "psi_par_variable": {"score_fraude": 6.5287, "montant_moyen_ligne": 5.1184},
+    "observations_reference": 5510,
+    "observations_courantes": 18,
+    "version_modele": "1"
+  },
+  "score_moyen_reference": 0.1359,
+  "score_moyen_courant": 0.5567,
+  "alerte": true
+}
+```
+
+La mesure du 20/10/2026 est volontairement extreme : la fenetre courante
+contient le lot de 20 factures F17 (7 alertes) et les rejeux e2e, pas un
+echantillon de production. Le rapport fait donc son travail — il signale que
+la population servie ne ressemble plus a l'historique — et l'effectif
+`observations_courantes: 18` permet de l'interpreter. Le front ne consomme pas
+encore cet endpoint (voir `docs/analyse_front_vs_cdc.md`).
+
 ## Points de securite et de robustesse
 
 - Une facture invalide produit **422 avec le nom du champ**, jamais une 500.
@@ -65,8 +122,9 @@ Deux choix structurants :
 - [ ] Agregations SQL d'historique pour la featurisation — **pas un bug** :
   le modele servi a 32 variables, aucune n'est une agregation. Les ajouter
   impose un re-entrainement v3 et la requete d'historique qui va avec.
-- [ ] Persistance du rapport de derive calcule par le worker
-- [ ] Test de robustesse sur 20 factures inedites (Phase 8.1)
-- [ ] Tests unitaires sur la validation (priorite haute)
+- [x] Persistance du rapport de derive calcule par le worker
+  (`derive.py`, `ml.rapport_derive`, `GET /api/inference/derive`)
+- [x] Test de robustesse sur 20 factures inedites (Phase 8.1, lot F17)
+- [x] Tests unitaires sur la validation (priorite haute)
 
 Proprietaire : Mirado

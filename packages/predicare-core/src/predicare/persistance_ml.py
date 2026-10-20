@@ -305,6 +305,151 @@ def activer_version(version: str) -> bool:
         return False
 
 
+#: Nombre de rapports de derive conserves. Le worker calcule au plus une fois
+#: par heure ; garder les 500 derniers couvre environ trois semaines de recul
+#: sans laisser la table grossir indefiniment.
+RAPPORTS_DERIVE_CONSERVES = 500
+
+
+def enregistrer_rapport_derive(
+    session: Session,
+    *,
+    fenetre_jours: int,
+    psi_global: float,
+    variables_concernees: dict[str, Any],
+    score_moyen_reference: float,
+    score_moyen_courant: float,
+    alerte: bool,
+) -> int:
+    """Ecrit un rapport dans `ml.rapport_derive` et purge les plus anciens.
+
+    `variables_concernees` est un JSON libre : il porte la liste des variables
+    en derive, le PSI par variable et la taille des deux echantillons. Le
+    schéma ne prévoit qu'une colonne JSONB ; y mettre aussi les effectifs
+    évite de relire `ml.prediction` pour interpréter un PSI calculé sur 18
+    lignes.
+    """
+    if fenetre_jours < 1:
+        raise ValueError(f"Fenetre de derive invalide : {fenetre_jours}")
+
+    identifiant = session.execute(
+        text(
+            """
+            INSERT INTO ml.rapport_derive
+                (fenetre_jours, psi_global, variables_concernees,
+                 score_moyen_reference, score_moyen_courant, alerte)
+            VALUES (:fenetre_jours, :psi_global, CAST(:variables AS jsonb),
+                    :score_reference, :score_courant, :alerte)
+            RETURNING id
+            """
+        ),
+        {
+            "fenetre_jours": fenetre_jours,
+            "psi_global": float(psi_global),
+            "variables": json.dumps(variables_concernees, ensure_ascii=False, default=str),
+            "score_reference": float(score_moyen_reference),
+            "score_courant": float(score_moyen_courant),
+            "alerte": bool(alerte),
+        },
+    ).scalar_one()
+
+    session.execute(
+        text(
+            """
+            DELETE FROM ml.rapport_derive
+            WHERE id NOT IN (
+                SELECT id FROM ml.rapport_derive
+                ORDER BY calcule_le DESC NULLS LAST, id DESC
+                LIMIT :limite
+            )
+            """
+        ),
+        {"limite": RAPPORTS_DERIVE_CONSERVES},
+    )
+    return int(identifiant)
+
+
+def persister_rapport_derive(**champs: Any) -> int | None:
+    """`enregistrer_rapport_derive` en version « ne leve jamais ».
+
+    Une panne d'ecriture du rapport ne doit pas tuer le worker : le prochain
+    tour reessaiera. L'inference et les alertes ne dependent pas de lui.
+    """
+    try:
+        with session_scope() as session:
+            return enregistrer_rapport_derive(session, **champs)
+    except Exception as exc:
+        logger.warning(
+            "rapport_derive.non_persiste",
+            erreur=str(exc),
+            fenetre_jours=champs.get("fenetre_jours"),
+        )
+        return None
+
+
+def lire_dernier_rapport_derive() -> dict[str, Any] | None:
+    """Dernier rapport persiste, ou None s'il n'y en a pas encore.
+
+    Lecture tolerante : une base injoignable rend `None` et l'endpoint repond
+    `non_calcule`, au lieu d'une 500 sur un ecran de supervision.
+    """
+    try:
+        with session_scope() as session:
+            ligne = (
+                session.execute(
+                    text(
+                        """
+                        SELECT id, calcule_le, fenetre_jours, psi_global,
+                               variables_concernees, score_moyen_reference,
+                               score_moyen_courant, alerte
+                        FROM ml.rapport_derive
+                        ORDER BY calcule_le DESC NULLS LAST, id DESC
+                        LIMIT 1
+                        """
+                    )
+                )
+                .mappings()
+                .first()
+            )
+    except Exception as exc:
+        logger.warning("rapport_derive.lecture_impossible", erreur=str(exc))
+        return None
+
+    if ligne is None:
+        return None
+
+    rapport = dict(ligne)
+    calcule_le = rapport.get("calcule_le")
+    if calcule_le is not None:
+        rapport["calcule_le"] = calcule_le.isoformat()
+    variables = rapport.get("variables_concernees")
+    if isinstance(variables, str):
+        try:
+            rapport["variables_concernees"] = json.loads(variables)
+        except json.JSONDecodeError:
+            logger.warning("rapport_derive.variables_illisibles", rapport_id=rapport.get("id"))
+    return rapport
+
+
+def lire_version_promue(session: Session) -> str | None:
+    """Version active selon le registre `ml.modele_version`, si elle est connue.
+
+    Le registre peut etre vide (base restauree sans lui) : l'appelant retombe
+    alors sur `MODEL_ACTIVE_VERSION`, qui est la source utilisee au demarrage
+    du service.
+    """
+    return session.execute(
+        text(
+            """
+            SELECT version FROM ml.modele_version
+            WHERE statut = 'promu'
+            ORDER BY promu_le DESC NULLS LAST, version DESC
+            LIMIT 1
+            """
+        )
+    ).scalar()
+
+
 def lire_seuil_alerte(session: Session) -> float | None:
     """Seuil choisi par un administrateur, tel que persiste dans `audit.parametre`."""
     valeur = session.execute(

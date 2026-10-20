@@ -29,6 +29,8 @@ from predicare.persistance_ml import (
     activer_version,
     amorcer_seuil_effectif,
     declarer_version,
+    enregistrer_rapport_derive,
+    lire_dernier_rapport_derive,
     lire_seuil_effectif,
     persister_prediction,
 )
@@ -348,6 +350,40 @@ def test_registre_de_versions_suit_la_bascule(base_de_donnees: None) -> None:
                     ),
                     {"s": ligne["statut"], "p": ligne["promu_le"], "v": ligne["version"]},
                 )
+
+
+def test_aller_retour_rapport_derive(base_de_donnees: None) -> None:
+    """Le rapport ecrit par le worker est relu par l'API, JSONB compris."""
+    try:
+        with db.session_scope() as session:
+            rapport_id = enregistrer_rapport_derive(
+                session,
+                fenetre_jours=30,
+                psi_global=0.4242,
+                variables_concernees={
+                    "concernees": ["score_fraude"],
+                    "observations_reference": 100,
+                    "observations_courantes": 12,
+                },
+                score_moyen_reference=0.12,
+                score_moyen_courant=0.61,
+                alerte=True,
+            )
+        assert rapport_id > 0
+
+        rapport = lire_dernier_rapport_derive()
+        assert rapport is not None
+        # Le worker peut ecrire entre-temps : on verifie la ligne ecrite, pas
+        # l'identite du dernier rapport.
+        assert rapport["id"] >= rapport_id
+        assert rapport["fenetre_jours"] == 30
+        assert rapport["psi_global"] == pytest.approx(0.4242)
+        assert rapport["variables_concernees"]["observations_courantes"] == 12
+        assert rapport["alerte"] is True
+        assert isinstance(rapport["calcule_le"], str)
+    finally:
+        with db.session_scope() as session:
+            session.execute(text("DELETE FROM ml.rapport_derive WHERE psi_global = 0.4242"))
 
 
 def test_amorcage_du_seuil_ne_rejoue_pas(base_de_donnees: None) -> None:

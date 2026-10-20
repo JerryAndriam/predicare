@@ -13,9 +13,10 @@ tests/
 
 ## Etat actuel
 
-652 tests, 17 ignores (`e2e` sans pile), execution en environ 2 minutes. Aucun
-ne demarre de conteneur ni ne touche PostgreSQL : tout porte sur des fonctions
-pures ou des artefacts temporaires.
+677 tests, 18 ignores (`e2e` et acces PostgreSQL sans plateforme), execution
+en environ 2 minutes. La grande majorite ne demarre ni conteneur ni base : elle
+porte sur des fonctions pures ou des artefacts temporaires. Les tests qui
+interrogent PostgreSQL sautent proprement quand la pile n'est pas demarree.
 
 ## Repartition cible
 
@@ -42,6 +43,8 @@ pures ou des artefacts temporaires.
 | `test_notifications.py` | Webhook n8n de bascule : URL vide, payload, timeout, jamais d'exception | Mirado |
 | `test_n8n_workflow.py` | Contrat JSON des workflows : connexions, branches d'erreur, aucun secret | Mirado |
 | `test_lot_jury.py` | Les 20 factures F17, rejets nommes, attentes du lot | Jerry |
+| `test_derive.py` | PSI, detection de derive, persistance tolerante aux pannes de base | Mirado |
+| `test_persistance_ml.py` | Aller-retour reel prediction/SHAP/seuil/rapport de derive | Jerry |
 
 ## Brouillon / TODO
 

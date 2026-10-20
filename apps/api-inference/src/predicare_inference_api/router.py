@@ -12,9 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from predicare import metrics
 from predicare.config import get_settings
 from predicare.logging_config import get_logger
-from predicare.persistance_ml import persister_prediction
+from predicare.persistance_ml import lire_dernier_rapport_derive, persister_prediction
 from predicare_inference_api.context import resolve_context
-from predicare_inference_api.drift import DriftReport
 from predicare_inference_api.explainability import build_shap_report
 from predicare_inference_api.features import build_features
 from predicare_inference_api.scoring import Scorer
@@ -161,15 +160,21 @@ def rollback(version: str, request: Request) -> dict:
 
 
 @router.get("/derive", response_model=dict)
-def drift(request: Request) -> dict:
-    """Dernier rapport de derive calcule par le worker."""
-    report = request.app.state.drift_report
-    if report is None:
+def drift() -> dict:
+    """Dernier rapport de derive persiste par le worker.
+
+    Le rapport vit dans `ml.rapport_derive` : l'API et le worker sont deux
+    processus, un etat en memoire du worker ne serait jamais visible ici. La
+    lecture est tolerante (base absente = `non_calcule`), pour qu'un ecran de
+    supervision ne tombe pas en 500.
+    """
+    rapport = lire_dernier_rapport_derive()
+    if rapport is None:
         return {
             "status": "non_calcule",
-            "message": "Le worker de derive n'a pas encore produit de rapport.",
+            "message": "Aucun rapport de derive persiste pour le moment.",
         }
-    return {"status": "ok", **report}
+    return {"status": "ok", **rapport}
 
 
 @router.get("/seuil")
@@ -186,9 +191,6 @@ def read_threshold(request: Request) -> dict:
         "seuil_impose": get_settings().fraud_alert_threshold,
     }
 
-
-#: Type du rapport de derive conserve en memoire par le worker.
-DriftReportType = DriftReport
 
 #: Repertoire des artefacts de modele partage avec le worker d'entrainement.
 MODEL_DIR = Path(get_settings().model_dir)
