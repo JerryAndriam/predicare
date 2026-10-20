@@ -7,7 +7,7 @@ export type Role = 'assure' | 'professionnel_sante' | 'gestionnaire' | 'administ
 
 export const ROLE_LABELS: Record<Role, string> = {
   assure: 'Assure',
-  professionnel_sante: 'Professionnel de sante',
+  professionnel_sante: 'Professionnel de santé',
   gestionnaire: 'Gestionnaire',
   administrateur: 'Administrateur',
 }
@@ -79,6 +79,8 @@ export interface Prediction {
   inference_ms: number
   predicted_at: string
   rapport_shap?: string
+  /** Etat de la notification declenchee par le depot (Flux 1). */
+  notification?: NotificationStatus
 }
 
 export interface AlertSummary {
@@ -89,10 +91,32 @@ export interface AlertSummary {
   montant_total: number
   statut: string
   created_at: string
+  /** Age de l'alerte en minutes : indicateur de charge de la file. */
+  age_minutes: number
+}
+
+/** Une ligne de la facture suspecte, avec l'acte qui la porte. */
+export interface AlertLine {
+  code_acte: string
+  libelle: string
+  quantite: number
+  montant_unitaire: number
+  montant_total: number
+  /** L'acte figure dans l'ordonnance liee a la facture. */
+  prescrite: boolean
 }
 
 export interface AlertDetail extends AlertSummary {
   shap: ShapContribution[]
+  lignes: AlertLine[]
+}
+
+/** Reponse paginee : `total` vient du serveur, jamais de la page. */
+export interface PageResult<T> {
+  items: T[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export type Decision = 'valider_fraude' | 'rejeter' | 'demander_piece'
@@ -103,6 +127,14 @@ export interface DecisionRecord {
   commentaire: string | null
   decided_at: string
   score_fraude: number
+  decided_by?: string
+  facture_id?: string
+}
+
+/** Etat de la notification declenchee par le depot d'une facture. */
+export interface NotificationStatus {
+  envoye: boolean
+  message: string
 }
 
 export interface ModelInfo {
@@ -203,8 +235,45 @@ export interface NotificationChannel {
   configure: boolean
 }
 
+/** Resultat d'un envoi d'essai sur un canal de notification. */
+export interface ChannelTestResult {
+  nom: string
+  type: 'slack' | 'email'
+  envoye: boolean
+  message: string
+  destinataire: string
+}
+
+/** Etat d'un secret : configure ou non, et quoi faire sinon. */
+export interface SecretState {
+  nom: string
+  variable: string
+  configure: boolean
+  effet: string
+}
+
+/** Une ligne de facture, avec l'acte qui la porte. */
+export interface InvoiceLine {
+  code_acte: string
+  libelle: string
+  quantite: number
+  montant_unitaire: number
+  montant_total: number
+  date_acte: string
+}
+
+/** Facture complete : lignes, notation et historique de decision. */
+export interface InvoiceDetail extends InvoiceSummary {
+  lignes: InvoiceLine[]
+  seuil_applique: number | null
+  model_version: string | null
+  predictions: Record<string, unknown>[]
+  decisions: Record<string, unknown>[]
+}
+
 export interface Observability {
   timestamp: string
+  fenetre?: '24h' | '7j' | '30j' | '90j'
   secrets_manquants: string[]
   base: {
     disponible: boolean
@@ -214,6 +283,8 @@ export interface Observability {
     decisions?: number
     journal?: number
   }
+  /** Serie quotidienne sur la fenetre choisie : c'est elle qui donne la tendance. */
+  serie?: { jour: string; factures: number; alertes: number }[]
   inference: {
     disponible?: boolean
     service?: string

@@ -46,7 +46,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   try {
     response = await fetch(`${BASE}${path}`, { ...options, headers })
   } catch {
-    throw new ApiError(0, 'reseau', 'Serveur injoignable. Verifiez que la plateforme est demarree.')
+    throw new ApiError(0, 'réseau', 'Serveur injoignable. Verifiez que la plateforme est demarree.')
   }
 
   if (response.status === 401) {

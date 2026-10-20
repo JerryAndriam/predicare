@@ -241,6 +241,171 @@ def update_channel(nom: str, payload: ChannelUpdate, _admin: AdminUser) -> Notif
     return next(canal for canal in canaux if canal.nom == nom)
 
 
+class TestCanal(BaseModel):
+    """Resultat d'un envoi d'essai vers un canal de notification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nom: str
+    type: str
+    envoye: bool
+    message: str
+    destinataire: str
+
+
+@router.post("/canaux/{nom}/test", response_model=TestCanal)
+def tester_canal(nom: str, _admin: AdminUser) -> TestCanal:
+    """Envoie un message d'ESSAI sur un canal et dit ce qu'il s'est passe.
+
+    Un canal « actif » dont on ignore s'il fonctionne est un canal qu'on ne
+    peut pas demonstrations. Ce test ferme la boucle : l'administrateur
+    clique, et voit un message envoye ou la raison de l'echec.
+
+    Slack : POST reel sur le webhook entrant. E-mail : POST reel sur l'API
+    HTTP de la boite de reception (Mailpit en developpement) ; sans relais
+    configure, l'echec est dit explicitement plutot que masque.
+    """
+    with session_scope() as session:
+        canaux = _canaux_effectifs(session)
+    canal = next((item for item in canaux if item.nom == nom), None)
+    if canal is None:
+        raise NotFoundError("Canal de notification inconnu.")
+
+    if not canal.configure:
+        return TestCanal(
+            nom=canal.nom,
+            type=canal.type,
+            envoye=False,
+            message=(
+                "Ce canal n'a pas de destinataire configure. Renseignez-le "
+                "ci-dessus avant de tester."
+            ),
+            destinataire=canal.destinataire,
+        )
+
+    settings = get_settings()
+    try:
+        if canal.type == "slack":
+            reponse = httpx.post(
+                canal.destinataire,
+                json={
+                    "text": (
+                        ":white_check_mark: Test PrediCare — la chaine de "
+                        "notification fonctionne. Vous pouvez ignorerez ce message."
+                    )
+                },
+                timeout=8.0,
+            )
+            reponse.raise_for_status()
+        else:
+            if not settings.smtp_api_url.strip():
+                return TestCanal(
+                    nom=canal.nom,
+                    type=canal.type,
+                    envoye=False,
+                    message=(
+                        "Aucun relais e-mail n'est configure sur cette machine "
+                        "(SMTP_API_URL). Renseignez SMTP_HOST, SMTP_PORT et "
+                        "SMTP_FROM dans le .env, puis redemarrez la plateforme."
+                    ),
+                    destinataire=canal.destinataire,
+                )
+            reponse = httpx.post(
+                settings.smtp_api_url,
+                json={
+                    "From": {"Email": settings.smtp_from, "Name": "PrediCare"},
+                    "To": [{"Email": canal.destinataire}],
+                    "Subject": "Test PrediCare — canal de notification",
+                    "Text": (
+                        "Message d'essai envoye depuis l'ecran d'administration. "
+                        "Si vous le lisez, la chaine fonctionne."
+                    ),
+                },
+                timeout=8.0,
+            )
+            reponse.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("admin.canal_test_echoue", canal=nom, erreur=str(exc))
+        return TestCanal(
+            nom=canal.nom,
+            type=canal.type,
+            envoye=False,
+            message=f"L'envoi a echoue : {exc}",
+            destinataire=canal.destinataire,
+        )
+
+    with session_scope() as session:
+        journaliser(
+            session,
+            acteur=str(getattr(_admin, "subject", "admin")),
+            role=str(getattr(_admin, "role", "")),
+            action="canal_teste",
+            cible=f"canal:{canal.nom}",
+            details={"envoye": True},
+        )
+    return TestCanal(
+        nom=canal.nom,
+        type=canal.type,
+        envoye=True,
+        message="Message d'essai envoye. Verifiez le salon ou la boite de reception.",
+        destinataire=canal.destinataire,
+    )
+
+
+class SecretEtat(BaseModel):
+    """Etat d'un secret : configure ou non, et quoi faire sinon."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nom: str
+    variable: str
+    configure: bool
+    effet: str
+
+
+@router.get("/secrets", response_model=list[SecretEtat])
+def etat_secrets(_admin: AdminUser) -> list[SecretEtat]:
+    """Inventaire des secrets necessaires, avec la variable a renseigner.
+
+    Un secret vit dans l'ENVIRONNEMENT du conteneur : il ne peut pas etre
+    ecrit par l'ecran sans redemarrage. L'ecran doit donc dire exactement
+    QUOI renseigner et OU, plutot que se contenter d'afficher « manquant ».
+    """
+    settings = get_settings()
+    return [
+        SecretEtat(
+            nom="Cle LLM",
+            variable="LLM_API_KEY",
+            configure=_secret_configure(settings.llm_api_key),
+            effet="Sans elle, l'assistant conversationnel ne peut pas repondre.",
+        ),
+        SecretEtat(
+            nom="Cle d'embedding",
+            variable="EMBEDDING_API_KEY",
+            configure=_secret_configure(settings.embedding_api_key),
+            effet="Sans elle, aucun contrat ne peut etre indexe ni recherche.",
+        ),
+        SecretEtat(
+            nom="Webhook Slack",
+            variable="SLACK_WEBHOOK_URL",
+            configure=_secret_configure(settings.slack_webhook_url),
+            effet="Sans lui, aucune alerte n'atteint le canal Slack.",
+        ),
+        SecretEtat(
+            nom="Expediteur e-mail",
+            variable="SMTP_FROM",
+            configure=_secret_configure(settings.smtp_from),
+            effet="Sans lui, l'alerte e-mail n'est pas envoyee.",
+        ),
+        SecretEtat(
+            nom="Webhook d'alerte",
+            variable="N8N_ALERTE_WEBHOOK_URL",
+            configure=_secret_configure(settings.n8n_alerte_webhook_url),
+            effet="Sans lui, le parcours web ne declenche aucune notification.",
+        ),
+    ]
+
+
 @router.get("/modele", response_model=ModelVersionInfo)
 def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
     """Etat du modele : version active, version candidate, metriques."""
@@ -400,17 +565,27 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
 
 
 @router.get("/observabilite")
-def observabilite(request: Request, _admin: AdminUser) -> dict[str, object]:
+def observabilite(
+    request: Request,
+    _admin: AdminUser,
+    fenetre: str = Query(default="30j", pattern="^(24h|7j|30j|90j)$"),
+) -> dict[str, object]:
     """Metriques d'exploitation demandees par le CDC (Supervisable).
 
     Le front ne joint jamais directement api-inference ni api-rag : api-core
     agrege les indicateurs et reste le seul point d'entree autorise. Chaque
     bloc est tolerant aux pannes pour que l'ecran reste lisible meme si un
     service est arrete.
+
+    `fenetre` selectionne la periode analysee (24 heures, 7, 30 ou 90 jours).
+    Sans elle, l'ecran ne montrait que des compteurs depuis toujours : la
+    TENDANCE, qui est ce qu'un exploiteur cherche, n'etait pas visible.
     """
     settings = get_settings()
+    heures = {"24h": 24, "7j": 24 * 7, "30j": 24 * 30, "90j": 24 * 90}[fenetre]
     resultat: dict[str, object] = {
         "timestamp": datetime.now(UTC).isoformat(),
+        "fenetre": fenetre,
         "secrets_manquants": settings.missing_secrets(),
     }
 
@@ -439,9 +614,43 @@ def observabilite(request: Request, _admin: AdminUser) -> dict[str, object]:
                     session.execute(text("SELECT count(*) FROM audit.journal")).scalar_one()
                 ),
             }
+            # Serie quotidienne sur la fenetre : c'est elle qui donne la
+            # tendance (volume de factures et nombre d'alertes).
+            serie = (
+                session.execute(
+                    text(
+                        """
+                    SELECT jour::date::text AS jour,
+                           count(*) AS factures,
+                           count(*) FILTER (WHERE alertes > 0) AS alertes
+                    FROM (
+                        SELECT date_trunc('day', f.date_facture) AS jour,
+                               CASE WHEN p.is_fraud THEN 1 ELSE 0 END AS alertes
+                        FROM core.facture f
+                        LEFT JOIN ml.prediction p ON p.facture_id = f.id
+                        WHERE f.date_facture >= now() - make_interval(hours => :heures)
+                    ) AS par_jour
+                    GROUP BY jour
+                    ORDER BY jour
+                    """
+                    ),
+                    {"heures": heures},
+                )
+                .mappings()
+                .all()
+            )
+            resultat["serie"] = [
+                {
+                    "jour": ligne["jour"],
+                    "factures": int(ligne["factures"]),
+                    "alertes": int(ligne["alertes"]),
+                }
+                for ligne in serie
+            ]
     except Exception as exc:  # la supervision ne doit jamais lever
         logger.warning("admin.observabilite_base_echouee", erreur=str(exc))
         resultat["base"] = {"disponible": False}
+        resultat["serie"] = []
 
     def lire_json(url: str, timeout: float = 3.0) -> dict[str, object] | None:
         try:

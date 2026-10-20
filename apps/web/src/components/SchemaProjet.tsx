@@ -19,7 +19,7 @@ export function SchemaProjet() {
         {[
           { x: 20,  y: 20,  w: 130, h: 46, label: 'data/raw (CSV)', sub: '14 fichiers', tone: '#0e1a27' },
           { x: 200, y: 20,  w: 130, h: 46, label: 'seed', sub: 'DB PostgreSQL', tone: '#0f766e' },
-          { x: 380, y: 20,  w: 130, h: 46, label: 'pro (web)', sub: 'depose facture', tone: '#b42318' },
+          { x: 380, y: 20,  w: 130, h: 46, label: 'pro (web)', sub: 'déposé facture', tone: '#b42318' },
           { x: 200, y: 110, w: 130, h: 46, label: 'api-inference', sub: 'XGBoost v2', tone: '#0f766e' },
           { x: 380, y: 110, w: 130, h: 46, label: 'gestionnaire', sub: 'file d\'alertes', tone: '#1d4ed8' },
           { x: 560, y: 20,  w: 120, h: 46, label: 'audit / journal', sub: 'trace complete', tone: '#0e1a27' },
@@ -56,7 +56,7 @@ export function SchemaProjet() {
         <text x="435" y="92" textAnchor="middle" fontSize="7" fill="#5b6776">decision</text>
 
         {/* Légende */}
-        <text x="360" y="240" textAnchor="middle" fontSize="8" fill="#0e1a27" fontWeight="600">Flux complet : donnees → modele → alerte → decision → audit</text>
+        <text x="360" y="240" textAnchor="middle" fontSize="8" fill="#0e1a27" fontWeight="600">Flux complet : données → modèle → alerte → decision → audit</text>
       </svg>
     </section>
   )

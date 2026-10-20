@@ -218,6 +218,16 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.grille.quatre {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .grille.quatre {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .grille.trois {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -282,6 +292,242 @@ a {
 .mono {
   font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
   font-size: 0.86rem;
+}
+
+/* ------------------------------------------------------------------- KPI */
+
+/* Cadre du tableau de bord BI integre : meme origine que l'application,
+   donc aucune derogation a la politique de securite. */
+.bi-frame {
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  display: block;
+  height: 72vh;
+  min-height: 30rem;
+  width: 100%;
+}
+
+/* Ecran d'erreur de rendu : l'utilisateur ne doit jamais voir une page
+   blanche sans issue. */
+.erreur-ecran {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--alerte);
+  border-radius: var(--rayon);
+  margin: 3rem auto;
+  max-width: 60ch;
+  padding: 2rem;
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-left: 3px solid var(--bord-fonce);
+  border-radius: var(--rayon);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  width: 100%;
+}
+
+.kpi-action {
+  cursor: pointer;
+  font: inherit;
+  transition: var(--transition);
+}
+
+.kpi-action:hover {
+  border-color: var(--primaire);
+  transform: translateY(-1px);
+}
+
+.kpi-libelle {
+  color: var(--encre-douce);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kpi-valeur {
+  color: var(--encre);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.kpi-unite {
+  color: var(--encre-douce);
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-left: 0.25rem;
+}
+
+.kpi-contexte {
+  color: var(--encre-douce);
+  font-size: 0.8rem;
+}
+
+.kpi-ok {
+  border-left-color: var(--ok);
+}
+
+.kpi-alerte {
+  border-left-color: var(--alerte);
+}
+
+.kpi-avert {
+  border-left-color: var(--avert, #d97706);
+}
+
+.kpi-info {
+  border-left-color: var(--primaire);
+}
+
+/* -------------------------------------------------- etats et pagination */
+
+.squelette {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.squelette-barre {
+  background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 50%, #eef2f7 75%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  animation: squelette 1.4s ease-in-out infinite;
+}
+
+@keyframes squelette {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.etat-vide {
+  border: 1px dashed var(--bord-fonce);
+  border-radius: var(--rayon);
+  padding: 1.4rem;
+  text-align: center;
+}
+
+.etat-vide-titre {
+  font-weight: 600;
+  margin: 0 0 0.3rem;
+}
+
+.etat-vide-texte {
+  color: var(--encre-douce);
+  font-size: 0.88rem;
+  margin: 0 auto;
+  max-width: 52ch;
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  margin-top: 0.8rem;
+}
+
+.pagination-etat {
+  color: var(--encre-douce);
+  font-size: 0.85rem;
+}
+
+.visuellement-cache {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* --------------------------------------------------------- graphique SVG */
+
+.graphique {
+  margin: 0;
+}
+
+.barres {
+  align-items: flex-end;
+  display: flex;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.barres li {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.barres-valeur {
+  color: var(--encre-douce);
+  font-size: 0.65rem;
+  text-align: center;
+}
+
+.barres-piste {
+  background: var(--surface-3, #f1f5f9);
+  border-radius: 3px 3px 0 0;
+  display: flex;
+  flex-direction: column;
+  height: var(--hauteur-barres, 140px);
+  justify-content: flex-end;
+  overflow: hidden;
+  position: relative;
+}
+
+.barres-remplissage {
+  background: var(--primaire);
+  display: block;
+  width: 100%;
+}
+
+.barres-remplissage.barres-alerte {
+  background: var(--alerte);
+}
+
+.barres-remplissage.barres-ok {
+  background: var(--ok);
+}
+
+.barres-etiquette {
+  color: var(--encre-faible, #94a3b8);
+  font-size: 0.62rem;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- tableau dense */
+.table-dense th,
+.table-dense td {
+  font-size: 0.85rem;
+  padding: 7px 0.75rem;
+}
+
+.table-dense td.droite,
+.table-dense th.droite {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-dense tbody tr:hover {
+  background: var(--surface-2, #f8fafc);
 }
 
 .droite {
@@ -613,6 +859,11 @@ textarea {
   color: var(--info);
 }
 
+.badge.avert {
+  background: #fffbeb;
+  color: #b45309;
+}
+
 /* ------------------------------------------------------------------- messages */
 
 .erreur {
@@ -831,6 +1082,16 @@ textarea {
 .alerte-item.actif {
   background: var(--primaire-clair);
   border-color: var(--primaire);
+}
+
+.alerte-age {
+  background: #fffbeb;
+  border-radius: 999px;
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.05rem 0.45rem;
+  width: fit-content;
 }
 
 .alerte-score {

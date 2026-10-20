@@ -24,6 +24,10 @@ import {
 
 type Onglet = 'depot' | 'suivi' | 'ordonnance' | 'lot'
 
+/** Taille maximale d'un lot. Le CDC en demande 20 ; la marge laisse de quoi
+ *  rejouer un lot plus large sans bloquer l'utilisateur. */
+const LIMITE_LOT = 200
+
 interface LigneForm {
   code_acte: string
   quantite: number
@@ -40,12 +44,12 @@ interface ResultatLot {
 
 /** Statuts de facture proposes dans le filtre du suivi. */
 const STATUTS_AFFICHES: { valeur: string; libelle: string }[] = [
-  { valeur: 'recue', libelle: 'Recue' },
+  { valeur: 'reçue', libelle: 'Reçue' },
   { valeur: 'en_cours', libelle: 'En cours' },
   { valeur: 'payee', libelle: 'Payee' },
-  { valeur: 'rejetee', libelle: 'Rejetee' },
+  { valeur: 'rejetée', libelle: 'Rejetée' },
   { valeur: 'fraude_confirmee', libelle: 'Fraude confirmee' },
-  { valeur: 'piece_demandee', libelle: 'Piece demandee' },
+  { valeur: 'piece_demandee', libelle: 'Pièce demandée' },
 ]
 
 function convertirDate(valeur: string): string {
@@ -156,7 +160,24 @@ function analyserLot(texte: string, nom: string, impose: string | null): LotAnal
     nom.toLowerCase().endsWith('.json') || contenu.startsWith('[') || contenu.startsWith('{')
   if (estJson) {
     const charge: unknown = JSON.parse(contenu)
-    const elements = Array.isArray(charge) ? charge : [charge]
+    // Deux enveloppes sont acceptees :
+    //  - un tableau de factures, ou une facture seule ;
+    //  - l'enveloppe du lot canonique du jury, `{ "version": 1,
+    //    "factures": [...] }`. C'est le MEME fichier que le job de ligne de
+    //    commande soumet : le jury n'a ainsi pas deux jeux de donnees a
+    //    maintenir, un pour la ligne de commande et un pour l'interface.
+    let elements: unknown[]
+    if (Array.isArray(charge)) {
+      elements = charge
+    } else if (
+      typeof charge === 'object' &&
+      charge !== null &&
+      Array.isArray((charge as Record<string, unknown>).factures)
+    ) {
+      elements = (charge as Record<string, unknown>).factures as unknown[]
+    } else {
+      elements = [charge]
+    }
     elements.forEach((element, index) => brut.push({ ligne: index + 1, valeur: element }))
   } else {
     const lignes = contenu.split(/\r?\n/).filter((ligne) => ligne.trim() !== '')
@@ -236,6 +257,8 @@ export function ProPage() {
   const [lotNom, setLotNom] = useState('')
   const [lotTexte, setLotTexte] = useState('')
   const [lotEnCours, setLotEnCours] = useState(false)
+  const [lotAnnule, setLotAnnule] = useState(false)
+  const [lotTraitees, setLotTraitees] = useState(0)
   const [lotResultats, setLotResultats] = useState<ResultatLot[]>([])
 
   const [ordonnance, setOrdonnance] = useState({
@@ -336,7 +359,7 @@ export function ProPage() {
           : lignes.length === 0
             ? 'Ajoutez au moins une ligne de facture.'
             : lignes.some((ligne) => ligne.code_acte === '')
-              ? 'Chaque ligne doit reference un acte.'
+              ? 'Chaque ligne doit référence un acte.'
               : total > 10_000_000
                 ? 'Le montant total depasse le plafond accepte (10 000 000).'
                 : null
@@ -434,16 +457,19 @@ export function ProPage() {
       return
     }
 
-    if (analyse.factures.length + analyse.rejetees.length === 0) {
+    const total = analyse.factures.length + analyse.rejetees.length
+    if (total === 0) {
       setErreur('Aucune facture dans le lot.')
       return
     }
-    if (analyse.factures.length + analyse.rejetees.length > 100) {
-      setErreur('Un lot est limite a 100 factures.')
+    if (total > LIMITE_LOT) {
+      setErreur(`Un lot est limité à ${LIMITE_LOT} factures.`)
       return
     }
 
     setLotEnCours(true)
+    setLotAnnule(false)
+    setLotTraitees(0)
     // Les lignes rejetees a la LECTURE du fichier sont reportees telles
     // quelles : une facture fautive ne doit pas disparaitre du bilan.
     const resultats: ResultatLot[] = analyse.rejetees.map((rejetee) => ({
@@ -452,8 +478,13 @@ export function ProPage() {
       statut: 'erreur',
       message: rejetee.message,
     }))
+    setLotResultats([...resultats])
 
     for (const entree of analyse.factures) {
+      // L'annulation est comprise ENTRE deux factures : une importation
+      // de 20 factures ne doit pas pouvoir etre interrompue au milieu
+      // d'une requete, mais doit pouvoir s'arreter ensuite.
+      if (lotAnnule) break
       try {
         const prediction = await api<Prediction>('/api/core/factures/soumettre', {
           method: 'POST',
@@ -475,22 +506,52 @@ export function ProPage() {
           message: messageErreur(probleme),
         })
       }
+      setLotTraitees((precedent) => precedent + 1)
       setLotResultats([...resultats].sort((a, b) => a.ligne - b.ligne))
     }
     setLotEnCours(false)
     const reussies = resultats.filter((resultat) => resultat.statut === 'ok').length
     const refusees = resultats.length - reussies
     setSucces(
-      `${reussies} facture(s) importee(s), ${refusees} rejetee(s) sur ${resultats.length}.`,
+      lotAnnule
+        ? `Import interrompu : ${reussies} facture(s) importée(s), ${refusees} rejetée(s).`
+        : `${reussies} facture(s) importée(s), ${refusees} rejetée(s) sur ${resultats.length}.`,
     )
     chargerSuivi()
+  }
+
+  /**
+   * Charge le lot de 20 factures du jury, embarque dans le bundle.
+   *
+   * Le fichier est le MEME que le job de ligne de commande soumet : le
+   * jury n'a donc pas a chercher un fichier sur le disque, et l'ecran
+   * montre exactement ce que la demonstration soumettra.
+   */
+  const chargerLotJury = async () => {
+    setErreur(null)
+    setSucces(null)
+    try {
+      const reponse = await fetch('/lot-jury.json')
+      if (!reponse.ok) throw new Error(`Fichier introuvable (${reponse.status}).`)
+      const texte = await reponse.text()
+      setLotTexte(texte)
+      setLotNom('lot_20_factures.json')
+      setLotResultats([])
+      setSucces('Lot du jury chargé : 20 factures, dont des factures invalides.')
+    } catch (probleme) {
+      setErreur(
+        probleme instanceof Error
+          ? `Lot du jury indisponible : ${probleme.message}`
+          : 'Lot du jury indisponible.',
+      )
+    }
   }
 
   return (
     <div className="pile">
       <div className="titre-page">
-        <h1>Espace professionnel de sante</h1>
-        <p>Depot des factures et des ordonnances, puis suivi des dossiers.</p>
+        <h1>Espace professionnel de santé</h1>
+        <p>Dépôt des factures et des ordonnances, puis suivi des dossiers.</p>
       </div>
 
       <div className="onglets" role="tablist">
@@ -522,7 +583,7 @@ export function ProPage() {
         <div className="grille deux-large">
           <Carte titre="Nouvelle facture">
             {references === null ? (
-              <Chargement texte="Chargement des referentiels..." />
+              <Chargement texte="Chargement des référentiels..." />
             ) : (
               <form className="formulaire" onSubmit={soumettre} style={{ background: 'rgba(255,255,255,0.5)', padding: '1.2rem', borderRadius: 'var(--rayon)', border: '1px solid var(--bord)' }}>
                 <div className="grille deux">
@@ -653,7 +714,7 @@ export function ProPage() {
             )}
           </Carte>
 
-          <Carte titre="Resultat de la notation">
+          <Carte titre="Résultat de la notation">
             {resultat === null ? (
               <Vide>
                 Le score, le seuil applique et le rapport SHAP s afficheront ici apres l envoi.
@@ -672,6 +733,15 @@ export function ProPage() {
                   <span>Modele : {resultat.model_version}</span>
                   <span>{resultat.inference_ms.toFixed(1)} ms</span>
                 </div>
+                {resultat.notification !== undefined && (
+                  <p
+                    className={resultat.notification.envoye ? 'succes' : 'aide'}
+                    role="status"
+                  >
+                    {resultat.notification.envoye ? '✓ ' : 'ℹ '}
+                    {resultat.notification.message}
+                  </p>
+                )}
                 <h3>Explication SHAP</h3>
                 <ShapList contributions={resultat.shap} />
               </div>
@@ -708,7 +778,7 @@ export function ProPage() {
           }
         >
           {chargementSuivi && <Chargement />}
-          {!chargementSuivi && factures.length === 0 && <Vide>Aucun dossier depose.</Vide>}
+          {!chargementSuivi && factures.length === 0 && <Vide>Aucun dossier déposé.</Vide>}
           {factures.length > 0 && (
             <div className="table-enveloppe">
               <table className="table">
@@ -754,7 +824,21 @@ export function ProPage() {
       )}
 
       {onglet === 'lot' && (
-        <Carte titre="Import de lot">
+        <Carte
+          titre="Import de lot"
+          actions={
+            <div className="carte-actions">
+              <button
+                type="button"
+                className="bouton discret"
+                onClick={() => void chargerLotJury()}
+                disabled={lotEnCours}
+              >
+                Charger le lot du jury
+              </button>
+            </div>
+          }
+        >
           <p className="aide">
             Fichier JSON (tableau de factures) ou CSV avec les colonnes
             assure_pseudonyme, date_facture, code_acte, quantite, montant_unitaire,
@@ -792,31 +876,50 @@ export function ProPage() {
               >
                 {lotEnCours ? 'Import en cours...' : 'Importer le lot'}
               </button>
-              <button
-                type="button"
-                className="bouton discret"
-                disabled={lotEnCours}
-                onClick={() => {
-                  setLotTexte('')
-                  setLotNom('')
-                  setLotResultats([])
-                }}
-              >
-                Vider
-              </button>
+              {lotEnCours ? (
+                <button
+                  type="button"
+                  className="bouton danger"
+                  onClick={() => setLotAnnule(true)}
+                >
+                  Annuler l’import
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="bouton discret"
+                  onClick={() => {
+                    setLotTexte('')
+                    setLotNom('')
+                    setLotResultats([])
+                  }}
+                >
+                  Vider
+                </button>
+              )}
             </div>
             {lotNom !== '' && <p className="aide">Fichier : {lotNom}</p>}
           </div>
 
+          {lotEnCours && (
+            <p className="aide" role="status" aria-live="polite">
+              {lotTraitees} facture(s) traitée(s)…
+              {lotAnnule ? ' Annulation demandée.' : ''}
+            </p>
+          )}
+
           {lotResultats.length > 0 && (
             <div className="table-enveloppe">
-              <table className="table">
+              <table className="table table-dense">
+                <caption className="visuellement-cache">
+                  Résultat de l’import du lot, ligne par ligne
+                </caption>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>Reference</th>
-                    <th>Statut</th>
-                    <th>Detail</th>
+                    <th scope="col">#</th>
+                    <th scope="col">Référence</th>
+                    <th scope="col">Statut</th>
+                    <th scope="col">Détail</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -929,7 +1032,7 @@ export function ProPage() {
                   <input
                     value={ordonnance.reference}
                     maxLength={64}
-                    placeholder="Generee automatiquement si vide"
+                    placeholder="Générée automatiquement si vide"
                     onChange={(event) =>
                       setOrdonnance((precedent) => ({
                         ...precedent,

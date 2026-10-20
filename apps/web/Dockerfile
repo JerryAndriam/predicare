@@ -19,6 +19,12 @@ RUN npm ci --no-audit --no-fund
 
 COPY apps/web/ ./
 
+# Le lot de 20 factures du jury est embarque dans le bundle : l'ecran
+# professionnel doit pouvoir le charger en un clic, le jour J, sans que
+# l'utilisateur aille chercher un fichier sur le disque. C'est le MEME
+# fichier que le job de ligne de commande soumet (`data/seed/`).
+COPY data/seed/lot_20_factures.json public/lot-jury.json
+
 # Vite inlege ses variables au moment du build : `VITE_API_GATEWAY_URL` est
 # le chemin appele par le navigateur, `VITE_API_BASE_URL` est vide en
 # production puisque tout est servi sur la meme origine par la passerelle.

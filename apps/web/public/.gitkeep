@@ -1,0 +1,4 @@
+# Fichiers servis tels quels par Vite (dossier `public/`).
+#
+# Le lot de 20 factures du jury est copie ici au build (voir le
+# Dockerfile) : il n'est donc pas versionne dans ce dossier.

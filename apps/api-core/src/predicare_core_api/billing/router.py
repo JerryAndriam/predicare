@@ -36,12 +36,14 @@ from predicare.errors import (
     ForbiddenError,
     InvalidInvoiceError,
     ModelNotReadyError,
+    NotFoundError,
     PrediCareError,
 )
 from predicare.logging_config import get_logger
 from predicare.persistance_ml import persister_prediction
 from predicare.rbac import Role
 from predicare.schemas import InvoiceSubmission, ShapContribution
+from predicare_core_api.notifications import notifier_alerte
 
 router = APIRouter(prefix="/factures", tags=["facturation"])
 logger = get_logger("api-core.billing")
@@ -127,6 +129,29 @@ def submit_invoice(payload: dict, request: Request, user: SubmitUser) -> SubmitA
         score=resultat["score_fraude"],
         acteur=user.subject,
     )
+
+    # Flux 1 du CDC : au-dessus du seuil de NOTIFICATION, la chaine d'alerte
+    # est declenchee (webhook n8n -> Slack + e-mail au gestionnaire).
+    # L'appel est tolerent aux pannes : une panne de notification ne doit
+    # pas faire perdre la facture, qui est deja notee et enregistree.
+    #
+    # L'etat de la notification est RENVOYE au front : un depot qui n'a
+    # prevenu personne doit le dire, sinon l'utilisateur croit avoir
+    # declenche une alerte alors que personne n'a ete prevenu.
+    notification = notifier_alerte(
+        facture_id=reference,
+        score=float(resultat["score_fraude"]),
+        seuil=float(resultat["seuil_applique"]),
+        rapport_shap=str(resultat.get("rapport_shap", "")),
+        model_version=str(resultat.get("model_version", "")),
+        assure_pseudonyme=invoice.assure_pseudonyme,
+        montant_total=invoice.montant_total,
+    )
+    resultat["notification"] = {
+        "envoye": notification.envoye,
+        "message": notification.motif,
+    }
+
     return SubmitAccepted(**resultat)
 
 
@@ -456,6 +481,8 @@ def current_threshold() -> dict[str, float]:
     return {"seuil": get_threshold()}
 
 
+
+
 class ReferenceAssure(BaseModel):
     pseudonyme: str
 
@@ -698,3 +725,169 @@ def submit_prescription(payload: Ordonnance, user: SubmitUser) -> dict[str, str]
         "assure_pseudonyme": payload.assure_pseudonyme,
         "reference": reference,
     }
+
+
+# ---------------------------------------------------------------------------
+# DETAIL D'UNE FACTURE
+# ---------------------------------------------------------------------------
+# Cette route est declaree EN DERNIER : /{facture_id} capterait sinon
+# les routes statiques (/references, /seuil-actuel, ...) qui doivent
+# etre declarees avant.
+class FactureLigne(BaseModel):
+    """Une ligne de facture, avec l'acte qui la porte."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code_acte: str
+    libelle: str
+    quantite: int
+    montant_unitaire: float
+    montant_total: float
+    date_acte: datetime
+
+
+class FactureDetail(BaseModel):
+    """Facture complete : lignes, actes, notation et decisions.
+
+    C'est l'ecran qui manquait pour que l'assure, le professionnel et le
+    gestionnaire puissent TOUS consulter la meme facture. Le perimetre reste
+    celui du role : un assure ne voit que ses factures, un professionnel
+    que les siennes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    facture_id: str
+    assure_pseudonyme: str
+    prestataire_id: str
+    date_facture: datetime
+    montant_total: float
+    montant_eligible: float | None = None
+    montant_pris_en_charge: float | None = None
+    reste_a_charge: float | None = None
+    statut: str
+    lignes: list[FactureLigne] = []
+    score_fraude: float | None = None
+    is_fraud: bool | None = None
+    seuil_applique: float | None = None
+    model_version: str | None = None
+    predictions: list[dict] = []
+    decisions: list[dict] = []
+
+
+@router.get("/{facture_id}", response_model=FactureDetail)
+def detail_facture(facture_id: str, user: ReadUser) -> FactureDetail:
+    """Detail d'une facture : lignes, actes, notation et historique.
+
+    Le perimetre est applique comme dans la liste : un assure qui demande
+    la facture d'un autre dossier recoit un 404, pas une 403 qui revelerait
+    l'existence du dossier.
+    """
+    if not facture_id.isdigit():
+        raise NotFoundError("Facture introuvable.")
+
+    with session_scope() as session:
+        entete = (
+            session.execute(
+                text(
+                    """
+                SELECT f.id::text AS facture_id, a.pseudonyme AS assure_pseudonyme,
+                       pr.code AS prestataire_id, f.date_facture, f.montant_total,
+                       f.montant_eligible, f.montant_pris_en_charge, f.reste_a_charge,
+                       f.statut, p.score_fraude, p.is_fraud, p.seuil_applique,
+                       p.model_version
+                FROM core.facture f
+                JOIN core.assure a ON a.id = f.assure_id
+                JOIN core.prestataire pr ON pr.id = f.prestataire_id
+                LEFT JOIN ml.prediction p ON p.facture_id = f.id
+                WHERE f.id = :facture_id
+                """
+                ),
+                {"facture_id": int(facture_id)},
+            )
+            .mappings()
+            .first()
+        )
+        if entete is None:
+            raise NotFoundError("Facture introuvable.")
+
+        # Meme regle de perimetre que la liste : on ne revele pas l'existence
+        # d'une facture qui n'appartient pas au role.
+        if user.role is Role.ASSURE:
+            if not user.insured_id:
+                raise NotFoundError("Facture introuvable.")
+            possesseur = session.execute(
+                text("SELECT assure_id FROM core.facture WHERE id = :facture_id"),
+                {"facture_id": int(facture_id)},
+            ).scalar()
+            if int(possesseur) != int(user.insured_id):
+                raise NotFoundError("Facture introuvable.")
+        elif user.role is Role.PROFESSIONNEL_SANTE:
+            propre = _prestataire_du_compte(session, user)
+            prestataire = session.execute(
+                text("SELECT prestataire_id FROM core.facture WHERE id = :facture_id"),
+                {"facture_id": int(facture_id)},
+            ).scalar()
+            if int(prestataire) != propre:
+                raise NotFoundError("Facture introuvable.")
+
+        lignes = (
+            session.execute(
+                text(
+                    """
+                    SELECT a.code AS code_acte, a.libelle, l.quantite,
+                           l.montant_unitaire,
+                           (l.quantite * l.montant_unitaire) AS montant_total,
+                           l.date_acte
+                    FROM core.ligne_facture l
+                    JOIN core.acte a ON a.id = l.acte_id
+                    WHERE l.facture_id = :facture_id
+                    ORDER BY l.id
+                    """
+                ),
+                {"facture_id": int(facture_id)},
+            )
+            .mappings()
+            .all()
+        )
+
+        predictions = (
+            session.execute(
+                text(
+                    """
+                    SELECT id::text AS prediction_id, score_fraude, is_fraud,
+                           seuil_applique, model_version, statut, created_at
+                    FROM ml.prediction
+                    WHERE facture_id = :facture_id
+                    ORDER BY created_at DESC
+                    """
+                ),
+                {"facture_id": int(facture_id)},
+            )
+            .mappings()
+            .all()
+        )
+
+        decisions = (
+            session.execute(
+                text(
+                    """
+                    SELECT d.decision, d.commentaire, d.decided_by, d.decided_at
+                    FROM audit.decision_gestionnaire d
+                    JOIN ml.prediction p ON p.id = d.prediction_id
+                    WHERE p.facture_id = :facture_id
+                    ORDER BY d.decided_at DESC
+                    """
+                ),
+                {"facture_id": int(facture_id)},
+            )
+            .mappings()
+            .all()
+        )
+
+    return FactureDetail(
+        **entete,
+        lignes=[FactureLigne(**ligne) for ligne in lignes],
+        predictions=[dict(row) for row in predictions],
+        decisions=[dict(row) for row in decisions],
+    )

@@ -7,8 +7,8 @@ import { Badge, Carte } from '../components/ui'
 const PARCOURS = [
   {
     numero: '1',
-    titre: 'Depot',
-    texte: 'Le professionnel de sante depose une facture. Le serveur verifie les references avant tout enregistrement.',
+    titre: 'Dépôt',
+    texte: 'Le professionnel de santé déposé une facture. Le serveur vérifié les references avant tout enregistrement.',
   },
   {
     numero: '2',
@@ -45,7 +45,7 @@ export function HomePage() {
             {profile.role === 'assure' &&
               'Consultez vos remboursements et posez vos questions a l assistant.'}
             {profile.role === 'professionnel_sante' &&
-              'Deposez une facture ou une ordonnance et suivez les dossiers deja transmis.'}
+              'Deposez une facture ou une ordonnance et suivez les dossiers déjà transmis.'}
             {profile.role === 'gestionnaire' &&
               'Traitez la file d alertes : score, rapport SHAP, puis decision motivee.'}
             {profile.role === 'administrateur' &&
@@ -73,15 +73,15 @@ export function HomePage() {
             {profile.role === 'gestionnaire' && (
               <>
                 <li>Lire la file d alertes et le detail SHAP</li>
-                <li>Valider, rejeter ou demander une piece</li>
+                <li>Valider, rejeter ou demander une pièce</li>
                 <li>Consulter l historique des decisions</li>
               </>
             )}
             {profile.role === 'administrateur' && (
               <>
                 <li>Modifier le seuil sans redemarrage</li>
-                <li>Charger, basculer ou revenir a une version du modele</li>
-                <li>Lire la sante, les canaux et le journal d audit</li>
+                <li>Charger, basculer ou revenir a une version du modèle</li>
+                <li>Lire la santé, les canaux et le journal d audit</li>
               </>
             )}
           </ul>

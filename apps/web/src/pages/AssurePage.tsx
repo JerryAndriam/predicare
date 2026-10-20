@@ -17,16 +17,16 @@ import {
 type Onglet = 'remboursements' | 'assistant'
 
 const STATUTS: Record<string, string> = {
-  payee: 'Remboursee',
-  remboursee: 'Remboursee',
-  rembourse: 'Remboursee',
+  payee: 'Remboursée',
+  remboursee: 'Remboursée',
+  rembourse: 'Remboursée',
   en_attente: 'En attente',
-  rejetee: 'Rejetee',
-  rejete: 'Rejetee',
-  recue: 'Recue',
+  rejetee: 'Rejetée',
+  rejete: 'Rejetée',
+  recue: 'Reçue',
   en_cours: 'En cours',
   fraude_confirmee: 'Fraude confirmee',
-  piece_demandee: 'Piece demandee',
+  piece_demandee: 'Pièce demandée',
 }
 
 function libelleStatut(statut: string): string {
@@ -39,11 +39,11 @@ function controleFacture(facture: InvoiceSummary): {
 } {
   const statut = facture.statut.trim().toLowerCase()
   if (statut === 'fraude_confirmee') return { ton: 'alerte', texte: 'Fraude confirmee' }
-  if (statut === 'piece_demandee') return { ton: 'alerte', texte: 'Piece demandee' }
+  if (statut === 'piece_demandee') return { ton: 'alerte', texte: 'Pièce demandée' }
   if (statut === 'rejetee' || statut === 'rejete') return { ton: 'ok', texte: 'Clair' }
-  if (facture.is_fraud === true) return { ton: 'alerte', texte: 'En verification' }
+  if (facture.is_fraud === true) return { ton: 'alerte', texte: 'En vérification' }
   if (facture.is_fraud === false) return { ton: 'ok', texte: 'Clair' }
-  return { ton: 'neutre', texte: 'Non controle' }
+  return { ton: 'neutre', texte: 'Non contrôle' }
 }
 
 export function AssurePage() {
@@ -117,7 +117,7 @@ export function AssurePage() {
                     <th className="droite">Pris en charge</th>
                     <th className="droite">Reste a charge</th>
                     <th>Statut</th>
-                    <th>Controle</th>
+                    <th>Contrôle</th>
                   </tr>
                 </thead>
                 <tbody>

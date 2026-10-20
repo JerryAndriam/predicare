@@ -11,12 +11,10 @@ interface Espace {
 
 const ESPACES: Espace[] = [
   { chemin: '/assure', libelle: 'Mes remboursements', roles: ['assure'] },
-  { chemin: '/professionnel', libelle: 'Depot de facture', roles: ['professionnel_sante'] },
+  { chemin: '/professionnel', libelle: 'Dépôt de facture', roles: ['professionnel_sante'] },
   { chemin: '/gestionnaire', libelle: 'File d alertes', roles: ['gestionnaire'] },
   { chemin: '/administration', libelle: 'Administration', roles: ['administrateur'] },
 ]
-
-const SUPERSET_URL = import.meta.env.VITE_SUPERSET_URL ?? 'http://localhost:8088'
 
 export function Shell() {
   const { profile, deconnexion } = useAuth()
@@ -36,7 +34,7 @@ export function Shell() {
           <NavLink to="/" className="marque">
             <span className="marque-point" aria-hidden="true" />
             PrediCare
-            <span className="marque-sous">TPA sante</span>
+            <span className="marque-sous">TPA santé</span>
           </NavLink>
           <div className="utilisateur">
             <span className="utilisateur-nom">
@@ -64,10 +62,13 @@ export function Shell() {
           <NavLink to="/compte" className={({ isActive }) => (isActive ? 'actif' : '')}>
             Mon compte
           </NavLink>
+          <NavLink to="/aide" className={({ isActive }) => (isActive ? 'actif' : '')}>
+            Aide
+          </NavLink>
           {peut(profile, 'gestionnaire', 'administrateur') && (
-            <a href={SUPERSET_URL} target="_blank" rel="noreferrer">
+            <NavLink to="/pilotage" className={({ isActive }) => (isActive ? 'actif' : '')}>
               Pilotage BI
-            </a>
+            </NavLink>
           )}
         </nav>
       </header>

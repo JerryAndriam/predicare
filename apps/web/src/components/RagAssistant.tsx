@@ -78,7 +78,7 @@ function messageAssistantErreur(error: unknown): string {
       return "Votre rôle ne permet pas d'interroger l'assistant."
     }
     if (error.status === 422) {
-      return "La question n'est pas valide. Reformulez-la en moins de 1 000 caractères."
+      return "La question n'est pas validé. Reformulez-la en moins de 1 000 caractères."
     }
     if (error.status === 429) {
       return 'Trop de questions en peu de temps. Patientez un instant avant de réessayer.'

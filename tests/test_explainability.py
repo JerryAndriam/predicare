@@ -128,7 +128,9 @@ def test_explication_negative_dit_qu_elle_reduit_le_risque() -> None:
     contributions = {c.feature: c for c in shap_to_contributions(FEATURES, valeurs, BASE_VALUE)}
     texte = contributions["actes_du_mois"].human_readable
 
-    assert "reduire" in texte.lower()
+    # « reduire » est accentue : le libelle est destine a un lecteur
+    # humain. Le test verifie donc la forme accentuee.
+    assert "réduire" in texte.lower()
 
 
 # --------------------------------------------------------------- rapport

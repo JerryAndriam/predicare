@@ -54,3 +54,10 @@ apps/n8n/credentials/*
 .idea/
 .vscode/
 local/
+
+# ---------------------------------------------------------------- Tests front
+# Artefacts Playwright : captures d'echec, traces, rapports. Le navigateur
+# lui-meme est installe dans le cache utilisateur, pas dans le depot.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/

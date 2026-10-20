@@ -57,48 +57,137 @@ class AlerteSummary(BaseModel):
     montant_total: float
     statut: str
     created_at: datetime
+    #: Age de l'alerte en minutes : le temps de traitement est un indicateur
+    #: de charge du gestionnaire, et un dossier laisse trop longtemps en file
+    #: signale un defaut de dispositif, pas une urgence de fond.
+    age_minutes: int = 0
+
+
+class AlerteLigne(BaseModel):
+    """Une ligne de la facture suspecte, avec l'acte qui la porte."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code_acte: str
+    libelle: str
+    quantite: int
+    montant_unitaire: float
+    montant_total: float
+    prescrite: bool = False
 
 
 class AlerteDetail(AlerteSummary):
     """Alerte enrichie du rapport SHAP, affiche au gestionnaire."""
 
     shap: list[ShapContribution] = []
+    #: Les lignes de la facture source. Sans elles, le gestionnaire ne peut
+    #: pas verifier l'alerte : il ne voit que le score et les facteurs, pas
+    #: ce qui a ete facture.
+    lignes: list[AlerteLigne] = []
 
 
-@router.get("/file", response_model=list[AlerteSummary])
+class AlertePage(BaseModel):
+    """File d'alertes paginee : au-dela de la page, les alertes existent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AlerteSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/file", response_model=AlertePage)
 def file_alertes(
     user: AlertReader,
     limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     statut: str = Query(default="nouvelle"),
-) -> list[AlerteSummary]:
-    """File d'alertes, triee par score decroissant.
+    score_min: float | None = Query(default=None, ge=0.0, le=1.0),
+    montant_min: float | None = Query(default=None, ge=0.0),
+    montant_max: float | None = Query(default=None, ge=0.0),
+    assure: str | None = Query(default=None, max_length=64),
+    depuis: datetime | None = Query(default=None),
+    jusque: datetime | None = Query(default=None),
+) -> AlertePage:
+    """File d'alertes, paginee et filtrable.
 
     Le seuil courant est relu a chaque appel : un changement de seuil depuis
     l'ecran d'administration s'applique immediatement, sans redemarrage
     (condition "Configurable" du jury).
+
+    La file est PAGINEE : plafonner a 100 alertes faisait disparaitre les
+    suivantes de l'ecran, alors qu'elles existaient bel et bien en base.
+    Les filtres portent sur ce que le gestionnaire cherche reellement : le
+    montant (les grosses factures), l'assure, la periode, le score.
     """
+    conditions = ["p.score_fraude >= :seuil", "p.statut = :statut"]
+    params: dict[str, object] = {"seuil": get_threshold(), "statut": statut}
+
+    if score_min is not None:
+        conditions.append("p.score_fraude >= :score_min")
+        params["score_min"] = score_min
+    if montant_min is not None:
+        conditions.append("f.montant_total >= :montant_min")
+        params["montant_min"] = montant_min
+    if montant_max is not None:
+        conditions.append("f.montant_total <= :montant_max")
+        params["montant_max"] = montant_max
+    if assure:
+        conditions.append("a.pseudonyme ILIKE :assure")
+        params["assure"] = f"%{assure.strip()}%"
+    if depuis is not None:
+        conditions.append("p.created_at >= :depuis")
+        params["depuis"] = depuis
+    if jusque is not None:
+        conditions.append("p.created_at <= :jusque")
+        params["jusque"] = jusque
+
+    where = " AND ".join(conditions)
+
     with session_scope() as session:
-        rows = (
+        total = int(
             session.execute(
                 text(
-                    """
-                SELECT p.id::text AS prediction_id, p.facture_id::text AS facture_id,
-                       a.pseudonyme AS assure_pseudonyme, p.score_fraude,
-                       f.montant_total, p.statut, p.created_at
+                    f"""
+                SELECT count(*)
                 FROM ml.prediction p
                 JOIN core.facture f ON f.id = p.facture_id
                 JOIN core.assure a ON a.id = f.assure_id
-                WHERE p.score_fraude >= :seuil AND p.statut = :statut
-                ORDER BY p.score_fraude DESC
-                LIMIT :limit
+                WHERE {where}
                 """
                 ),
-                {"seuil": get_threshold(), "statut": statut, "limit": limit},
+                params,
+            ).scalar_one()
+        )
+        rows = (
+            session.execute(
+                text(
+                    f"""
+                SELECT p.id::text AS prediction_id, p.facture_id::text AS facture_id,
+                       a.pseudonyme AS assure_pseudonyme, p.score_fraude,
+                       f.montant_total, p.statut, p.created_at,
+                       EXTRACT(EPOCH FROM (now() - p.created_at)) / 60 AS age_minutes
+                FROM ml.prediction p
+                JOIN core.facture f ON f.id = p.facture_id
+                JOIN core.assure a ON a.id = f.assure_id
+                WHERE {where}
+                ORDER BY p.score_fraude DESC, p.created_at ASC
+                LIMIT :limit OFFSET :offset
+                """
+                ),
+                {**params, "limit": limit, "offset": offset},
             )
             .mappings()
             .all()
         )
-    return [AlerteSummary(**row) for row in rows]
+
+    return AlertePage(
+        items=[AlerteSummary(**{**row, "age_minutes": int(row["age_minutes"] or 0)}) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/detail/{prediction_id}", response_model=AlerteDetail)
@@ -151,9 +240,41 @@ def detail_alerte(prediction_id: str, user: AlertReader) -> AlerteDetail:
             .all()
         )
 
+        # Les LIGNES de la facture source. Sans elles, le gestionnaire ne
+        # peut pas verifier l'alerte : il ne voit que le score et les
+        # facteurs, pas ce qui a ete facture. `prescrite` indique si l'acte
+        # figure dans l'ordonnance liee a la facture : c'est le doublon de
+        # prescription que le gestionnaire doit pouvoir constater.
+        lignes = (
+            session.execute(
+                text(
+                    """
+                    SELECT a.code AS code_acte, a.libelle, l.quantite,
+                           l.montant_unitaire,
+                           (l.quantite * l.montant_unitaire) AS montant_total,
+                           (EXISTS (
+                               SELECT 1
+                               FROM core.ordonnance o
+                               JOIN core.ordonnance_ligne ol ON ol.ordonnance_id = o.id
+                               WHERE f.ordonnance_id = o.id AND ol.acte_id = a.id
+                           )) AS prescrite
+                    FROM core.ligne_facture l
+                    JOIN core.acte a ON a.id = l.acte_id
+                    JOIN core.facture f ON f.id = l.facture_id
+                    WHERE f.id = CAST(:facture_id AS integer)
+                    ORDER BY l.id
+                    """
+                ),
+                {"facture_id": entete["facture_id"]},
+            )
+            .mappings()
+            .all()
+        )
+
     return AlerteDetail(
         **entete,
         shap=[ShapContribution(**contribution) for contribution in contributions],
+        lignes=[AlerteLigne(**ligne) for ligne in lignes],
     )
 
 
@@ -232,24 +353,64 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
 
 
 @router.get("/historique")
-def historique(user: AuditReader, limit: int = Query(default=100, ge=1, le=500)) -> list[dict]:
-    """Historique des decisions, exigence du parcours gestionnaire."""
+def historique(
+    user: AuditReader,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    decision: str | None = Query(default=None, max_length=32),
+    depuis: datetime | None = Query(default=None),
+    jusque: datetime | None = Query(default=None),
+) -> dict[str, object]:
+    """Historique des decisions, exigeance du parcours gestionnaire.
+
+    Comme la file, l'historique est PAGINE et filtrable : plafonner a 200
+    decisions sans pagination ni filtre rendait l'historique inexploitable
+    des la premiere semaine d'exploitation.
+    """
+    conditions = ["true"]
+    params: dict[str, object] = {}
+    if decision:
+        conditions.append("d.decision = :decision")
+        params["decision"] = decision
+    if depuis is not None:
+        conditions.append("d.decided_at >= :depuis")
+        params["depuis"] = depuis
+    if jusque is not None:
+        conditions.append("d.decided_at <= :jusque")
+        params["jusque"] = jusque
+    where = " AND ".join(conditions)
+
     with session_scope() as session:
+        total = int(
+            session.execute(
+                text(
+                    f"""
+                SELECT count(*)
+                FROM audit.decision_gestionnaire d
+                JOIN ml.prediction p ON p.id = d.prediction_id
+                WHERE {where}
+                """
+                ),
+                params,
+            ).scalar_one()
+        )
         rows = (
             session.execute(
                 text(
-                    """
+                    f"""
                 SELECT d.prediction_id::text, d.decision, d.commentaire,
-                       d.decided_at, p.score_fraude
+                       d.decided_at, d.decided_by, p.score_fraude,
+                       p.facture_id::text AS facture_id
                 FROM audit.decision_gestionnaire d
                 JOIN ml.prediction p ON p.id = d.prediction_id
+                WHERE {where}
                 ORDER BY d.decided_at DESC
-                LIMIT :limit
+                LIMIT :limit OFFSET :offset
                 """
                 ),
-                {"limit": limit},
+                {**params, "limit": limit, "offset": offset},
             )
             .mappings()
             .all()
         )
-    return [dict(row) for row in rows]
+    return {"items": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset}

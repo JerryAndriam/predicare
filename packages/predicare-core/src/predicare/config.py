@@ -114,6 +114,22 @@ class Settings(BaseSettings):
     # Canaux de notification, affiches par l'ecran d'administration.
     slack_webhook_url: str = ""
     smtp_from: str = ""
+    #: API HTTP de la boite de reception (Mailpit en developpement). Sert au
+    #: test d'envoi du canal e-mail depuis l'ecran d'administration.
+    smtp_api_url: str = ""
+
+    # Flux 1 du CDC : « Si Score > 0,8 -> notification Slack au gestionnaire
+    # avec rapport d'explicabilite ». Le declenchement passe par le webhook
+    # n8n, qui rejoue la chaine Slack + e-mail.
+    #
+    # L'alias est EXPLICITE : sans lui, pydantic lirait `N8N_WEBHOOK_URL`,
+    # qui est deja la variable de n8n lui-meme (son URL publique) et vaut
+    # `http://localhost:5678/` : l'alerte partirait vers l'interface
+    # n8n au lieu du webhook.
+    n8n_alerte_webhook_url: str = Field(default="", alias="N8N_ALERTE_WEBHOOK_URL")
+    #: Seuil de NOTIFICATION. Distinct du seuil de DETECTION : une alerte
+    #: Slack est une interruption humaine, reservee aux cas tres nets.
+    n8n_seuil_notification: float = Field(default=0.8, alias="N8N_SEUIL_NOTIFICATION")
     #: Webhook n8n appele apres une bascule de modele. Vide = desactive.
     #: En conteneur, l'adresse est `http://n8n:5678/webhook/bascule-modele`.
     n8n_bascule_webhook_url: str = ""

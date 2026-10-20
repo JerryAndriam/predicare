@@ -334,6 +334,15 @@ services:
       <<: *env-common
       INFERENCE_API_URL: http://api-inference:8002
       RAG_API_URL: http://api-rag:8003
+      # Flux 1 : quand une facture du parcours web franchit le seuil de
+      # notification, api-core appelle ce webhook n8n, qui notifie Slack
+      # puis l'e-mail au gestionnaire. Vide = notification desactivee, le
+      # depot de facture continue de fonctionner.
+      N8N_ALERTE_WEBHOOK_URL: ${N8N_ALERTE_WEBHOOK_URL:-}
+      N8N_SEUIL_NOTIFICATION: ${N8N_SEUIL_NOTIFICATION:-0.8}
+      # API HTTP de la boite de reception, pour le test d'envoi du canal
+      # e-mail depuis l'ecran d'administration.
+      SMTP_API_URL: ${SMTP_API_URL:-}
     ports:
       - "${API_CORE_PORT:-8001}:8001"
     depends_on:

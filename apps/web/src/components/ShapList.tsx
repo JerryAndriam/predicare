@@ -8,7 +8,7 @@ import { Vide } from './ui'
  */
 export function ShapList({ contributions }: { contributions: ShapContribution[] }) {
   if (contributions.length === 0) {
-    return <Vide>Aucune contribution SHAP enregistree pour cette facture.</Vide>
+    return <Vide>Aucune contribution SHAP enregistrée pour cette facture.</Vide>
   }
 
   const maximum = Math.max(...contributions.map((item) => Math.abs(item.shap_value)), 0.0001)

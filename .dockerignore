@@ -8,7 +8,13 @@
 .env
 .env.*
 !.env.example
-data/
+# Les jeux de donnees bruts (CSV) ne doivent pas-enter dans une image.
+# Seul le lot de jury est re-inclus : l'ecran professionnel doit pouvoir
+# le charger en un clic, et il est deja versionne.
+data/*
+!data/seed/
+data/seed/*
+!data/seed/lot_20_factures.json
 models/
 backups/
 artifacts/

@@ -88,6 +88,22 @@ http:
       service: predicare-web
       priority: 1
 
+    # ---- Flux 3 : tableau de bord BI ------------------------------------
+    # Superset est PROXYFIE par la passerelle sous `/bi` plutot que
+    # d'etre ouvert sur un autre port. Deux raisons :
+    #   1. l'iframe du tableau de bord est alors de MEME ORIGINE que
+    #      l'application, donc la CSP reste `frame-src 'self'` : aucune
+    #     .derogation a accorder a un tiers ;
+    #   2. l'utilisateur reste sur une seule URL, ce qui est le principe
+    #      affiche de la plateforme (« une seule origine »).
+    # Le service n'existe que si le profil `bi` est demarre : sinon la
+    # passerelle repond 502 et l'ecran affiche son repli.
+    predicare-bi:
+      entryPoints: [web]
+      rule: "PathPrefix(`/bi`)"
+      service: predicare-bi
+      priority: 10
+
   services:
     predicare-core:
       loadBalancer:
@@ -103,6 +119,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://api-rag:8003"
+
+    predicare-bi:
+      loadBalancer:
+        servers:
+          - url: "http://superset:8088"
 
     predicare-web:
       loadBalancer:

@@ -20,7 +20,7 @@ export function AccountPage() {
     setSucces(null)
 
     if (nouveau.length < 12) {
-      setErreur('Le nouveau mot de passe doit contenir au moins 12 caracteres.')
+      setErreur('Le nouveau mot de passe doit contenir au moins 12 caractères.')
       return
     }
     if (nouveau !== confirmation) {
@@ -34,7 +34,7 @@ export function AccountPage() {
         method: 'POST',
         body: JSON.stringify({ old_password: ancien, new_password: nouveau }),
       })
-      setSucces('Mot de passe modifie. Il sera demande a la prochaine connexion.')
+      setSucces('Mot de passe modifié. Il sera demande a la prochaine connexion.')
       setAncien('')
       setNouveau('')
       setConfirmation('')
@@ -59,7 +59,7 @@ export function AccountPage() {
               <span className="champ-label">Nom</span> : {profile?.display_name ?? '-'}
             </li>
             <li>
-              <span className="champ-label">Role</span> :{' '}
+              <span className="champ-label">Rôle</span> :{' '}
               {profile === null ? '-' : ROLE_LABELS[profile.role]}
             </li>
             {profile?.assured_pseudonym != null && (
@@ -69,7 +69,7 @@ export function AccountPage() {
               </li>
             )}
             <li>
-              <span className="champ-label">Derniere connexion</span> :{' '}
+              <span className="champ-label">Dernière connexion</span> :{' '}
               {profile?.last_login ?? '-'}
             </li>
           </ul>

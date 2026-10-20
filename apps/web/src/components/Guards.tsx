@@ -15,7 +15,7 @@ export function RequireAuth() {
 }
 
 /**
- * Garde d'ecran. Elle evite d'afficher un ecran interdit, mais elle ne
+ * Garde d'ecran. Elle évité d'afficher un ecran interdit, mais elle ne
  * remplace PAS le controle serveur : l'API refuse de toute facon la requete
  * (403) si le role ne correspond pas. C'est une aide a la navigation.
  */

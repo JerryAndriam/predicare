@@ -35,40 +35,85 @@ class AuditEntry(BaseModel):
     created_at: datetime
 
 
-@router.get("/journal", response_model=list[AuditEntry])
+class AuditPage(BaseModel):
+    """Journal pagine : au-dela de la page, les evenements existent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AuditEntry]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/journal", response_model=AuditPage)
 def journal(
     user: CurrentUser,
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     action: str | None = Query(default=None, max_length=64),
-) -> list[AuditEntry]:
-    """Journal d'audit, reserve au gestionnaire et a l'administrateur."""
+    acteur: str | None = Query(default=None, max_length=64),
+    cible: str | None = Query(default=None, max_length=128),
+    depuis: datetime | None = Query(default=None),
+    jusque: datetime | None = Query(default=None),
+) -> AuditPage:
+    """Journal d'audit, reserve au gestionnaire et a l'administrateur.
+
+    La pagination et les filtres (action, acteur, cible, periode) sont
+    exposes pour que l'ecran d'administration n'affiche pas une liste
+    tronquee sans moyen de retrouver l'evenement cherche.
+    """
     ensure_permission(user.role, "audit:lire")
 
-    where = ""
-    params: dict[str, object] = {"limit": limit}
+    conditions = ["true"]
+    params: dict[str, object] = {}
     if action:
-        where = "AND action = :action"
+        conditions.append("action = :action")
         params["action"] = action
+    if acteur:
+        conditions.append("acteur ILIKE :acteur")
+        params["acteur"] = f"%{acteur.strip()}%"
+    if cible:
+        conditions.append("cible ILIKE :cible")
+        params["cible"] = f"%{cible.strip()}%"
+    if depuis is not None:
+        conditions.append("created_at >= :depuis")
+        params["depuis"] = depuis
+    if jusque is not None:
+        conditions.append("created_at <= :jusque")
+        params["jusque"] = jusque
+    where = " AND ".join(conditions)
 
     with session_scope() as session:
+        total = int(
+            session.execute(
+                text(f"SELECT count(*) FROM audit.journal WHERE {where}"),
+                params,
+            ).scalar_one()
+        )
         rows = (
             session.execute(
                 text(
                     f"""
                 SELECT id, acteur, role, action, cible, details, created_at
                 FROM audit.journal
-                WHERE true {where}
-                ORDER BY created_at DESC
-                LIMIT :limit
+                WHERE {where}
+                ORDER BY created_at DESC, id DESC
+                LIMIT :limit OFFSET :offset
                 """
                 ),
-                params,
+                {**params, "limit": limit, "offset": offset},
             )
             .mappings()
             .all()
         )
 
-    return [AuditEntry(**row) for row in rows]
+    return AuditPage(
+        items=[AuditEntry(**row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/evenement")

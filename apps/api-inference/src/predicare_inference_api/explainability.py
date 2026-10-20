@@ -14,44 +14,49 @@ from predicare.schemas import ShapContribution
 
 #: Libelles metier. Le nom technique de la variable n'est jamais presente
 #: tel quel dans une alerte : un gestionnaire ne connait pas `ratio_montant_mois`.
+#:
+#: Les libelles sont ACCENTUES : ils sont lus par un humain, dans une
+#: alerte qui doit credible devant un jury. Un libelle sans accent se lit
+#: comme une faute de finition, et la valeur d'une explication tient
+#: autant a sa forme qu'a son fond.
 LIBELLES: dict[str, str] = {
     # --- Structure -----------------------------------------------------------
     "montant_total": "montant total de la facture",
     "log1p_montant_total": "niveau de montant de la facture",
     "montant_moyen_ligne": "montant moyen par ligne",
-    "montant_max_ligne": "montant de la ligne la plus elevee",
+    "montant_max_ligne": "montant de la ligne la plus élevée",
     "nb_lignes": "nombre de lignes",
-    "quantite_totale": "quantite totale facturee",
-    "diversification_actes": "variete des actes factures",
-    "nb_categories": "variete des categories d'acte",
-    "categorie_dominante_code": "categorie d'acte principale",
-    "part_actes_specialises": "part des actes specialises",
-    "ratio_quantite": "quantite moyenne par ligne",
+    "quantite_totale": "quantité totale facturée",
+    "diversification_actes": "variété des actes facturés",
+    "nb_categories": "variété des catégories d'acte",
+    "categorie_dominante_code": "catégorie d'acte principale",
+    "part_actes_specialises": "part des actes spécialisés",
+    "ratio_quantite": "quantité moyenne par ligne",
     # --- Tarification --------------------------------------------------------
-    "ratio_prix_grille_max": "ecart au tarif de la grille du prestataire",
-    "ratio_prix_grille_moyen": "ecart moyen au tarif de la grille",
-    "ecart_prix_grille_max": "montant de l'ecart au tarif de la grille",
-    "ratio_prix_reference_max": "ecart au tarif de reference du referentiel",
-    "depasse_tarif_max": "depassement du tarif maximal autorise",
-    "produit_non_remboursable": "presence d'un produit non remboursable",
+    "ratio_prix_grille_max": "écart au tarif de la grille du prestataire",
+    "ratio_prix_grille_moyen": "écart moyen au tarif de la grille",
+    "ecart_prix_grille_max": "montant de l'écart au tarif de la grille",
+    "ratio_prix_reference_max": "écart au tarif de référence du référentiel",
+    "depasse_tarif_max": "dépassement du tarif maximal autorisé",
+    "produit_non_remboursable": "présence d'un produit non remboursable",
     # --- Prescription -------------------------------------------------------
-    "taux_lignes_non_prescrites": "lignes facturees absentes de l'ordonnance",
+    "taux_lignes_non_prescrites": "lignes facturées absentes de l'ordonnance",
     "ordonnance_absente_requis": "ordonnance obligatoire manquante",
-    "ordonnance_expiree": "ordonnance expiree a la date du soin",
-    "delai_prescription_jours": "delai entre prescription et soin",
-    "prescripteur_different": "prescription emise par un autre praticien",
+    "ordonnance_expiree": "ordonnance expirée à la date du soin",
+    "delai_prescription_jours": "délai entre prescription et soin",
+    "prescripteur_different": "prescription émise par un autre praticien",
     # --- Coherence profil ---------------------------------------------------
-    "incompatibilite_sexe": "acte incompatible avec le sexe de l'assure",
-    "incompatibilite_age": "acte incompatible avec l'age de l'assure",
+    "incompatibilite_sexe": "acte incompatible avec le sexe de l'assuré",
+    "incompatibilite_age": "acte incompatible avec l'âge de l'assuré",
     # --- Prestataire et horaires --------------------------------------------
-    "prestataire_radie": "soin par un prestataire radie",
-    "hors_convention": "soin hors periode de conventionnement",
-    "soin_jour_ferme": "soin realise un jour de fermeture",
-    "soin_hors_horaire": "soin realise hors des horaires d'ouverture",
-    "prestataire_niveau_tarif_eleve": "prestataire a niveau tarifaire eleve",
+    "prestataire_radie": "soin par un prestataire radié",
+    "hors_convention": "soin hors période de conventionnement",
+    "soin_jour_ferme": "soin réalisé un jour de fermeture",
+    "soin_hors_horaire": "soin réalisé hors des horaires d'ouverture",
+    "prestataire_niveau_tarif_eleve": "prestataire à niveau tarifaire élevé",
     # --- Garantie et couverture ---------------------------------------------
-    "montant_vs_plafond_garantie": "montant rapport au plafond de la garantie",
-    "hors_periode_contrat": "soin hors periode de couverture du contrat",
+    "montant_vs_plafond_garantie": "montant rapporté au plafond de la garantie",
+    "hors_periode_contrat": "soin hors période de couverture du contrat",
     "taux_actes_exclus": "part des actes exclus par la formule",
 }
 
@@ -59,8 +64,8 @@ LIBELLES: dict[str, str] = {
 def _human_readable(feature: str, shap_value: float) -> str:
     libelle = LIBELLES.get(feature, feature.replace("_", " "))
     if shap_value > 0:
-        return f"{libelle} : fortement a l'origine du risque de fraude"
-    return f"{libelle} : contribue a reduire le risque de fraude"
+        return f"{libelle} : fortement à l'origine du risque de fraude"
+    return f"{libelle} : contribue à réduire le risque de fraude"
 
 
 def shap_to_contributions(
@@ -101,11 +106,11 @@ def build_shap_report(contributions: list[ShapContribution], score: float, seuil
     """Rapport SHAP en texte, envoye tel quel dans la notification Slack."""
     if not contributions:
         return (
-            f"Facture notee {score:.0%} (seuil {seuil:.0%}). "
-            "Aucune contribution dominante : anomalie diffuse, non attribuee."
+            f"Facture notée {score:.0%} (seuil {seuil:.0%}). "
+            "Aucune contribution dominante : anomalie diffuse, non attribuée."
         )
     lignes = [
-        f"Facture notee {score:.0%} (seuil {seuil:.0%}).",
+        f"Facture notée {score:.0%} (seuil {seuil:.0%}).",
         "Principaux facteurs :",
     ]
     for rang, contribution in enumerate(contributions, start=1):

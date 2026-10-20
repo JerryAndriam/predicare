@@ -113,11 +113,14 @@ if ($repFactures) {
         Ecrire-Ko ("Isolation assure : " + $pseudos.Count + " dossier(s) different(s)")
     }
 
+    # On compare le TOTAL renvoye par l'API (le COUNT(*) du serveur) au
+    # total SQL : comparer la taille de la PAGE au total ferait echouer le
+    # controle des que le dossier depasse la limite d'affichage.
     $attenduAssure = [int](Sql "SELECT count(*) FROM core.facture f JOIN core.utilisateur u ON u.assured_id = f.assure_id WHERE u.email = 'assure@predicare.local';")
-    if ($ficheAssure.items.Count -eq $attenduAssure) {
+    if ($ficheAssure.total -eq $attenduAssure) {
         Ecrire-Ok ("Factures du dossier : " + $attenduAssure + " (aucune fuite)")
     } else {
-        Ecrire-Ko ("Factures du dossier : API=" + $ficheAssure.items.Count + " SQL=" + $attenduAssure)
+        Ecrire-Ko ("Factures du dossier : API=" + $ficheAssure.total + " SQL=" + $attenduAssure)
     }
 
     $payeesAvecMontant = @($ficheAssure.items | Where-Object {
@@ -267,13 +270,26 @@ if ($apres -gt $avant) {
 Ecrire-Titre "4. File d'alertes et decision"
 
 try {
+    # La file est PAGINEE : la reponse est un objet { items, total, ... },
+    # plus une liste. Lire `$file.Count` compterait les proprietes de
+    # l'objet, pas les alertes.
     $file = Invoke-RestMethod -Uri "$Base/api/core/alertes/file?statut=nouvelle&limit=10" -Headers @{ Authorization = "Bearer $tGest" } -TimeoutSec 20
-    if ($file.Count -gt 0) {
-        Ecrire-Ok ("Alertes en attente : " + $file.Count)
-        $alerte = $file[0]
+    $alertes = @($file.items)
+    if ($alertes.Count -gt 0) {
+        Ecrire-Ok ("Alertes en attente : " + $file.total + " au total, " + $alertes.Count + " sur cette page")
+        $alerte = $alertes[0]
         Write-Host ("        prediction_id : " + $alerte.prediction_id) -ForegroundColor Gray
         Write-Host ("        score         : " + [math]::Round($alerte.score_fraude, 4)) -ForegroundColor Gray
         Tester-Get "Detail alerte" ("/api/core/alertes/detail/" + $alerte.prediction_id) $tGest | Out-Null
+
+        # Le detail doit porter les LIGNES de la facture : sans elles, le
+        # gestionnaire ne peut pas verifier l'alerte.
+        $detail = Invoke-RestMethod -Uri ("$Base/api/core/alertes/detail/" + $alerte.prediction_id) -Headers @{ Authorization = "Bearer $tGest" } -TimeoutSec 20
+        if (@($detail.lignes).Count -gt 0) {
+            Ecrire-Ok ("Detail alerte : " + @($detail.lignes).Count + " ligne(s) de facture")
+        } else {
+            Ecrire-Ko "Detail alerte sans ligne de facture"
+        }
 
         $decision = @{
             prediction_id = [string]$alerte.prediction_id
@@ -289,6 +305,34 @@ try {
     }
 } catch {
     Ecrire-Ko "Lecture de la file d'alertes"
+}
+
+# ------------------------------------------------------- notification d'alerte
+# Le depot d'une facture au-dessus du seuil doit declencher la chaine
+# d'alerte (webhook n8n). On verifie que la reponse porte l'etat de la
+# notification : c'est ce que l'ecran affiche au professionnel.
+try {
+    $refsNotif = Invoke-RestMethod -Uri "$Base/api/core/factures/references" -Headers @{ Authorization = "Bearer $tPro" } -TimeoutSec 20
+    $maintenantNotif = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+    $corpsNotif = @{
+        assure_pseudonyme = $refsNotif.assures[0].pseudonyme
+        prestataire_id    = $refsNotif.prestataire_du_compte
+        date_facture      = $maintenantNotif
+        montant_total     = 2500000
+        lignes            = @(@{ code_acte = "ACC-CESAR"; quantite = 1; montant_unitaire = 2500000; date_acte = $maintenantNotif })
+    } | ConvertTo-Json -Depth 5
+    $rNotif = Invoke-RestMethod -Method Post -Uri "$Base/api/core/factures/soumettre" -Headers @{ Authorization = "Bearer $tPro" } -ContentType "application/json" -Body $corpsNotif -TimeoutSec 30
+    if ($null -ne $rNotif.notification) {
+        if ($rNotif.notification.envoye) {
+            Ecrire-Ok ("Notification d'alerte declenchee : " + $rNotif.notification.message)
+        } else {
+            Ecrire-Ko ("Notification d'alerte non declenchee : " + $rNotif.notification.message)
+        }
+    } else {
+        Ecrire-Ko "Depot sans etat de notification"
+    }
+} catch {
+    Ecrire-Ko "Verification de la notification d'alerte"
 }
 
 # ---------------------------------------------------------------- ordonnance

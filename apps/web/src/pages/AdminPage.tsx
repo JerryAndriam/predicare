@@ -6,14 +6,18 @@ import {
   type AdminUser,
   type AdminUserCreate,
   type AuditEntry,
+  type ChannelTestResult,
   type ModelInfo,
   type NotificationChannel,
   type Observability,
+  type PageResult,
   type PlatformHealth,
   type References,
   type Role,
+  type SecretState,
 } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { Barres } from '../components/Barres'
 import { SchemaProjet } from '../components/SchemaProjet'
 import {
   Badge,
@@ -21,11 +25,16 @@ import {
   Champ,
   Chargement,
   Erreur,
+  EtatVide,
+  Pagination,
   Succes,
   Vide,
   dateCourte,
   pourcentage,
 } from '../components/ui'
+
+/** Taille d'une page de journal : le journal est volumineux. */
+const LIMITE_JOURNAL = 50
 
 type Onglet =
   | 'seuil'
@@ -71,8 +80,19 @@ export function AdminPage() {
     Record<string, { actif: boolean; destinataire: string }>
   >({})
   const [observabilite, setObservabilite] = useState<Observability | null>(null)
+  const [fenetreObservabilite, setFenetreObservabilite] = useState<
+    '24h' | '7j' | '30j' | '90j'
+  >('30j')
   const [resume, setResume] = useState<{ version: string | null; seuil: number } | null>(null)
   const [journal, setJournal] = useState<AuditEntry[]>([])
+  const [totalJournal, setTotalJournal] = useState(0)
+  const [offsetJournal, setOffsetJournal] = useState(0)
+  const [filtreAction, setFiltreAction] = useState('')
+  const [filtreActeur, setFiltreActeur] = useState('')
+  const [filtreCible, setFiltreCible] = useState('')
+  const [secrets, setSecrets] = useState<SecretState[]>([])
+  const [testCanal, setTestCanal] = useState<ChannelTestResult | null>(null)
+  const [testEnCours, setTestEnCours] = useState(false)
 
   const { profile } = useAuth()
   const [utilisateurs, setUtilisateurs] = useState<AdminUser[]>([])
@@ -96,19 +116,103 @@ export function AdminPage() {
     // En-tete : la version et le seuil affiches doivent venir du serveur.
     // Les figer en dur (ancien « Version 2 / 28,76 % ») mentait des qu'un
     // administrateur changeait l'un ou l'autre.
-    const chargerResume = async () => {
-      try {
-        const [etat, seuil] = await Promise.all([
-          api<ModelInfo>('/api/core/admin/modele'),
-          api<{ seuil: number }>('/api/core/admin/seuil'),
-        ])
-        setResume({ version: etat.active_version, seuil: seuil.seuil })
-      } catch {
-        setResume(null)
-      }
-    }
     void chargerResume()
-  }, [])
+  }, [onglet])
+
+  const chargerResume = async () => {
+    try {
+      const [etat, seuil] = await Promise.all([
+        api<ModelInfo>('/api/core/admin/modele'),
+        api<{ seuil: number }>('/api/core/admin/seuil'),
+      ])
+      setResume({ version: etat.active_version, seuil: seuil.seuil })
+    } catch {
+      setResume(null)
+    }
+  }
+
+  const chargerObservabilite = async (fenetre: '24h' | '7j' | '30j' | '90j') => {
+    try {
+      setObservabilite(await api<Observability>(`/api/core/admin/observabilite?fenetre=${fenetre}`))
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    }
+  }
+
+  const chargerJournal = async (decalage: number) => {    const params = new URLSearchParams({ limit: String(LIMITE_JOURNAL), offset: String(decalage) })
+    if (filtreAction.trim() !== '') params.set('action', filtreAction.trim())
+    if (filtreActeur.trim() !== '') params.set('acteur', filtreActeur.trim())
+    if (filtreCible.trim() !== '') params.set('cible', filtreCible.trim())
+    const page = await api<PageResult<AuditEntry>>(`/api/core/audit/journal?${params.toString()}`)
+    setJournal(page.items)
+    setTotalJournal(page.total)
+    setOffsetJournal(page.offset)
+  }
+
+  const appliquerFiltresJournal = () => {
+    void chargerJournal(0).catch((probleme: unknown) => setErreur(messageErreur(probleme)))
+  }
+
+  const reinitialiserJournal = () => {
+    setFiltreAction('')
+    setFiltreActeur('')
+    setFiltreCible('')
+    const params = new URLSearchParams({ limit: String(LIMITE_JOURNAL), offset: '0' })
+    void api<PageResult<AuditEntry>>(`/api/core/audit/journal?${params.toString()}`)
+      .then((page) => {
+        setJournal(page.items)
+        setTotalJournal(page.total)
+        setOffsetJournal(page.offset)
+      })
+      .catch((probleme: unknown) => setErreur(messageErreur(probleme)))
+  }
+
+  /**
+   * Export CSV du journal affiché.
+   *
+   * L'export porte sur ce que l'écran montre (page courante, filtres
+   * appliqués) : un export de TOUT le journal alors que l'écran n'en montre
+   * qu'une page serait une surprise pour le lecteur.
+   */
+  const exporterJournal = () => {
+    const entetes = ['id', 'created_at', 'acteur', 'rôle', 'action', 'cible', 'details']
+    const lignes = journal.map((entree) =>
+      [
+        entree.id,
+        entree.created_at,
+        entree.acteur,
+        entree.role,
+        entree.action,
+        entree.cible ?? '',
+        JSON.stringify(entree.details ?? {}),
+      ]
+        .map((valeur) => `"${String(valeur).replace(/"/g, '""')}"`)
+        .join(';'),
+    )
+    const contenu = [entetes.join(';'), ...lignes].join('\r\n')
+    const blob = new Blob([`﻿${contenu}`], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const lien = document.createElement('a')
+    lien.href = url
+    lien.download = `journal-audit-${new Date().toISOString().slice(0, 10)}.csv`
+    lien.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const testerUnCanal = async (nom: string) => {
+    setTestEnCours(true)
+    setTestCanal(null)
+    setErreur(null)
+    try {
+      setTestCanal(await api<ChannelTestResult>(`/api/core/admin/canaux/${encodeURIComponent(nom)}/test`, {
+        method: 'POST',
+      }))
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    } finally {
+      setTestEnCours(false)
+    }
+  }
 
   useEffect(() => {
     setErreur(null)
@@ -133,12 +237,15 @@ export function AdminPage() {
               ]),
             ),
           )
+          setSecrets(await api<SecretState[]>('/api/core/admin/secrets'))
         }
         if (onglet === 'observabilite') {
-          setObservabilite(await api<Observability>('/api/core/admin/observabilite'))
+          setObservabilite(
+            await api<Observability>(`/api/core/admin/observabilite?fenetre=${fenetreObservabilite}`),
+          )
         }
         if (onglet === 'audit') {
-          setJournal(await api<AuditEntry[]>('/api/core/audit/journal?limit=200'))
+          await chargerJournal(0)
         }
         if (onglet === 'utilisateurs') {
           const [comptes, references] = await Promise.all([
@@ -170,8 +277,11 @@ export function AdminPage() {
         method: 'PUT',
         body: JSON.stringify({ seuil: Number(seuil), motif }),
       })
-      setSucces('Seuil enregistre et pousse au service d inference.')
+      setSucces('Seuil enregistré et pousse au service d inference.')
       setMotif('')
+      // L'en-tete affiche le seuil courant : il doit changer AU MOMENT du
+      // reglage, pas au prochain rechargement de la page.
+      await chargerResume()
     } catch (probleme) {
       setErreur(messageErreur(probleme))
     } finally {
@@ -205,8 +315,10 @@ export function AdminPage() {
     setEnCours(true)
     try {
       await api<Record<string, unknown>>(chemin, { method: 'POST' })
-      setSucces('Operation appliquee sur le registre de modeles.')
+      setSucces('Opération appliquée sur le registre de modèles.')
       await chargerModele()
+      // Idem pour l'en-tete : la version affichee doit suivre la bascule.
+      await chargerResume()
     } catch (probleme) {
       setErreur(messageErreur(probleme))
     } finally {
@@ -234,7 +346,7 @@ export function AdminPage() {
         method: 'POST',
         body: JSON.stringify(charge),
       })
-      setSucces('Compte cree.')
+      setSucces('Compte créé.')
       setForm({
         email: '',
         password: '',
@@ -263,7 +375,7 @@ export function AdminPage() {
         method: 'PATCH',
         body: JSON.stringify({ is_active: !compte.is_active }),
       })
-      setSucces(compte.is_active ? 'Compte desactive.' : 'Compte active.')
+      setSucces(compte.is_active ? 'Compte désactivé.' : 'Compte active.')
       setUtilisateurs(await api<AdminUser[]>('/api/core/admin/utilisateurs'))
     } catch (probleme) {
       setErreur(messageErreur(probleme))
@@ -290,7 +402,7 @@ export function AdminPage() {
           demande de redemarrer un conteneur.
         </p>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.82rem', opacity: 0.8 }}>
-          <span>Role : <strong style={{ color: '#2dd4bf' }}>Administrateur</strong></span>
+          <span>Rôle : <strong style={{ color: '#2dd4bf' }}>Administrateur</strong></span>
           <span>Version : <strong style={{ color: '#2dd4bf' }}>{resume?.version ?? '-'}</strong></span>
           <span>
             Seuil :{' '}
@@ -306,8 +418,8 @@ export function AdminPage() {
         {(
           [
             ['seuil', 'Seuil'],
-            ['modele', 'Modele'],
-            ['sante', 'Sante'],
+            ['modele', 'Modèle'],
+            ['sante', 'Santé'],
             ['canaux', 'Canaux'],
             ['observabilite', 'Observabilite'],
             ['utilisateurs', 'Comptes'],
@@ -370,7 +482,7 @@ export function AdminPage() {
 
       {onglet === 'modele' && (
         <div className="grille deux">
-          <Carte titre="Registre des modeles">
+          <Carte titre="Registre des modèles">
             {modele === null ? (
               <Chargement />
             ) : (
@@ -399,7 +511,7 @@ export function AdminPage() {
                   </ul>
                 )}
 
-                <h3>Versions presentes sur le volume</h3>
+                <h3>Versions présentes sur le volume</h3>
                 {modele.available_versions.length === 0 ? (
                   <Vide>
                     Aucune version sur /models. Lancez <code>make train VERSION=2</code>.
@@ -465,14 +577,14 @@ export function AdminPage() {
       )}
 
       {onglet === 'sante' && (
-        <Carte titre="Sante de la plateforme">
+        <Carte titre="Santé de la plateforme">
           {sante === null ? (
             <Chargement />
           ) : (
             <div className="pile-serre">
               <div className="grille trois">
                 <div className="sonde">
-                  <span className="champ-label">Base de donnees</span>
+                  <span className="champ-label">Base de données</span>
                   <Badge ton={sante.dependances.base ? 'ok' : 'alerte'}>
                     {sante.dependances.base ? 'ok' : 'indisponible'}
                   </Badge>
@@ -498,7 +610,7 @@ export function AdminPage() {
                   >
                     {sante.dependances.rag.embedding_configure
                       ? 'embeddings configures'
-                      : 'cle d embedding absente'}
+                      : 'clé d embedding absente'}
                   </Badge>
                 </div>
               </div>
@@ -596,18 +708,76 @@ export function AdminPage() {
                           />
                         </td>
                         <td className="droite">
-                          <button
-                            type="button"
-                            className="bouton discret"
-                            disabled={enCours}
-                            onClick={() => void enregistrerCanal(canal.nom)}
-                          >
-                            Enregistrer
-                          </button>
+                          <div className="carte-actions">
+                            <button
+                              type="button"
+                              className="bouton discret"
+                              disabled={testEnCours}
+                              onClick={() => void testerUnCanal(canal.nom)}
+                            >
+                              {testEnCours ? 'Envoi…' : 'Tester'}
+                            </button>
+                            <button
+                              type="button"
+                              className="bouton principal"
+                              disabled={enCours}
+                              onClick={() => void enregistrerCanal(canal.nom)}
+                            >
+                              Enregistrer
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {testCanal !== null && (
+            <p className={testCanal.envoye ? 'succes' : 'erreur'} role="status">
+              {testCanal.envoye ? '✓ ' : '✕ '}
+              {testCanal.message}
+            </p>
+          )}
+
+          <h3>Secrets à configurer</h3>
+          <p className="aide">
+            Un secret vit dans l’environnement du conteneur : il ne peut pas être écrit
+            depuis cet écran. Le tableau dit quoi renseigner, et où. Une fois la variable
+            renseignée dans le fichier <span className="mono">.env</span>, la plateforme
+            doit être redémarrée.
+          </p>
+          {secrets.length === 0 ? (
+            <Chargement />
+          ) : (
+            <div className="table-enveloppe">
+              <table className="table table-dense">
+                <caption className="visuellement-cache">
+                  Secrets nécessaires à la plateforme
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Secret</th>
+                    <th scope="col">Variable</th>
+                    <th scope="col">État</th>
+                    <th scope="col">Conséquence si absente</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {secrets.map((secret) => (
+                    <tr key={secret.variable}>
+                      <td>{secret.nom}</td>
+                      <td className="mono">{secret.variable}</td>
+                      <td>
+                        <Badge ton={secret.configure ? 'ok' : 'alerte'}>
+                          {secret.configure ? 'configuré' : 'manquant'}
+                        </Badge>
+                      </td>
+                      <td className="aide">{secret.effet}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -617,12 +787,34 @@ export function AdminPage() {
 
       {onglet === 'observabilite' && (
         observabilite === null ? (
-          <Carte titre="Observabilite">
+          <Carte titre="Observabilité">
             <Chargement />
           </Carte>
         ) : (
           <div className="pile">
-            <Carte titre="Synthese d'exploitation">
+            <Carte
+              titre="Synthèse d’exploitation"
+              actions={
+                <div className="carte-actions">
+                  <label className="champ-label" htmlFor="fenetre-observabilite">
+                    Période
+                  </label>
+                  <select
+                    id="fenetre-observabilite"
+                    value={fenetreObservabilite}
+                    onChange={(event) => {
+                      setFenetreObservabilite(event.target.value as typeof fenetreObservabilite)
+                      chargerObservabilite(event.target.value as typeof fenetreObservabilite)
+                    }}
+                  >
+                    <option value="24h">24 heures</option>
+                    <option value="7j">7 jours</option>
+                    <option value="30j">30 jours</option>
+                    <option value="90j">90 jours</option>
+                  </select>
+                </div>
+              }
+            >
               <div className="resultat-meta">
                 <Badge ton={observabilite.base.disponible ? 'ok' : 'alerte'}>
                   Base {observabilite.base.disponible ? 'ok' : 'indisponible'}
@@ -644,6 +836,30 @@ export function AdminPage() {
                   <span className="mono">{observabilite.secrets_manquants.join(', ')}</span>
                 </p>
               )}
+            </Carte>
+
+            <Carte
+              titre={`Volume traité par jour (${fenetreObservabilite})`}
+              actions={
+                <span className="aide">
+                  {nombre(observabilite.serie?.reduce((somme, point) => somme + point.factures, 0) ?? 0)}{' '}
+                  facture(s) sur la période
+                </span>
+              }
+            >
+              <Barres
+                libelle="Factures déposées par jour"
+                points={(observabilite.serie ?? []).map((point) => ({
+                  etiquette: point.jour.slice(5),
+                  valeur: point.factures,
+                  valeurSecondaire: point.alertes,
+                }))}
+                format={(valeur) => nombre(valeur)}
+              />
+              <p className="aide">
+                Barres pleines : factures déposées. Part rouge : factures ayant déclenché une
+                alerte.
+              </p>
             </Carte>
 
             <div className="grille trois grille-kpi">
@@ -710,7 +926,7 @@ export function AdminPage() {
                     </div>
                   </div>
                 ) : (
-                  <Vide>Aucune inference mesuree depuis le demarrage du service.</Vide>
+                  <Vide>Aucune inference mesurée depuis le demarrage du service.</Vide>
                 )}
                 <p className="aide">
                   {observabilite.inference.latence_ms?.echantillons ?? 0} echantillon(s) dans
@@ -718,9 +934,9 @@ export function AdminPage() {
                 </p>
               </Carte>
 
-              <Carte titre="Derive du modele">
+              <Carte titre="Dérive du modèle">
                 {Object.keys(observabilite.derive).length === 0 ? (
-                  <Vide>Aucun rapport de derive disponible.</Vide>
+                  <Vide>Aucun rapport de dérive disponible.</Vide>
                 ) : (
                   <ul className="liste-simple">
                     {Object.entries(observabilite.derive).map(([cle, valeur]) => (
@@ -748,9 +964,9 @@ export function AdminPage() {
                 )}
               </Carte>
 
-              <Carte titre="Posture de securite de l'assistant">
+              <Carte titre="Posture de sécurité de l'assistant">
                 {Object.keys(observabilite.rag.securite).length === 0 ? (
-                  <Vide>Aucune posture de securite exposee.</Vide>
+                  <Vide>Aucune posture de sécurité exposee.</Vide>
                 ) : (
                   <ul className="liste-simple">
                     {Object.entries(observabilite.rag.securite).map(([cle, valeur]) => (
@@ -777,12 +993,12 @@ export function AdminPage() {
                   <thead>
                     <tr>
                       <th>E-mail</th>
-                      <th>Role</th>
+                      <th>Rôle</th>
                       <th>Nom</th>
                       <th>Dossier</th>
                       <th>Prestataire</th>
-                      <th>Etat</th>
-                      <th>Derniere connexion</th>
+                      <th>État</th>
+                      <th>Dernière connexion</th>
                       <th />
                     </tr>
                   </thead>
@@ -799,7 +1015,7 @@ export function AdminPage() {
                           <td className="mono">{compte.prestataire_code ?? '-'}</td>
                           <td>
                             <Badge ton={compte.is_active ? 'ok' : 'neutre'}>
-                              {compte.is_active ? 'actif' : 'desactive'}
+                              {compte.is_active ? 'actif' : 'désactivé'}
                             </Badge>
                           </td>
                           <td>{dateCourte(compte.last_login)}</td>
@@ -861,7 +1077,7 @@ export function AdminPage() {
                 />
               </Champ>
 
-              <Champ label="Role">
+              <Champ label="Rôle">
                 <select
                   value={form.role}
                   onChange={(event) =>
@@ -954,34 +1170,115 @@ export function AdminPage() {
       )}
 
       {onglet === 'audit' && (
-        <Carte titre={`Journal d audit (${journal.length} entrees)`}>
-          {journal.length === 0 ? (
-            <Vide>Aucune entree pour le moment.</Vide>
-          ) : (
-            <div className="table-enveloppe">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Acteur</th>
-                    <th>Role</th>
-                    <th>Action</th>
-                    <th>Cible</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {journal.map((entree) => (
-                    <tr key={entree.id}>
-                      <td>{dateCourte(entree.created_at)}</td>
-                      <td className="mono">{entree.acteur}</td>
-                      <td>{entree.role}</td>
-                      <td>{entree.action}</td>
-                      <td className="mono">{entree.cible ?? '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <Carte
+          titre={`Journal d’audit (${totalJournal} entrées)`}
+          actions={
+            <div className="carte-actions">
+              <button type="button" className="bouton discret" onClick={exporterJournal}>
+                Exporter en CSV
+              </button>
             </div>
+          }
+        >
+          <div className="grille quatre">
+            <Champ label="Action">
+              <input
+                value={filtreAction}
+                placeholder="decision_alerte, connexion…"
+                onChange={(event) => setFiltreAction(event.target.value)}
+              />
+            </Champ>
+            <Champ label="Acteur">
+              <input
+                value={filtreActeur}
+                placeholder="identifiant de l’acteur"
+                onChange={(event) => setFiltreActeur(event.target.value)}
+              />
+            </Champ>
+            <Champ label="Cible">
+              <input
+                value={filtreCible}
+                placeholder="prediction:12, compte:3…"
+                onChange={(event) => setFiltreCible(event.target.value)}
+              />
+            </Champ>
+            <div className="carte-actions" style={{ alignItems: 'flex-end' }}>
+              <button type="button" className="bouton principal" onClick={appliquerFiltresJournal}>
+                Appliquer
+              </button>
+              <button type="button" className="bouton discret" onClick={reinitialiserJournal}>
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+
+          {journal.length === 0 ? (
+            <EtatVide
+              titre="Aucune entrée pour le moment"
+              texte="Le journal se remplit automatiquement : connexion, décision du gestionnaire, changement de seuil, gestion de compte."
+            />
+          ) : (
+            <>
+              <div className="table-enveloppe">
+                <table className="table table-dense">
+                  <caption className="visuellement-cache">
+                    Journal d’audit de la plateforme
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Acteur</th>
+                      <th scope="col">Rôle</th>
+                      <th scope="col">Action</th>
+                      <th scope="col">Cible</th>
+                      <th scope="col">Détails</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {journal.map((entree) => (
+                      <tr key={entree.id}>
+                        <td>{dateCourte(entree.created_at)}</td>
+                        <td className="mono">{entree.acteur}</td>
+                        <td>{entree.role}</td>
+                        <td>
+                          <span className="mono">{entree.action}</span>
+                        </td>
+                        <td className="mono">{entree.cible ?? '—'}</td>
+                        <td>
+                          {entree.details === null ||
+                          Object.keys(entree.details).length === 0 ? (
+                            <span className="aide">—</span>
+                          ) : (
+                            <details className="journal-details">
+                              <summary>Voir</summary>
+                              <dl className="journal-details-liste">
+                                {Object.entries(entree.details).map(([cle, valeur]) => (
+                                  <div key={cle}>
+                                    <dt className="mono">{cle}</dt>
+                                    <dd>
+                                      {typeof valeur === 'object' && valeur !== null
+                                        ? JSON.stringify(valeur)
+                                        : String(valeur)}
+                                    </dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </details>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                total={totalJournal}
+                offset={offsetJournal}
+                limite={LIMITE_JOURNAL}
+                onChange={chargerJournal}
+                libelle="entrées"
+              />
+            </>
           )}
         </Carte>
       )}

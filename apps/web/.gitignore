@@ -1,0 +1,7 @@
+# Artefacts de test Playwright : captures d'echec, traces, rapports.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+
+# Navigateur Playwright (telecharge dans le cache utilisateur, pas dans le depot).
+apps/web/.playwright/

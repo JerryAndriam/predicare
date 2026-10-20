@@ -8,7 +8,7 @@ import { Erreur } from '../components/ui'
 
 const COMPTES_DEMO = [
   { email: 'assure@predicare.local', role: 'Assure' },
-  { email: 'pro@predicare.local', role: 'Professionnel de sante' },
+  { email: 'pro@predicare.local', role: 'Professionnel de santé' },
   { email: 'gestionnaire@predicare.local', role: 'Gestionnaire' },
   { email: 'admin@predicare.local', role: 'Administrateur' },
 ]
@@ -67,8 +67,8 @@ export function LoginPage() {
           </p>
           <ul className="login-points" style={{ listStyle: 'none', padding: 0, marginTop: '1.2rem', opacity: 0.92 }}>
             <li>Un score et un rapport SHAP pour chaque facture</li>
-            <li>Quatre roles separes, controles cote serveur</li>
-            <li>Donnees pseudonymisees, journal d audit complet</li>
+            <li>Quatre rôles séparés, contrôles côté serveur</li>
+            <li>Données pseudonymisées, journal d audit complet</li>
           </ul>
         </div>
       </div>
@@ -82,7 +82,7 @@ export function LoginPage() {
         padding: '1.6rem 1.5rem'
       }}>
         <h2 style={{ fontSize: '1.15rem', marginBottom: '0.2rem', letterSpacing: '-0.01em' }}>Connexion</h2>
-        <p className="login-aide">Utilisez un compte de demonstration cree par le seed.</p>
+        <p className="login-aide">Utilisez un compte de démonstration créé par le seed.</p>
 
         <label className="champ">
           <span className="champ-label">Adresse e-mail</span>
@@ -119,7 +119,7 @@ export function LoginPage() {
           paddingTop: '1.1rem',
           background: 'transparent'
         }}>
-          <span className="champ-label" style={{ fontWeight: 700, color: 'var(--primaire-fonce)' }}>Comptes de demonstration</span>
+          <span className="champ-label" style={{ fontWeight: 700, color: 'var(--primaire-fonce)' }}>Comptes de démonstration</span>
           <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0' }}>
             {COMPTES_DEMO.map((compte) => (
               <li key={compte.email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.35rem 0', fontSize: '0.85rem', borderBottom: '1px dashed var(--bord)' }}>
