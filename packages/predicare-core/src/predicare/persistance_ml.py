@@ -46,6 +46,11 @@ SEUIL_PAR_DEFAUT = 0.80
 #: la table sans rien ajouter a la justification.
 CONTRIBUTIONS_CONSERVEES = 5
 
+#: Statuts qu'un calcul de score peut poser. Les autres valeurs de
+#: `ml.prediction.statut` viennent des decisions du gestionnaire (`valider`,
+#: `rejeter`, `piece`) et ne sont jamais ecrites par l'inference.
+STATUTS_PREDICTION = ("nouvelle", "archive")
+
 #: Cle du seuil d'alerte dans `audit.parametre`. L'ecran d'administration
 #: ecrit cette cle ; la file du gestionnaire la relit. Une seule verite pour
 #: tout le monde, ce qui evite qu'api-core filtre a 0.8 des alertes emises a
@@ -65,18 +70,20 @@ def _id_facture(session: Session, reference: str) -> int | None:
     ).scalar()
 
 
-def _prediction_en_attente(session: Session, facture_id: int) -> int | None:
-    """Prediction de cette facture encore en attente de decision, s'il y en a."""
+def _prediction_en_attente(
+    session: Session, facture_id: int, statut: str = "nouvelle"
+) -> int | None:
+    """Prediction de cette facture encore dans le statut donne, s'il y en a."""
     return session.execute(
         text(
             """
             SELECT id FROM ml.prediction
-            WHERE facture_id = :facture_id AND statut = 'nouvelle'
+            WHERE facture_id = :facture_id AND statut = :statut
             ORDER BY id DESC
             LIMIT 1
             """
         ),
-        {"facture_id": facture_id},
+        {"facture_id": facture_id, "statut": statut},
     ).scalar()
 
 
@@ -89,14 +96,29 @@ def stocker_prediction(
     seuil: float,
     is_fraud: bool,
     contributions: Iterable[Any],
+    statut: str = "nouvelle",
 ) -> int | None:
     """Ecrit `ml.prediction` et `ml.shap_explication`. Rend l'id, ou None.
+
+    `statut` distingue deux usages :
+
+    - `nouvelle` (defaut) : soumission temps reel, la facture entre dans la
+      file de travail du gestionnaire ;
+    - `archive` : notation RETROSPECTIVE (job `make noter`). Le score est
+      conserve et mesure la qualite du modele, mais la facture n'a jamais ete
+      soumise a un gestionnaire : la compter comme alerte non confirmee
+      ferait afficher 100 % de faux positifs sur l'historique.
 
     None signifie « ignoree, et c'est normal » : la facture n'appartient pas a
     l'historique de la plateforme. Un identifiant inconnu n'est pas une panne,
     c'est une facture d'un autre systeme ; la journaliser en erreur noierait
     les vraies pannes.
     """
+    if statut not in STATUTS_PREDICTION:
+        raise ValueError(
+            f"Statut de prediction inconnu : {statut!r}. Attendu : {STATUTS_PREDICTION}."
+        )
+
     facture_id = _id_facture(session, reference)
     if facture_id is None:
         logger.info("prediction.facture_inconnue", reference=reference)
@@ -110,7 +132,7 @@ def stocker_prediction(
         "is_fraud": is_fraud,
     }
 
-    prediction_id = _prediction_en_attente(session, facture_id)
+    prediction_id = _prediction_en_attente(session, facture_id, statut)
     if prediction_id is None:
         prediction_id = session.execute(
             text(
@@ -118,11 +140,11 @@ def stocker_prediction(
                 INSERT INTO ml.prediction
                     (facture_id, model_version, score_fraude, seuil_applique,
                      is_fraud, statut)
-                VALUES (:facture_id, :version, :score, :seuil, :is_fraud, 'nouvelle')
+                VALUES (:facture_id, :version, :score, :seuil, :is_fraud, :statut)
                 RETURNING id
                 """
             ),
-            valeurs,
+            {**valeurs, "statut": statut},
         ).scalar()
     else:
         # Re-notation : le score precedent n'a plus de sens, et la date doit

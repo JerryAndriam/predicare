@@ -404,6 +404,18 @@ evaluate: ## Compare SMOTE / scale_pos_weight et produit l'audit d'equite (make 
 	fi
 	@$(COMPOSE_CORE) run --rm evaluate
 
+.PHONY: noter
+noter: ## Note en lot les factures historiques pour peupler ml.prediction (make noter LIMITE=500)
+	@$(COMPOSE_CORE) run --rm noter \
+		python -m predicare_inference_api.noter \
+		$(if $(LIMITE),--limite $(LIMITE),) \
+		$(if $(REFERENCE),--reference $(REFERENCE),) \
+		$(if $(STATUT),--statut $(STATUT),) \
+		$(if $(DEPUIS),--depuis $(DEPUIS),) \
+		$(if $(DRY_RUN),--dry-run,) \
+		$(if $(RESCORER),--rescorer,) \
+		$(ARGS)
+
 .PHONY: model-promote
 model-promote: ## Bascule la version N en service (make model-promote VERSION=2)
 	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/candidat?version=$(VERSION)" \

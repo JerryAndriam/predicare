@@ -286,6 +286,38 @@ services:
       - core
     logging: *default-logging
 
+  # Notation en lot de l'historique : le job qui peuple `ml.prediction`.
+  #
+  # Il tourne EN PROCESS, pas via HTTP : une facture stockee porte son
+  # ordonnance et son heure de soin, que la payload de soumission ne transporte
+  # pas. Passer par `/predire` obligerait l'API a les deviner, et le score
+  # divergerait de celui de l'entrainement (FAC-00063774 : 0,06 -> 0,998).
+  #
+  # Meme image, meme modele (`/models`), meme base. Le job importe
+  # `calculer_features` et `Scorer`, exactement comme le service.
+  noter:
+    <<: *build-python
+    build:
+      context: .
+      dockerfile: apps/Dockerfile.python
+    container_name: predicare-noter
+    restart: "no"
+    profiles: ["jobs"]
+    command: ["python", "-m", "predicare_inference_api.noter"]
+    environment:
+      <<: *env-common
+    # Lecture seule : le job note l'historique, il n'ecrit jamais d'artefact.
+    volumes:
+      - ./models:/models:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+    logging: *default-logging
+
   # =======================================================================
   # FLUX 3 + SOCLE : identites, factures, decisions, administration
   # =======================================================================

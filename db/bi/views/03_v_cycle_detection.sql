@@ -10,17 +10,20 @@
 --
 -- Les vues de ce fichier couvrent les DEUX indicateurs qui n'existent pas
 -- encore dans les donnees : le taux de detection d'un modele et le taux de
--- faux positifs face a la decision humaine. Elles lisent `ml.prediction` et
--- `audit.decision_gestionnaire`, tous deux vides a ce jour.
+-- faux positifs face a la decision humaine. Elles lisent `ml.prediction`, que
+-- le job `make noter` a peuple (notations retrospectives, statut `archive`) et
+-- que les soumissions temps reel alimentent, et `audit.decision_gestionnaire`,
+-- encore vide a ce jour.
 --
--- Elles sont livrees quand meme, et vides.
+-- Les notations retrospectives sont EXCLUES de la matrice de confusion et du
+-- rappel : elles n'ont jamais ete soumises a un gestionnaire, donc les compter
+-- comme alertes non confirmees afficherait 100 % de faux positifs sur un
+-- historique que personne n'a eu a traiter. `v_detection_mensuel` les conserve :
+-- il mesure le volume d'inferences du modele, pas la charge de travail.
 --
--- Pourquoi ne pas les escamoter : le tableau de bord doit avoir la forme
--- attendue par le CDC le jour J. Une brique absente est invisible ; une
--- brique vide avec son etat affiche (« en attente de modele ») est un
--- indicateur de donnees manquant, ce que le jury peut constater et
--- discusser. Le tableau se remplira seul des la premiere execution du modele
--- et de la premiere decision gestionnaire.
+-- Les indicateurs de decision restent donc a leur etat « en attente » tant
+-- qu'aucune decision n'a ete enregistree ; ils se rempliront des la premiere
+-- decision gestionnaire, sans changer de definition.
 --
 -- ---------------------------------------------------------------------------
 -- Le probleme de securite, et sa solution
@@ -67,7 +70,7 @@ FROM ml.prediction p
 GROUP BY 1;
 
 COMMENT ON VIEW bi.v_detection_mensuel IS
-    'Volume de predictions du modele et taux d alerte, par mois. Source ml.prediction. Frequence : continue. VIDE tant qu aucun modele n a ete execute.';
+    'Volume de predictions du modele et taux d alerte, par mois. Source ml.prediction. Frequence : continue. Peuple par `make noter` (notations retrospectives, statut = archive) et par les soumissions temps reel. Inclut les notations retrospectives : c est le volume d inferences du modele, pas la charge de travail du gestionnaire.';
 
 
 -- ----------------------------------------------------------------------------
@@ -156,6 +159,11 @@ SELECT
 FROM ml.prediction p
 LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
 LEFT JOIN core.facture f ON f.id = p.facture_id
+-- Les notations retrospectives (`make noter`) sortent de la matrice : elles
+-- n'ont jamais ete soumises a un gestionnaire, donc les compter comme « alerte
+-- non confirmee » ferait un taux de faux positifs de 100 % sur un historique
+-- que personne n'a eu a traiter.
+WHERE p.statut <> 'archive'
 GROUP BY 1, 2;
 
 COMMENT ON VIEW bi.v_faux_positifs IS
@@ -221,7 +229,12 @@ SELECT
 FROM ml.prediction p
 LEFT JOIN audit.decision_gestionnaire d ON d.prediction_id = p.id
 LEFT JOIN ml.label_fraude              l ON l.facture_id    = p.facture_id
-LEFT JOIN core.facture                 f ON f.id            = p.facture_id;
+LEFT JOIN core.facture                 f ON f.id            = p.facture_id
+-- Meme raison que v_faux_positifs : une notation retrospective n'a pas ete
+-- soumise a un gestionnaire. La compter dans le rappel ou dans les faux
+-- positifs mesurerait l'absence de decision, pas la performance du modele.
+-- Le filtre ne retire pas le grain : un agregat sur zero ligne rend UNE ligne.
+WHERE p.statut <> 'archive';
 
 COMMENT ON VIEW bi.v_cdc_global IS
-    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere detection, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire. TODO : modele non entraine, aucune decision enregistree.';
+    'Boucle de decision : rappel, taux de faux positifs, montants economises confirmes et delai de decision. Grain 1 ligne, TOUJOURS presente meme vide. SECURITY DEFINER : agregat seul, aucune donnee nominative. `periode` (mois de la derniere detection, NULL si aucune) sert de colonne temporelle au frontal. Source ml.prediction + audit.decision_gestionnaire. Aucune decision enregistree a ce jour.';

@@ -15,8 +15,9 @@ from predicare.logging_config import get_logger
 from predicare.persistance_ml import persister_prediction
 from predicare_inference_api.context import resolve_context
 from predicare_inference_api.drift import DriftReport
-from predicare_inference_api.explainability import build_shap_report, shap_to_contributions
+from predicare_inference_api.explainability import build_shap_report
 from predicare_inference_api.features import build_features
+from predicare_inference_api.scoring import Scorer
 from predicare_inference_api.validation import validate_invoice
 
 router = APIRouter(tags=["inference"])
@@ -63,23 +64,10 @@ def predict(payload: dict, request: Request) -> dict:
             references=features.references_manquantes[:10],
         )
 
-    import numpy as np
-
-    estimator = bundle.estimator
-    score = float(estimator.predict_proba(np.array([row]))[0, 1])
-    base_value = bundle.shap_base_value
-
-    shap_values = np.zeros(len(bundle.feature_names))
-    try:
-        import shap
-
-        explainer = shap.TreeExplainer(estimator)
-        shap_values = np.asarray(explainer.shap_values(np.array([row]))).ravel()
-    except Exception as exc:
-        logger.warning("shap.indisponible", erreur=str(exc))
-
-    contributions = shap_to_contributions(bundle.feature_names, shap_values, base_value)
-    is_fraud = score >= seuil
+    notation = Scorer(bundle, seuil=seuil).score(row)
+    score = notation.score
+    contributions = notation.contributions
+    is_fraud = notation.is_fraud
     inference_ms = (time.perf_counter() - started) * 1000
 
     metrics.MODEL_INFERENCE.labels(SERVICE, bundle.version).observe(inference_ms / 1000)

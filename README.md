@@ -133,7 +133,7 @@ l'interface, avec l'email saisi par le visiteur, et **le mot de passe n'est
 
 ## Commandes
 
-`make help` liste les 44 commandes. Cette section les regroupe par tâche.
+`make help` liste les 56 commandes. Cette section les regroupe par tâche.
 
 ### Cycle de vie
 
@@ -199,10 +199,20 @@ s'entraîne et ce qui sert.
 | --- | --- |
 | `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts + rapports). |
 | `make evaluate` | Compare SMOTE / `scale_pos_weight` / aucun traitement et produit l'audit d'équité. |
+| `make noter LIMITE=500` | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic. |
 | `make model-state` | Version active du modèle et seuil courant. |
 | `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
 | `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
 | `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
+
+`make noter` est le seul job qui **écrit en masse** dans `ml.prediction`. Par
+défaut il marque ses prédictions `statut = 'archive'` : ce sont des notations
+rétrospectives, utiles à la mesure de la qualité du modèle et au volume du
+tableau de bord, mais qui n'entrent pas dans la file de travail du gestionnaire.
+Sans cette distinction, des milliers d'alertes historiques non décidées
+feraient afficher un taux de faux positifs de 100 % et un délai de décision de
+plusieurs années. `STATUT=nouvelle` force l'entrée en file, pour une
+démonstration sur un petit lot.
 
 L'entraînement écrit quatre fichiers par version :
 
