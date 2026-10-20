@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { RequireAuth, RequireRole } from './components/Guards'
 import { Shell } from './components/Shell'
+import { AccountPage } from './pages/AccountPage'
 import { AdminPage } from './pages/AdminPage'
 import { AssurePage } from './pages/AssurePage'
 import { HomePage } from './pages/HomePage'
@@ -17,6 +18,7 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Shell />}>
           <Route index element={<HomePage />} />
+          <Route path="/compte" element={<AccountPage />} />
 
           <Route element={<RequireRole roles={['assure']} />}>
             <Route path="/assure" element={<AssurePage />} />

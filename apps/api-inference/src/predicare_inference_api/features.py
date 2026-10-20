@@ -11,9 +11,11 @@ le notebook". Il n'y a donc plus de code de calcul dans ce fichier, seulement
 la traduction entre le schema de l'API et le type attendu par le socle.
 
 Les quatre agregations d'historique (actes du mois, montant du mois, actes du
-jour, reutilisation d'ordonnance) introduit en Phase 2.2 appartiennent a la
-version 2 du modele : elles exigent une requete d'historique a l'inference.
-Tant que cette requete n'existe pas, aucun historique n'entre dans le
+jour, reutilisation d'ordonnance) evoquees en Phase 2.2 ne font PAS partie du
+modele servi : `models/*/features.json` contient les 32 variables de
+`NOMS_FEATURES`, et aucune n'est une agregation d'historique. Les ajouter
+impose un re-entrainement (v3) ET une requete d'historique a l'inference, qui
+doivent arriver ensemble. En attendant, aucun historique n'entre dans le
 vecteur : mieux vaut des variables absentes qu'un historique envoye a zero,
 qui ferait diverger l'entrainement et la production sans que rien ne le
 signale.

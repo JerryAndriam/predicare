@@ -7,6 +7,7 @@ FROM node:22-alpine AS builder
 
 ARG VITE_API_BASE_URL=""
 ARG VITE_API_GATEWAY_URL=/api
+ARG VITE_SUPERSET_URL=http://localhost:8088
 
 WORKDIR /app
 
@@ -22,7 +23,8 @@ COPY apps/web/ ./
 # le chemin appele par le navigateur, `VITE_API_BASE_URL` est vide en
 # production puisque tout est servi sur la meme origine par la passerelle.
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL} \
-    VITE_API_GATEWAY_URL=${VITE_API_GATEWAY_URL}
+    VITE_API_GATEWAY_URL=${VITE_API_GATEWAY_URL} \
+    VITE_SUPERSET_URL=${VITE_SUPERSET_URL}
 
 RUN npm run build
 

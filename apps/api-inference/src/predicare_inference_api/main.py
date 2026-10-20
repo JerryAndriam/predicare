@@ -94,7 +94,6 @@ def create_app(*, worker: bool = False) -> FastAPI:
     app.state.service = SERVICE_NAME
     app.state.version = __version__
     app.state.registry = registry
-    app.state.drift_report = None
 
     app.add_middleware(
         CORSMiddleware,

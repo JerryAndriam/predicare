@@ -3,3 +3,7 @@
 #   env: 'bash\r': No such file or directory
 *.sh text eol=lf
 Makefile text eol=lf
+
+# Fixtures binaires : une conversion CRLF/LF casserait la comparaison octet
+# pour octet du test de reproductibilite (`test_la_fixture_pdf_est_reproductible`).
+tests/fixtures/*.pdf binary

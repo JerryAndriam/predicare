@@ -16,6 +16,8 @@ const ESPACES: Espace[] = [
   { chemin: '/administration', libelle: 'Administration', roles: ['administrateur'] },
 ]
 
+const SUPERSET_URL = import.meta.env.VITE_SUPERSET_URL ?? 'http://localhost:8088'
+
 export function Shell() {
   const { profile, deconnexion } = useAuth()
   const navigate = useNavigate()
@@ -59,6 +61,14 @@ export function Shell() {
               {espace.libelle}
             </NavLink>
           ))}
+          <NavLink to="/compte" className={({ isActive }) => (isActive ? 'actif' : '')}>
+            Mon compte
+          </NavLink>
+          {peut(profile, 'gestionnaire', 'administrateur') && (
+            <a href={SUPERSET_URL} target="_blank" rel="noreferrer">
+              Pilotage BI
+            </a>
+          )}
         </nav>
       </header>
       <main className="contenu">

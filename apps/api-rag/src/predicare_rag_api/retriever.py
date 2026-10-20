@@ -62,7 +62,10 @@ class Source:
 class ContractRetriever:
     """Recherche hybride : vecteurs + mots-cles, avec citation obligatoire."""
 
-    def __init__(self, store: VectorStore, *, top_k: int = 6, threshold: float = 0.72) -> None:
+    def __init__(self, store: VectorStore, *, top_k: int = 6, threshold: float = 0.55) -> None:
+        # Le seuil par defaut est aligne sur `RAG_SIMILARITY_THRESHOLD`
+        # (0,55). Une valeur plus stricte ferait passer sous le seuil des
+        # passages corrects : la citation de reference tombait a 0,45.
         self._store = store
         self._top_k = top_k
         self._threshold = threshold

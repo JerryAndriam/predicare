@@ -384,6 +384,34 @@ def test_cout_evite_est_une_estimation_configurable(embedder: EmbedderFictif) ->
     assert stats["estimation"] is True
 
 
+def test_cout_evite_repose_sur_le_cout_reel(embedder: EmbedderFictif) -> None:
+    """Quand le cout reel est transmis, l'economie est mesuree, pas estimee.
+
+    Le cout moyen par appel (0,002 EUR par defaut) est trois fois et demi
+    superieur au cout reellement mesure : l'estimation surestimait donc
+    l'economie du cache d'autant.
+    """
+    cache = SemanticCache(embedder, threshold=0.95, cout_moyen_appel_eur=0.002)
+    cache.put("Question ?", "Reponse.", latency_ms=10.0, cout_eur=0.00057)
+
+    cache.get("Question ?")
+
+    stats = cache.stats()
+
+    assert stats["cout_evite_eur"] == pytest.approx(0.00057)
+
+
+def test_un_succes_de_cache_expose_la_similarite_reelle(embedder: EmbedderFictif) -> None:
+    """La similarite renvoyee est le cosinus mesure, pas une constante."""
+    cache = SemanticCache(embedder, threshold=0.5)
+    cache.put("Quel est le taux de la consultation ?", "Reponse.")
+
+    entree = cache.get("Quel est le taux de consultation ?")
+
+    assert entree is not None
+    assert 0.5 <= entree.similarity < 1.0
+
+
 def test_stats_conserve_les_cles_attendues(cache: SemanticCache) -> None:
     cache.put("Question ?", "Reponse.")
     cache.get("Question ?")

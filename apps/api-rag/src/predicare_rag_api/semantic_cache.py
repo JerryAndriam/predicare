@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from predicare import metrics
@@ -50,8 +50,13 @@ class CacheHit:
     #: Latence (ms) de l'appel LLM d'origine. Elle est rejouee en negatif
     #: dans les statistiques : c'est le temps que le cache a evite.
     latency_ms: float = 0.0
+    #: Cout reel (EUR) de l'appel LLM d'origine. C'est lui qui alimente
+    #: `cout_evite_eur` : un cout moyen par appel serait une estimation, le
+    #: cout mesure une mesure.
+    cout_eur: float = 0.0
     #: Une entree de degradation ne doit jamais etre servie comme un succes.
-    #: Le `put` refuse deja ces reponses ; ce champ est la seconde barriere.
+    #: Le refus d'ecriture est pose par l'appelant (route) ; ce champ est la
+    #: seconde barriere, en lecture.
     succes: bool = True
 
 
@@ -92,6 +97,11 @@ class SemanticCache:
         # d'appels LLM evites. Ce sont des mesures, pas des projections.
         self._latence_evitee_ms = 0.0
         self._nombre_appels_evites = 0
+        #: Cout EUR reel economise, somme des couts des reponses servies.
+        self._cout_evite_eur = 0.0
+        #: Nombre de succes dont le cout reel etait connu (les autres sont
+        #: estimes avec le cout moyen par appel).
+        self._appels_cout_connu = 0
 
     # ------------------------------------------------------------------ API
     def get(self, question: str, *, scope: str | None = None) -> CacheHit | None:
@@ -144,8 +154,13 @@ class SemanticCache:
             entry = self._entries[best_key]
             self._latence_evitee_ms += entry.latency_ms
             self._nombre_appels_evites += 1
+            self._cout_evite_eur += entry.cout_eur
+            if entry.cout_eur > 0:
+                self._appels_cout_connu += 1
             logger.info("cache.succes", similarite=round(best_score, 4), question_cle=best_key)
-            return entry
+            # La similarite reelle du succes est connue ici : on la renvoie
+            # plutot que la valeur 1.0 placee a l'ecriture.
+            return replace(entry, similarity=best_score)
 
         metrics.CACHE_EVENTS.labels(SERVICE, "miss").inc()
         self._misses += 1
@@ -159,6 +174,7 @@ class SemanticCache:
         *,
         scope: str | None = None,
         latency_ms: float = 0.0,
+        cout_eur: float = 0.0,
         succes: bool = True,
         vector: list[float] | None = None,
     ) -> None:
@@ -167,6 +183,8 @@ class SemanticCache:
         La cle inclut le `scope` : deux assures ne peuvent pas ecraser ni
         relire l'entree l'un de l'autre, meme sur une question identique.
         `latency_ms` est la latence de l'appel LLM evite par ce succes.
+        `cout_eur` est le cout reel de cet appel : c'est lui qui permet de
+        mesurer l'economie du cache au lieu de l'estimer.
         `succes=False` marque une degradation : elle est stockee pour la
         tracabilite mais ne doit jamais etre servie comme un succes.
         """
@@ -186,6 +204,7 @@ class SemanticCache:
             vector=self._vecteur_pour(question, vector),
             scope=scope_cle,
             latency_ms=max(0.0, float(latency_ms)),
+            cout_eur=max(0.0, float(cout_eur)),
             succes=succes,
         )
         self._order.append(key)
@@ -208,13 +227,20 @@ class SemanticCache:
             "hits": total,
             "miss": miss,
             "taux_de_reutilisation": (total / appele) if appele else 0.0,
-            # Gain mesure : latence des appels evites et cout correspondant,
-            # estime avec un cout moyen par appel (donc une ESTIMATION).
+            # Gain mesure : latence et cout des appels evites. Le cout est
+            # la somme des couts reels des reponses servies depuis le cache ;
+            # le cout moyen par appel ne sert qu'a estimer les entrees dont
+            # le cout n'a pas ete transmis.
             "latence_evitee_ms": round(self._latence_evitee_ms, 2),
             "nombre_appels_evites": self._nombre_appels_evites,
             # Alias attendu par l'ecran d'administration.
             "appels_evites": self._nombre_appels_evites,
-            "cout_evite_eur": round(self._nombre_appels_evites * self._cout_moyen_appel_eur, 6),
+            "cout_evite_eur": round(
+                self._cout_evite_eur
+                + max(0, self._nombre_appels_evites - self._appels_cout_connu)
+                * self._cout_moyen_appel_eur,
+                6,
+            ),
             "cout_moyen_appel_eur": self._cout_moyen_appel_eur,
             "estimation": True,
         }
@@ -227,6 +253,8 @@ class SemanticCache:
         self._derniere_requete = None
         self._latence_evitee_ms = 0.0
         self._nombre_appels_evites = 0
+        self._cout_evite_eur = 0.0
+        self._appels_cout_connu = 0
 
     def _vecteur_pour(self, question: str, vector: list[float] | None) -> list[float] | None:
         """Vecteur d'une question : fourni, reutilise apres un miss, ou calcule.

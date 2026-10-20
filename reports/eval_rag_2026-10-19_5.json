@@ -1,0 +1,1238 @@
+{
+  "resume": {
+    "total_questions": 30,
+    "fidelite": 1.0,
+    "fidelite_ok": 30,
+    "citation": 1.0,
+    "citation_ok": 20,
+    "citation_questions": 20,
+    "valeur": 1.0,
+    "valeur_ok": 26,
+    "valeur_questions": 26,
+    "latence_p50_ms": 3410.12,
+    "latence_p95_ms": 6194.21,
+    "tokens_entree": 108501,
+    "tokens_sortie": 3241,
+    "tokens_total": 111742,
+    "cache_hits": 0,
+    "cout_estime_usd": 0.067045,
+    "cout_par_million_usd": 0.6
+  },
+  "questions": [
+    {
+      "id": "Q01",
+      "type": "rag",
+      "question": "Quel est le taux de remboursement d'une consultation en formule PREMIUM ?",
+      "reponse": "Le taux de remboursement d'une consultation dans la formule PREMIUM est de 100 % (source : Contrat, Article 5).",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.7465
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.6927
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.6911
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.6823
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Imagerie",
+          "score": 0.6708
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6702
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 5785.78,
+      "tokens_entree": 2211,
+      "tokens_sortie": 27,
+      "tokens": 2238,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q02",
+      "type": "rag",
+      "question": "La dentaire est-elle remboursee a 100 % en formule PREMIUM ?",
+      "reponse": "Non, le taux de remboursement dentaire dans la formule PREMIUM est de 90 %. (Source : Contrat : Conditions Generales PREMIUM - Article 5 - Tableau des garanties)",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.736
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Dentaire",
+          "garantie": "Dentaire",
+          "score": 0.6534
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.6375
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6361
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.631
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6309
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 2003.87,
+      "tokens_entree": 2214,
+      "tokens_sortie": 38,
+      "tokens": 2252,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q03",
+      "type": "rag",
+      "question": "Quel est le plafond annuel global par beneficiaire de la formule PREMIUM ?",
+      "reponse": "Le plafond annuel global par bénéficiaire de la formule PREMIUM est de 20 000 000 Ar. (source : Contrat, Article 5 - Tableau des garanties).",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6893
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties (vue globale)",
+          "garantie": "Global",
+          "score": 0.6781
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Maternite",
+          "score": 0.6694
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.6689
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.6682
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Laboratoire",
+          "score": 0.642
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 1939.19,
+      "tokens_entree": 2163,
+      "tokens_sortie": 36,
+      "tokens": 2199,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q04",
+      "type": "rag",
+      "question": "Quel est le plafond annuel de l'optique dans la formule PREMIUM ?",
+      "reponse": "Le plafond annuel de l'optique dans la formule PREMIUM est de 800 000 Ar. (Contrat : Conditions Generales PREMIUM - Article 5 - Tableau des garanties).",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Optique",
+          "score": 0.7592
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Optique",
+          "score": 0.6618
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Optique",
+          "score": 0.6552
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.621
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.6209
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6151
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 2351.66,
+      "tokens_entree": 2172,
+      "tokens_sortie": 38,
+      "tokens": 2210,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q05",
+      "type": "rag",
+      "question": "Combien de temps dure le delai de carence pour la maternite ?",
+      "reponse": "Le délai de carence pour la maternité dépend de la formule choisie :\n\n- Pour la formule CONFORT, le délai de carence est de 180 jours (Contrat : Conditions Generales CONFORT - Article 6).\n- Pour la formule ESSENTIEL, le délai de carence est de 270 jours (Contrat : Conditions Generales ESSENTIEL - Article 6).\n- Pour la formule PREMIUM, le délai de carence est de 90 jours (Contrat : Conditions Generales PREMIUM - Article 6).",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.5935
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.5866
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.5639
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Maternite",
+          "score": 0.5517
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6167
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6073
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6063
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 5052.32,
+      "tokens_entree": 5188,
+      "tokens_sortie": 170,
+      "tokens": 5358,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q06",
+      "type": "rag",
+      "question": "Quel est le delai de carence applicable aux soins dentaires ?",
+      "reponse": "Le délai de carence applicable aux soins dentaires dépend de la formule choisie :\n\n- **Formule CONFORT** : 60 jours (source : Conditions Generales CONFORT, Article 6).\n- **Formule ESSENTIEL** : 90 jours (source : Conditions Generales ESSENTIEL, Article 6).\n- **Formule PREMIUM** : 30 jours (source : Conditions Generales PREMIUM, Article 6).",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.7398
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.7366
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.7084
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6675
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6604
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 6 - Délais de carence",
+          "garantie": "-",
+          "score": 0.6442
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6785
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6917
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6868
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.7149
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.7107
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 5877.54,
+      "tokens_entree": 7336,
+      "tokens_sortie": 190,
+      "tokens": 7526,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q07",
+      "type": "rag",
+      "question": "Quelles sont les exclusions de la formule PREMIUM concernant les soins esthetiques et les cures thermales ?",
+      "reponse": "Les exclusions de la formule PREMIUM concernant les soins esthétiques et les cures thermales sont les suivantes :\n\n- Soins à visée esthétique, cures thermales et de remise en forme.\n- Actes et médicaments délivrés sans ordonnance lorsque celle-ci est exigée, ou sur ordonnance périmée.\n- Soins réalisés en tiers payant auprès d'un prestataire non conventionné ou déconventionné.\n- Soins réalisés avant la date d'adhésion, après la radiation, ou pendant un délai de carence.\n- Frais engagés sans attestation de prise en charge ou sans entente préalable lorsque celles-ci sont exigées.\n\n(Source : Contrat : Conditions Generales PREMIUM - Article 10 - Exclusions)",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.792
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.7209
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.7142
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6496
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Kinesitherapie",
+          "score": 0.6087
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 6 - Délais de carence par catégorie",
+          "garantie": "-",
+          "score": 0.607
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": null,
+      "latence_ms": 2980.18,
+      "tokens_entree": 2428,
+      "tokens_sortie": 148,
+      "tokens": 2576,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q08",
+      "type": "rag",
+      "question": "Les soins esthetiques et les cures thermales sont-ils exclus de la formule CONFORT ?",
+      "reponse": "Oui, les soins à visée esthétique et les cures thermales sont exclus de la formule CONFORT. Cela est précisé dans le contrat, Article 10 - Exclusions.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.717
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.6173
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.5906
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": null,
+      "latence_ms": 2011.53,
+      "tokens_entree": 2040,
+      "tokens_sortie": 37,
+      "tokens": 2077,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q09",
+      "type": "rag",
+      "question": "Quelles pieces justificatives faut-il fournir pour une pharmacie ?",
+      "reponse": "Pour une pharmacie, les pièces justificatives à fournir sont les suivantes :\n\n- Ordonnance avec nom du prescripteur, numéro d'ordre (ONM) et cachet.\n- Validité de l'ordonnance : 10 jours pour les médicaments.\n- Délivrance ponctuelle des médicaments.\n\n(Source : Conditions Generales ESSENTIEL - Article 7 - Pièces justificatives par type de soins - Pharmacie)",
+      "sources": [
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.7377
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.7159
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.712
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6632
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Laboratoire",
+          "garantie": "Laboratoire",
+          "score": 0.6621
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6492
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": null,
+      "latence_ms": 2270.14,
+      "tokens_entree": 2181,
+      "tokens_sortie": 87,
+      "tokens": 2268,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q10",
+      "type": "rag",
+      "question": "Quelles pieces justificatives sont exigees pour une depense d'optique ?",
+      "reponse": "Pour une dépense d'optique, les pièces justificatives exigées sont les suivantes :\n\n- Ordonnance (validité 1 mois)\n- Proforma\n- Attestation de prise en charge OBLIGATOIRE.\n\n(Source : Conditions Generales ESSENTIEL - Article 7 - Pièces justificatives par type de soins - Optique)",
+      "sources": [
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.7453
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.7446
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.7403
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6095
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6048
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6005
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": null,
+      "latence_ms": 2234.39,
+      "tokens_entree": 2179,
+      "tokens_sortie": 72,
+      "tokens": 2251,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q11",
+      "type": "sql",
+      "question": "Combien ai-je ete rembourse au total sur mes factures payees ?",
+      "reponse": "Vous avez été remboursé au total de 616060.00 MGA sur vos factures payées.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.5538
+        }
+      ],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3436.76,
+      "tokens_entree": 3293,
+      "tokens_sortie": 78,
+      "tokens": 3371,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q12",
+      "type": "sql",
+      "question": "Combien de factures figurent dans mon historique ?",
+      "reponse": "Vous avez un total de 17 factures dans votre historique.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3102.4,
+      "tokens_entree": 2965,
+      "tokens_sortie": 54,
+      "tokens": 3019,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q13",
+      "type": "sql",
+      "question": "Quel est le montant total de ma derniere facture ?",
+      "reponse": "Le montant total de votre dernière facture est de 224000.00 MGA.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 2932.45,
+      "tokens_entree": 2979,
+      "tokens_sortie": 66,
+      "tokens": 3045,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q14",
+      "type": "sql",
+      "question": "Quel est le statut de ma facture la plus recente ?",
+      "reponse": "Le statut de votre facture la plus récente est \"PAYEE\".",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3292.82,
+      "tokens_entree": 2975,
+      "tokens_sortie": 62,
+      "tokens": 3037,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q15",
+      "type": "sql",
+      "question": "Pour quel motif ma facture rejetee a-t-elle ete rejetee ?",
+      "reponse": "Votre facture rejetée, datée du 11 janvier 2025, a été rejetée pour le motif suivant : \"ORDONNANCE_PERIMEE\".",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3383.49,
+      "tokens_entree": 3030,
+      "tokens_sortie": 90,
+      "tokens": 3120,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q16",
+      "type": "sql",
+      "question": "Combien de factures ont ete rejetees dans mon historique ?",
+      "reponse": "Dans votre historique, une facture a été rejetée.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 2986.12,
+      "tokens_entree": 2979,
+      "tokens_sortie": 60,
+      "tokens": 3039,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q17",
+      "type": "sql",
+      "question": "Quand ma facture rejetee a-t-elle ete traitee ?",
+      "reponse": "Votre facture rejetée a été traitée le 6 février 2025.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3488.21,
+      "tokens_entree": 3002,
+      "tokens_sortie": 75,
+      "tokens": 3077,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q18",
+      "type": "sql",
+      "question": "Quelle est la date de ma derniere facture ?",
+      "reponse": "La date de votre dernière facture est le 22 juillet 2026.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 3475.51,
+      "tokens_entree": 2990,
+      "tokens_sortie": 66,
+      "tokens": 3056,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q19",
+      "type": "sql",
+      "question": "Combien de factures ont ete payees ?",
+      "reponse": "Il y a eu 16 factures qui ont été payées.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 2907.74,
+      "tokens_entree": 2970,
+      "tokens_sortie": 62,
+      "tokens": 3032,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q20",
+      "type": "sql",
+      "question": "Quel est le montant total facture de toutes mes factures ?",
+      "reponse": "Le montant total de toutes vos factures est de 845 000,00 MGA.",
+      "sources": [],
+      "fidelite": true,
+      "citation": null,
+      "valeur": true,
+      "latence_ms": 2702.56,
+      "tokens_entree": 2974,
+      "tokens_sortie": 63,
+      "tokens": 3037,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q21",
+      "type": "mixte",
+      "question": "Le plafond annuel global PREMIUM est-il atteint avec le total deja rembourse sur mon historique ?",
+      "reponse": "Le total déjà remboursé sur votre historique est de 616 060 Ar. Le plafond annuel global pour la formule PREMIUM est de 20 000 000 Ar (source : Contrat, Article 5). Vous n'avez donc pas atteint ce plafond.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.5675
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.5653
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties (vue globale)",
+          "garantie": "Global",
+          "score": 0.5642
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.5534
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 3266.34,
+      "tokens_entree": 3924,
+      "tokens_sortie": 108,
+      "tokens": 4032,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q22",
+      "type": "mixte",
+      "question": "Quel est le plafond annuel global PREMIUM et le montant de ma derniere facture ?",
+      "reponse": "Le plafond annuel global pour la formule PREMIUM est de 20 000 000 Ar (source : Contrat, Article 5 - Tableau des garanties).\n\nConcernant votre dernière facture, le montant est de 224 000 Ar.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6101
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.6049
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.5975
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.5956
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties (vue globale)",
+          "garantie": "Global",
+          "score": 0.5921
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Laboratoire",
+          "score": 0.5894
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Imagerie",
+          "score": 0.6016
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.5955
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4395.04,
+      "tokens_entree": 5190,
+      "tokens_sortie": 135,
+      "tokens": 5325,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q23",
+      "type": "mixte",
+      "question": "Quelles sont les exclusions PREMIUM et ma derniere facture a-t-elle ete rejetee ?",
+      "reponse": "Les exclusions de la formule PREMIUM sont les suivantes :\n\n- Fortifiants, compléments alimentaires, produits cosmétiques et dermo-cosmétiques.\n- Soins à visée esthétique, cures thermales et de remise en forme.\n- Actes et médicaments délivrés sans ordonnance lorsque celle-ci est exigée, ou sur ordonnance périmée.\n- Soins réalisés en tiers payant auprès d'un prestataire non conventionné ou déconventionné.\n- Soins réalisés avant la date d'adhésion, après la radiation, ou pendant un délai de carence.\n- Frais engagés sans attestation de prise en charge ou sans entente préalable lorsque celles-ci sont exigées. (Source : Contrat : Conditions Generales PREMIUM - Article 10 - Exclusions)\n\nConcernant votre dernière facture, elle a été réglée et son statut est \"PAYEE\". La date de cette facture est le 22 juillet 2026 et le montant total est de 224 000 MGA.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 12 - Suivi des dossiers et réclamations",
+          "garantie": "-",
+          "score": 0.5788
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 10 - Exclusions",
+          "garantie": "-",
+          "score": 0.5572
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.5742
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 6453.31,
+      "tokens_entree": 4197,
+      "tokens_sortie": 293,
+      "tokens": 4490,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q24",
+      "type": "mixte",
+      "question": "Quel est le delai de remboursement hors tiers payant et quel est le statut de ma derniere facture ?",
+      "reponse": "Le délai de remboursement hors tiers payant est de 60 jours après les soins pour déposer la demande, et le traitement intervient sous 15 jours ouvrés après réception d'un dossier complet (source : Conditions Generales PREMIUM - Article 9).\n\nConcernant votre dernière facture, elle a été émise le 22 juillet 2026, pour un montant total de 224 000 MGA, et son statut est \"PAYEE\".",
+      "sources": [
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.6409
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.6396
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.6288
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 12 - Suivi des dossiers et réclamations",
+          "garantie": "-",
+          "score": 0.5722
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 8 - Fonctionnement du tiers payant",
+          "garantie": "-",
+          "score": 0.5671
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 8 - Fonctionnement du tiers payant",
+          "garantie": "-",
+          "score": 0.561
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4684.68,
+      "tokens_entree": 5233,
+      "tokens_sortie": 185,
+      "tokens": 5418,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q25",
+      "type": "mixte",
+      "question": "Quelles pieces justificatives pour une pharmacie et quel motif a entraine le rejet de ma facture ?",
+      "reponse": "Pour les pièces justificatives en pharmacie, il est nécessaire de fournir une ordonnance qui doit comporter le nom du prescripteur, son numéro d'ordre (ONM) et son cachet. La validité de cette ordonnance est de 10 jours pour la délivrance ponctuelle des médicaments (source : Conditions Generales ESSENTIEL - Article 7 et Conditions Generales CONFORT - Article 7).\n\nConcernant votre facture rejetée, elle a été rejetée pour le motif suivant : \"ORDONNANCE_PERIMEE\". La date de cette facture est le 11 janvier 2025 et le montant total était de 11 800,00 MGA.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.6155
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.6139
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Pharmacie",
+          "garantie": "Pharmacie",
+          "score": 0.6016
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Laboratoire",
+          "garantie": "Laboratoire",
+          "score": 0.5661
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Laboratoire",
+          "garantie": "Laboratoire",
+          "score": 0.5614
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.5584
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6498
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 6523.26,
+      "tokens_entree": 5257,
+      "tokens_sortie": 233,
+      "tokens": 5490,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q26",
+      "type": "mixte",
+      "question": "Quel est le taux de remboursement d'une consultation PREMIUM et combien ai-je ete rembourse au total ?",
+      "reponse": "Le taux de remboursement d'une consultation dans la formule PREMIUM est de 100 % (source : Contrat, Article 5 - Tableau des garanties).\n\nConcernant le montant total remboursé, vous avez été remboursé au total de 616 060 Ar.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.6805
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 9 - Remboursement hors tiers payant",
+          "garantie": "-",
+          "score": 0.631
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Imagerie",
+          "score": 0.6085
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.6071
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.6068
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Kinesitherapie",
+          "score": 0.6037
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.6282
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4333.7,
+      "tokens_entree": 5352,
+      "tokens_sortie": 148,
+      "tokens": 5500,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q27",
+      "type": "mixte",
+      "question": "Quel est le plafond optique PREMIUM et le montant total de ma derniere facture ?",
+      "reponse": "Le plafond optique dans la formule PREMIUM est de 800 000 Ar (Conditions Generales PREMIUM, Article 5). \n\nLe montant total de votre dernière facture est de 224 000 Ar.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Optique",
+          "score": 0.6471
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.5786
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Optique",
+          "score": 0.5665
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Imagerie",
+          "score": 0.5558
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4301.88,
+      "tokens_entree": 4197,
+      "tokens_sortie": 129,
+      "tokens": 4326,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q28",
+      "type": "mixte",
+      "question": "En formule PREMIUM, la dentaire est-elle remboursee a 100 % et combien de factures figurent dans mon historique ?",
+      "reponse": "En formule PREMIUM, le taux de remboursement pour les soins dentaires est de 90 % et non de 100 % (source : Conditions Generales PREMIUM - Article 5 - Tableau des garanties).\n\nConcernant votre historique, il y a un total de 17 factures dans votre dossier.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Dentaire",
+          "garantie": "Dentaire",
+          "score": 0.687
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6848
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.6091
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Dentaire",
+          "garantie": "Dentaire",
+          "score": 0.604
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Consultation",
+          "garantie": "Consultation",
+          "score": 0.6014
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.5978
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6337
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.6315
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Dentaire",
+          "score": 0.6113
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4811.09,
+      "tokens_entree": 5187,
+      "tokens_sortie": 150,
+      "tokens": 5337,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q29",
+      "type": "mixte",
+      "question": "Quel est le plafond annuel global PREMIUM et le montant total facture de toutes mes factures ?",
+      "reponse": "Le plafond annuel global pour la formule PREMIUM est de 20 000 000 Ar (source : Conditions Generales PREMIUM, Article 5).\n\nLe montant total de toutes vos factures est de 845 000 Ar.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Consultation",
+          "score": 0.5871
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 2 - Définitions",
+          "garantie": "-",
+          "score": 0.5861
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Pharmacie",
+          "score": 0.5854
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties (vue globale)",
+          "garantie": "Global",
+          "score": 0.5784
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Hospitalisation",
+          "score": 0.5752
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 5 - Tableau des garanties",
+          "garantie": "Imagerie",
+          "score": 0.5735
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 4480.75,
+      "tokens_entree": 5185,
+      "tokens_sortie": 130,
+      "tokens": 5315,
+      "cache_semantique": false
+    },
+    {
+      "id": "Q30",
+      "type": "mixte",
+      "question": "Quelles pieces justificatives pour l'optique et ma facture la plus recente est-elle payee ?",
+      "reponse": "Pour l'optique, les pièces justificatives requises sont : une ordonnance (validité 1 mois), un proforma et une attestation de prise en charge, qui sont obligatoires. Cela s'applique à toutes les formules (CONFORT, PREMIUM, ESSENTIEL) selon les articles 7 des Conditions Générales respectives.\n\nConcernant votre facture la plus récente, elle a été émise le **22 juillet 2026**, pour un montant total de **224 000 MGA**, et son statut est **PAYEE**.",
+      "sources": [
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.6586
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.6584
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins - Optique",
+          "garantie": "Optique",
+          "score": 0.6459
+        },
+        {
+          "contrat": "Conditions Generales ESSENTIEL",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6388
+        },
+        {
+          "contrat": "Conditions Generales CONFORT",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6366
+        },
+        {
+          "contrat": "Conditions Generales PREMIUM",
+          "article": "Article 7 - Pièces justificatives par type de soins",
+          "garantie": "-",
+          "score": 0.6225
+        }
+      ],
+      "fidelite": true,
+      "citation": true,
+      "valeur": true,
+      "latence_ms": 5035.6,
+      "tokens_entree": 4510,
+      "tokens_sortie": 211,
+      "tokens": 4721,
+      "cache_semantique": false
+    }
+  ]
+}

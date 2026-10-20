@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from predicare import db
 from predicare.auth import decode_access_token
 from predicare.config import Settings, get_settings
-from predicare.errors import PrediCareError, UnauthorizedError
+from predicare.errors import AssistantUnavailableError, PrediCareError, UnauthorizedError
 from predicare.http import (
     ObservabilityMiddleware,
     register_exception_handlers,
@@ -128,6 +128,30 @@ def porteuse(authorization: str = Header(default="")) -> Appelant:
     return Appelant(assure_id=payload.insured_id, subject=payload.subject)
 
 
+def _cle_est_placeholder(valeur: str) -> bool:
+    """Vrai si la variable contient un modele du depot, pas une vraie cle.
+
+    Une valeur vide n'est pas traitee ici : les tests appellent l'agent avec
+    un LLM fictif et une configuration vide. Une cle vide en production
+    produit un 401 capture par l'agent, sans fuite de secret.
+    """
+    texte = (valeur or "").strip()
+    if not texte:
+        return False
+    marqueurs = ("changer", "change-me", "changeme", "not-configured", "votre-cle")
+    return any(marqueur in texte.lower() for marqueur in marqueurs)
+
+
+def _agent_appelle_un_service_externe(request: Request) -> bool:
+    """Vrai si l'agent installe appelle reellement un fournisseur externe.
+
+    Les tests injectent un agent fictif : il n'appelle aucun service, il
+    repond directement. Le controle des cles ne doit donc pas s'appliquer,
+    sinon la suite de tests dependrait de la configuration de la machine.
+    """
+    return isinstance(getattr(request.app.state, "agent", None), RagAgent)
+
+
 @router.post("/question", response_model=AskResponse)
 def ask(
     payload: AskRequest,
@@ -151,6 +175,48 @@ def ask(
     question = sanitize_question(payload.question)
     assure_id = appelant.assure_id
     scope = _scope_appelant(appelant)
+
+    # Sans cle valide, appeler OpenAI ne peut que produire un 401 : cela
+    # ajoute de la latence, bruite les journaux et envoie un faux secret a un
+    # tiers. On repond immediatement, en nommant la variable manquante.
+    #
+    # Le controle porte sur l'agent REEL : les tests injectent un agent
+    # fictif, qui n'appelle aucun service externe, et doivent donc pouvoir
+    # s'executer sur une machine sans aucune cle configuree.
+    settings = get_settings()
+    manquants = [
+        nom
+        for nom, valeur in (
+            ("EMBEDDING_API_KEY", settings.embedding_api_key),
+            ("LLM_API_KEY", settings.llm_api_key),
+        )
+        if _cle_est_placeholder(valeur)
+    ]
+    if manquants and _agent_appelle_un_service_externe(request):
+        return AskResponse(
+            reponse=(
+                "L'assistant n'est pas encore configure : "
+                + " et ".join(manquants)
+                + " doivent etre renseignees. Aucun appel externe n'a ete effectue."
+            ),
+            sources=[],
+            etapes_agent=[
+                {
+                    "outil": "configuration",
+                    "resultat": "absente",
+                    "variables": manquants,
+                }
+            ],
+            latence_ms=0.0,
+            tokens=0,
+            tokens_entree=0,
+            tokens_sortie=0,
+            cout_estime_usd=0.0,
+            cout_estime_eur=0.0,
+            cache_semantique=False,
+            limite_atteinte=False,
+            succes=False,
+        )
 
     agent: RagAgent = request.app.state.agent
     cache: SemanticCache = request.app.state.cache
@@ -193,7 +259,18 @@ def ask(
         if entree is not None:
             logger.warning("cache.entree_degradee_ignoree", question_cle=entree.question)
 
-    resultat = agent.ask(question, assure_id=assure_id, history=historique)
+    try:
+        resultat = agent.ask(question, assure_id=assure_id, history=historique)
+    except PrediCareError:
+        raise
+    except Exception as exc:
+        # Une panne imprévue (corpus, base, embeddings) doit rester une panne
+        # metier lisible par le front, pas une trace 500 sans message.
+        logger.exception("rag.question_impossible", erreur=str(exc))
+        raise AssistantUnavailableError(
+            "L'assistant est momentanement indisponible. "
+            "Verifiez la configuration des embeddings et du modele de langage."
+        ) from exc
     # Une degradation ne doit pas etre memorisee : sinon elle serait servie
     # pendant tout le TTL comme une reponse valide, a cette session comme aux
     # suivantes.
@@ -204,6 +281,9 @@ def ask(
             resultat.sources,
             scope=scope,
             latency_ms=resultat.latency_ms,
+            # Cout reel de l'appel : il alimente `cout_evite_eur` du cache,
+            # qui mesure l'economie au lieu de l'estimer.
+            cout_eur=resultat.cout_estime_eur,
             succes=resultat.succes,
         )
     # Seule une vraie reponse entre dans l'historique : un message de

@@ -7,9 +7,10 @@
 # impossible a automatiser sur une machine vierge. La CLI n'exige aucun
 # secret et suffit a installer les workflows du projet.
 #
-# L'API REST reste utile, et elle est tentee quand elle est configuree : elle
-# seule permet de remplacer un workflow existant et de l'activer. Sans elle,
-# le script n'ecrase rien et le dit explicitement.
+# L'API REST reste utile quand elle est configuree : elle supprime puis
+# recree le workflow, ce qui lui donne un nouvel ID. Sans elle, la CLI met a
+# jour le workflow existant sur place en injectant son ID dans une copie
+# temporaire (`import:workflow` fait un upsert sur `id`).
 #
 # Option --if-missing : mode amorcage, utilise automatiquement par `make up`,
 # `make up-light` et `make start`. Il n'installe QUE les workflows absents,
@@ -96,40 +97,22 @@ if api_Disponible; then
     fi
 else
     warn "Pas de cle API n8n (Settings > n8n API). Les workflows deja"
-    warn "presents seront conserves, pas remplaces. C'est volontaire :"
-    warn "la CLI n'n'expose pas de suppression, donc un import forcer"
-    warn "dupliquerait les workflows."
+    warn "presents sont mis a jour SUR PLACE par la CLI : leur ID est"
+    warn "injecte dans une copie temporaire, sinon l'import creerait un"
+    warn "doublon. Aucune suppression n'est necessaire."
 fi
 
 # --- Import -----------------------------------------------------------------
 docker exec "$CONTENEUR" rm -rf "$DANS_CONTENEUR" >/dev/null 2>&1
 docker exec "$CONTENEUR" mkdir -p "$DANS_CONTENEUR" >/dev/null 2>&1
 
-COPIES=0
-while IFS= read -r fichier; do
-    if docker cp "$fichier" "${CONTENEUR}:${DANS_CONTENEUR}/$(basename "$fichier")" >/dev/null 2>&1; then
-        COPIES=$((COPIES + 1))
-    else
-        err "  copie impossible : $(basename "$fichier")"
-    fi
-done < <(find "$SOURCE" -name '*.json' -type f | sort)
-
-if [ "$COPIES" -eq 0 ]; then
-    err "Aucun fichier n'a pu etre transfere dans le conteneur."
-    exit 1
-fi
-
-# Noms deja installes : on ne les reimporte pas si l'API n'est pas
-# disponible, sinon chaque relance creerait un doublon. En mode
-# --if-missing, cette liste sert toujours : le but est justement de
-# ne jamais remplacer un workflow existant.
-EXISTANTS=""
+# Table `id|nom` des workflows deja installes. `n8n list:workflow` precede
+# toujours d'un avertissement PostgreSQL : on ne garde que les lignes qui
+# contiennent un separateur.
+EXISTANTS_IDS=""
 if [ "$API" -eq 0 ] || [ "$MODE_IF_MISSING" -eq 1 ]; then
-    # `n8n list:workflow` sort au format `id|nom`. La premiere ligne est un
-    # avertissement PostgreSQL : on ne garde que les lignes contenant un
-    # separateur, sinon le nom lu serait en realite l'identifiant.
-    EXISTANTS=$(docker exec "$CONTENEUR" n8n list:workflow 2>/dev/null \
-        | grep '|' | cut -d'|' -f2 || true)
+    EXISTANTS_IDS=$(docker exec "$CONTENEUR" n8n list:workflow 2>/dev/null \
+        | grep '|' || true)
 fi
 
 IMPORTES=0
@@ -137,13 +120,15 @@ IGNORES=0
 ACTIVES=0
 NOMS_IMPORTES=""
 
-# On ne copie que les fichiers reellement a installer : `n8n import:workflow`
-# travaille sur un repertoire et n'a pas de suppression, donc re-importer
-# un workflow deja present creerait un doublon.
-A_IMPORTER=""
+# Copies temporaires des workflows a mettre a jour : elles portent l'ID
+# existant, que les fichiers versionnes n'ont volontairement pas.
+TMP_LOCAL="$(mktemp -d)"
+trap 'rm -rf "$TMP_LOCAL"' EXIT
+
 while IFS= read -r fichier; do
     nom_fichier="$(basename "$fichier")"
     nom_workflow=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['name'])" "$fichier" 2>/dev/null || basename "$fichier" .json)
+    A_COPIER="$fichier"
 
     log "Workflow : ${nom_workflow}"
 
@@ -171,22 +156,48 @@ except Exception:
             fi
         fi
     else
-        # --- Cas CLI seule (ou mode --if-missing) : on ne touche a rien ---
-        if printf '%s\n' "$EXISTANTS" | grep -Fxq "$nom_workflow"; then
+        # --- Cas CLI seule (ou mode --if-missing) ---
+        ID_EXISTANT=$(printf '%s\n' "$EXISTANTS_IDS" \
+            | awk -F'|' -v n="$nom_workflow" '$2 == n {print $1; exit}')
+
+        if [ -n "$ID_EXISTANT" ]; then
             if [ "$MODE_IF_MISSING" -eq 1 ]; then
                 log "  deja installe (mode --if-missing : rien a faire)"
-            else
-                warn "  deja installe (aucune cle API pour le remplacer)"
+                IGNORES=$((IGNORES + 1))
+                continue
             fi
-            IGNORES=$((IGNORES + 1))
-            continue
+            # La CLI n'a pas de commande « remplacer » : `import:workflow`
+            # fait un upsert sur `id`. On injecte donc l'ID existant dans une
+            # copie, sans jamais versionner cet identifiant (il change d'une
+            # machine a l'autre).
+            A_COPIER="${TMP_LOCAL}/${nom_fichier}"
+            if ! python3 - "$fichier" "$A_COPIER" "$ID_EXISTANT" <<'PY'
+import json
+import sys
+
+source, destination, identifiant = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(source, encoding="utf-8") as flux:
+    workflow = json.load(flux)
+workflow["id"] = identifiant
+with open(destination, "w", encoding="utf-8") as flux:
+    json.dump(workflow, flux, ensure_ascii=False, indent=2)
+    flux.write("\n")
+PY
+            then
+                err "  copie temporaire impossible : ${nom_fichier}"
+                continue
+            fi
+            log "  mise a jour du workflow existant (id ${ID_EXISTANT})"
         fi
     fi
 
-    A_IMPORTER="${A_IMPORTER} ${DANS_CONTENEUR}/${nom_fichier}"
-    NOMS_IMPORTES="${NOMS_IMPORTES}${nom_workflow}
+    if docker cp "$A_COPIER" "${CONTENEUR}:${DANS_CONTENEUR}/${nom_fichier}" >/dev/null 2>&1; then
+        NOMS_IMPORTES="${NOMS_IMPORTES}${nom_workflow}
 "
-    IMPORTES=$((IMPORTES + 1))
+        IMPORTES=$((IMPORTES + 1))
+    else
+        err "  copie impossible : ${nom_fichier}"
+    fi
 done < <(find "$SOURCE" -name '*.json' -type f | sort)
 
 if [ "$IMPORTES" -eq 0 ]; then
@@ -280,6 +291,15 @@ except Exception:
     fi
 fi
 
+# --- Rechargement -----------------------------------------------------------
+# La CLI ecrit en base, mais le processus n8n deja demarre garde ses anciens
+# webhooks en memoire. `publish:workflow` le dit lui-meme : sans redemarrage,
+# le nouveau chemin repond 404. L'API, elle, publie a chaud.
+if [ "$IMPORTES" -gt 0 ] && [ "$API" -eq 0 ]; then
+    log "Redemarrage de n8n pour enregistrer les webhooks..."
+    docker restart "$CONTENEUR" >/dev/null 2>&1 || warn "  redemarrage impossible"
+fi
+
 # --- Verification -----------------------------------------------------------
 log "Attente de la reprise de n8n..."
 if ! attendre_sante; then
@@ -292,10 +312,3 @@ echo ""
 log "Termine : ${IMPORTES} installe(s), ${IGNORES} deja present(s), ${ACTIVES} actif(s)."
 log "Interface : ${N8N_URL} (menu Workflows)"
 log "Credentials Slack / SMTP / LLM : apps/n8n/credentials/README.md"
-
-if [ "$IGNORES" -gt 0 ] && [ "$MODE_IF_MISSING" -eq 0 ]; then
-    log ""
-    log "Pour remplacer un workflow existant, creez une cle API n8n"
-    log "(Settings > n8n API), mettez-la dans N8N_API_KEY du .env,"
-    log "puis relancez ce script."
-fi

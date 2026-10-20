@@ -8,6 +8,7 @@ import {
   type AuditEntry,
   type ModelInfo,
   type NotificationChannel,
+  type Observability,
   type PlatformHealth,
   type References,
   type Role,
@@ -26,12 +27,30 @@ import {
   pourcentage,
 } from '../components/ui'
 
-type Onglet = 'seuil' | 'modele' | 'sante' | 'canaux' | 'audit' | 'utilisateurs'
+type Onglet =
+  | 'seuil'
+  | 'modele'
+  | 'sante'
+  | 'canaux'
+  | 'observabilite'
+  | 'audit'
+  | 'utilisateurs'
 
 function tonSante(statut: string): 'ok' | 'alerte' | 'neutre' {
   if (statut === 'ok') return 'ok'
   if (statut === 'degraded') return 'alerte'
   return 'neutre'
+}
+
+function nombre(valeur: number | null | undefined): string {
+  if (valeur === null || valeur === undefined || Number.isNaN(valeur)) return '-'
+  return new Intl.NumberFormat('fr-FR').format(valeur)
+}
+
+function valeurLisible(valeur: unknown): string {
+  if (Array.isArray(valeur)) return valeur.join(', ')
+  if (typeof valeur === 'object' && valeur !== null) return JSON.stringify(valeur)
+  return String(valeur)
 }
 
 export function AdminPage() {
@@ -48,6 +67,11 @@ export function AdminPage() {
 
   const [sante, setSante] = useState<PlatformHealth | null>(null)
   const [canaux, setCanaux] = useState<NotificationChannel[]>([])
+  const [canauxEdition, setCanauxEdition] = useState<
+    Record<string, { actif: boolean; destinataire: string }>
+  >({})
+  const [observabilite, setObservabilite] = useState<Observability | null>(null)
+  const [resume, setResume] = useState<{ version: string | null; seuil: number } | null>(null)
   const [journal, setJournal] = useState<AuditEntry[]>([])
 
   const { profile } = useAuth()
@@ -59,6 +83,7 @@ export function AdminPage() {
     role: 'assure' as Role,
     display_name: '',
     assured_pseudonyme: '',
+    prestataire_code: '',
   })
 
   async function chargerModele() {
@@ -66,6 +91,24 @@ export function AdminPage() {
     setModele(etat)
     if (etat.active_version !== null) setVersion(etat.active_version)
   }
+
+  useEffect(() => {
+    // En-tete : la version et le seuil affiches doivent venir du serveur.
+    // Les figer en dur (ancien « Version 2 / 28,76 % ») mentait des qu'un
+    // administrateur changeait l'un ou l'autre.
+    const chargerResume = async () => {
+      try {
+        const [etat, seuil] = await Promise.all([
+          api<ModelInfo>('/api/core/admin/modele'),
+          api<{ seuil: number }>('/api/core/admin/seuil'),
+        ])
+        setResume({ version: etat.active_version, seuil: seuil.seuil })
+      } catch {
+        setResume(null)
+      }
+    }
+    void chargerResume()
+  }, [])
 
   useEffect(() => {
     setErreur(null)
@@ -80,7 +123,19 @@ export function AdminPage() {
           setSante(await api<PlatformHealth>('/api/core/admin/sante'))
         }
         if (onglet === 'canaux') {
-          setCanaux(await api<NotificationChannel[]>('/api/core/admin/canaux'))
+          const valeurs = await api<NotificationChannel[]>('/api/core/admin/canaux')
+          setCanaux(valeurs)
+          setCanauxEdition(
+            Object.fromEntries(
+              valeurs.map((canal) => [
+                canal.nom,
+                { actif: canal.actif, destinataire: canal.destinataire },
+              ]),
+            ),
+          )
+        }
+        if (onglet === 'observabilite') {
+          setObservabilite(await api<Observability>('/api/core/admin/observabilite'))
         }
         if (onglet === 'audit') {
           setJournal(await api<AuditEntry[]>('/api/core/audit/journal?limit=200'))
@@ -124,6 +179,26 @@ export function AdminPage() {
     }
   }
 
+  const enregistrerCanal = async (nom: string) => {
+    const reglage = canauxEdition[nom]
+    if (reglage === undefined) return
+    setErreur(null)
+    setSucces(null)
+    setEnCours(true)
+    try {
+      await api<NotificationChannel>(`/api/core/admin/canaux/${encodeURIComponent(nom)}`, {
+        method: 'PUT',
+        body: JSON.stringify(reglage),
+      })
+      setSucces(`Canal ${nom} enregistre.`)
+      setCanaux(await api<NotificationChannel[]>('/api/core/admin/canaux'))
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
   const agirModele = async (chemin: string) => {
     setErreur(null)
     setSucces(null)
@@ -152,6 +227,8 @@ export function AdminPage() {
         display_name: form.display_name.trim() || undefined,
         assured_pseudonyme:
           form.role === 'assure' ? form.assured_pseudonyme : undefined,
+        prestataire_code:
+          form.role === 'professionnel_sante' ? form.prestataire_code.trim() : undefined,
       }
       await api<AdminUser>('/api/core/admin/utilisateurs', {
         method: 'POST',
@@ -164,6 +241,7 @@ export function AdminPage() {
         role: 'assure',
         display_name: '',
         assured_pseudonyme: assures[0] ?? '',
+        prestataire_code: '',
       })
       setUtilisateurs(await api<AdminUser[]>('/api/core/admin/utilisateurs'))
     } catch (probleme) {
@@ -213,8 +291,13 @@ export function AdminPage() {
         </p>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.82rem', opacity: 0.8 }}>
           <span>Role : <strong style={{ color: '#2dd4bf' }}>Administrateur</strong></span>
-          <span>Version : <strong style={{ color: '#2dd4bf' }}>2</strong></span>
-          <span>Seuil : <strong style={{ color: '#2dd4bf' }}>28,76 %</strong></span>
+          <span>Version : <strong style={{ color: '#2dd4bf' }}>{resume?.version ?? '-'}</strong></span>
+          <span>
+            Seuil :{' '}
+            <strong style={{ color: '#2dd4bf' }}>
+              {resume === null ? '-' : pourcentage(resume.seuil)}
+            </strong>
+          </span>
         </div>
         <SchemaProjet />
       </div>
@@ -226,6 +309,7 @@ export function AdminPage() {
             ['modele', 'Modele'],
             ['sante', 'Sante'],
             ['canaux', 'Canaux'],
+            ['observabilite', 'Observabilite'],
             ['utilisateurs', 'Comptes'],
             ['audit', 'Journal'],
           ] as const
@@ -406,6 +490,16 @@ export function AdminPage() {
                     {sante.dependances.rag.status}
                   </Badge>
                   <span className="mono">{sante.dependances.rag.version ?? '-'}</span>
+                  <span className="mono">
+                    {sante.dependances.rag.documents ?? 0} document(s) indexe(s)
+                  </span>
+                  <Badge
+                    ton={sante.dependances.rag.embedding_configure ? 'ok' : 'alerte'}
+                  >
+                    {sante.dependances.rag.embedding_configure
+                      ? 'embeddings configures'
+                      : 'cle d embedding absente'}
+                  </Badge>
                 </div>
               </div>
 
@@ -433,6 +527,11 @@ export function AdminPage() {
 
       {onglet === 'canaux' && (
         <Carte titre="Canaux de notification">
+          <p className="aide">
+            Ces reglages sont enregistres en base et s appliquent sans redemarrage.
+            Un canal sans destinataire reste « non configure » : le badge Actif ne
+            garantit pas qu une alerte parte.
+          </p>
           {canaux.length === 0 ? (
             <Chargement />
           ) : (
@@ -442,32 +541,229 @@ export function AdminPage() {
                   <tr>
                     <th>Nom</th>
                     <th>Type</th>
+                    <th>Configure</th>
                     <th>Actif</th>
                     <th>Destinataire</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {canaux.map((canal) => (
-                    <tr key={canal.nom}>
-                      <td>{canal.nom}</td>
-                      <td>{canal.type}</td>
-                      <td>
-                        <Badge ton={canal.actif ? 'ok' : 'neutre'}>
-                          {canal.actif ? 'actif' : 'inactif'}
-                        </Badge>
-                      </td>
-                      <td className="mono">{canal.destinataire}</td>
-                    </tr>
-                  ))}
+                  {canaux.map((canal) => {
+                    const reglage = canauxEdition[canal.nom] ?? {
+                      actif: canal.actif,
+                      destinataire: canal.destinataire,
+                    }
+                    return (
+                      <tr key={canal.nom}>
+                        <td>{canal.nom}</td>
+                        <td>{canal.type}</td>
+                        <td>
+                          <Badge ton={canal.configure ? 'ok' : 'alerte'}>
+                            {canal.configure ? 'configure' : 'non configure'}
+                          </Badge>
+                        </td>
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Activer ${canal.nom}`}
+                            checked={reglage.actif}
+                            onChange={(event) =>
+                              setCanauxEdition((precedent) => ({
+                                ...precedent,
+                                [canal.nom]: {
+                                  ...reglage,
+                                  actif: event.target.checked,
+                                },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            className="mono"
+                            aria-label={`Destinataire ${canal.nom}`}
+                            value={reglage.destinataire}
+                            onChange={(event) =>
+                              setCanauxEdition((precedent) => ({
+                                ...precedent,
+                                [canal.nom]: {
+                                  ...reglage,
+                                  destinataire: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="droite">
+                          <button
+                            type="button"
+                            className="bouton discret"
+                            disabled={enCours}
+                            onClick={() => void enregistrerCanal(canal.nom)}
+                          >
+                            Enregistrer
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
           )}
-          <p className="aide">
-            Le webhook Slack et l adresse d envoi viennent de la configuration du service.
-            Un destinataire « non-configure » signifie que le canal ne peut pas alerter.
-          </p>
         </Carte>
+      )}
+
+      {onglet === 'observabilite' && (
+        observabilite === null ? (
+          <Carte titre="Observabilite">
+            <Chargement />
+          </Carte>
+        ) : (
+          <div className="pile">
+            <Carte titre="Synthese d'exploitation">
+              <div className="resultat-meta">
+                <Badge ton={observabilite.base.disponible ? 'ok' : 'alerte'}>
+                  Base {observabilite.base.disponible ? 'ok' : 'indisponible'}
+                </Badge>
+                <Badge ton={observabilite.inference.disponible === false ? 'alerte' : 'ok'}>
+                  Inference {observabilite.inference.disponible === false ? 'indisponible' : 'ok'}
+                </Badge>
+                <Badge ton={observabilite.rag.disponible ? 'ok' : 'alerte'}>
+                  RAG {observabilite.rag.disponible ? 'ok' : 'indisponible'}
+                </Badge>
+                <span className="aide">
+                  Sonde du {dateCourte(observabilite.timestamp)} - version{' '}
+                  {observabilite.inference.version ?? '-'}
+                </span>
+              </div>
+              {observabilite.secrets_manquants.length > 0 && (
+                <p className="aide">
+                  Secrets a configurer :{' '}
+                  <span className="mono">{observabilite.secrets_manquants.join(', ')}</span>
+                </p>
+              )}
+            </Carte>
+
+            <div className="grille trois grille-kpi">
+              <Carte titre="Volume">
+                <div className="kpi">
+                  <span className="kpi-valeur">{nombre(observabilite.base.factures)}</span>
+                  <span className="kpi-libelle">Factures en base</span>
+                </div>
+                <div className="kpi">
+                  <span className="kpi-valeur">{nombre(observabilite.base.alertes)}</span>
+                  <span className="kpi-libelle">Alertes fraude</span>
+                </div>
+              </Carte>
+              <Carte titre="Activite">
+                <div className="kpi">
+                  <span className="kpi-valeur">{nombre(observabilite.base.predictions)}</span>
+                  <span className="kpi-libelle">Predictions</span>
+                </div>
+                <div className="kpi">
+                  <span className="kpi-valeur">{nombre(observabilite.base.decisions)}</span>
+                  <span className="kpi-libelle">Decisions gestionnaire</span>
+                </div>
+              </Carte>
+              <Carte titre="Erreurs">
+                <div className="kpi">
+                  <span className="kpi-valeur">
+                    {nombre(observabilite.inference.erreurs_total)}
+                  </span>
+                  <span className="kpi-libelle">Erreurs applicatives</span>
+                </div>
+                <p className="aide">
+                  {nombre(observabilite.inference.requetes_total)} requete(s) mesuree(s)
+                  {observabilite.inference.requetes_total
+                    ? ` - taux ${pourcentage(
+                        (observabilite.inference.erreurs_total ?? 0) /
+                          observabilite.inference.requetes_total,
+                      )}`
+                    : ''}
+                </p>
+              </Carte>
+            </div>
+
+            <div className="grille deux-large">
+              <Carte titre="Latence de l'inference">
+                {observabilite.inference.latence_ms?.disponible ? (
+                  <div className="grille trois grille-kpi">
+                    <div className="kpi">
+                      <span className="kpi-valeur">
+                        {observabilite.inference.latence_ms.p50?.toFixed(2)} ms
+                      </span>
+                      <span className="kpi-libelle">P50</span>
+                    </div>
+                    <div className="kpi">
+                      <span className="kpi-valeur">
+                        {observabilite.inference.latence_ms.p95?.toFixed(2)} ms
+                      </span>
+                      <span className="kpi-libelle">P95</span>
+                    </div>
+                    <div className="kpi">
+                      <span className="kpi-valeur">
+                        {observabilite.inference.latence_ms.p99?.toFixed(2)} ms
+                      </span>
+                      <span className="kpi-libelle">P99</span>
+                    </div>
+                  </div>
+                ) : (
+                  <Vide>Aucune inference mesuree depuis le demarrage du service.</Vide>
+                )}
+                <p className="aide">
+                  {observabilite.inference.latence_ms?.echantillons ?? 0} echantillon(s) dans
+                  la fenetre glissante.
+                </p>
+              </Carte>
+
+              <Carte titre="Derive du modele">
+                {Object.keys(observabilite.derive).length === 0 ? (
+                  <Vide>Aucun rapport de derive disponible.</Vide>
+                ) : (
+                  <ul className="liste-simple">
+                    {Object.entries(observabilite.derive).map(([cle, valeur]) => (
+                      <li key={cle}>
+                        <span className="mono">{cle}</span> : {valeurLisible(valeur)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Carte>
+            </div>
+
+            <div className="grille deux-large">
+              <Carte titre="Cache semantique">
+                {Object.keys(observabilite.rag.cache).length === 0 ? (
+                  <Vide>Aucune statistique exposee par l'assistant.</Vide>
+                ) : (
+                  <ul className="liste-simple">
+                    {Object.entries(observabilite.rag.cache).map(([cle, valeur]) => (
+                      <li key={cle}>
+                        <span className="mono">{cle}</span> : {valeurLisible(valeur)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Carte>
+
+              <Carte titre="Posture de securite de l'assistant">
+                {Object.keys(observabilite.rag.securite).length === 0 ? (
+                  <Vide>Aucune posture de securite exposee.</Vide>
+                ) : (
+                  <ul className="liste-simple">
+                    {Object.entries(observabilite.rag.securite).map(([cle, valeur]) => (
+                      <li key={cle}>
+                        <span className="mono">{cle}</span> : {valeurLisible(valeur)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Carte>
+            </div>
+          </div>
+        )
       )}
 
       {onglet === 'utilisateurs' && (
@@ -484,6 +780,7 @@ export function AdminPage() {
                       <th>Role</th>
                       <th>Nom</th>
                       <th>Dossier</th>
+                      <th>Prestataire</th>
                       <th>Etat</th>
                       <th>Derniere connexion</th>
                       <th />
@@ -499,6 +796,7 @@ export function AdminPage() {
                           <td>{ROLE_LABELS[compte.role]}</td>
                           <td>{compte.display_name ?? '-'}</td>
                           <td className="mono">{compte.assured_pseudonyme ?? '-'}</td>
+                          <td className="mono">{compte.prestataire_code ?? '-'}</td>
                           <td>
                             <Badge ton={compte.is_active ? 'ok' : 'neutre'}>
                               {compte.is_active ? 'actif' : 'desactive'}
@@ -623,6 +921,27 @@ export function AdminPage() {
                       ))}
                     </select>
                   )}
+                </Champ>
+              )}
+
+              {form.role === 'professionnel_sante' && (
+                <Champ
+                  label="Prestataire"
+                  aide="Code du prestataire dont ce compte depend (ex. PRE-00001). Il determine les factures visibles."
+                >
+                  <input
+                    type="text"
+                    required
+                    maxLength={64}
+                    value={form.prestataire_code}
+                    onChange={(event) =>
+                      setForm((precedent) => ({
+                        ...precedent,
+                        prestataire_code: event.target.value,
+                      }))
+                    }
+                    placeholder="PRE-00001"
+                  />
                 </Champ>
               )}
 

@@ -69,6 +69,24 @@ def creer_comptes(mot_de_passe: str) -> list[tuple[str, str]]:
         # laisser echouer silencieusement a la premiere connexion.
         assure_id = session.execute(text("SELECT id FROM core.assure ORDER BY id LIMIT 1")).scalar()
 
+        # Le compte professionnel est rattache a un prestataire reel : sans ce
+        # lien, l'API lui refuse l'acces (403) plutot que de lui montrer les
+        # factures de tous les etablissements.
+        prestataire_id = session.execute(
+            text("SELECT id FROM core.prestataire ORDER BY id LIMIT 1")
+        ).scalar()
+
+        if prestataire_id is None:
+            logger.warning(
+                "comptes.aucun_prestataire",
+                message="Chargez les donnees avant le compte professionnel.",
+            )
+            print(
+                "ATTENTION : aucune ligne dans core.prestataire. "
+                "Le compte professionnel sera cree sans perimetre et devra etre "
+                "rattache par un administrateur."
+            )
+
         if assure_id is None:
             logger.warning(
                 "comptes.aucun_assure", message="Chargez les donnees avant le compte assure."
@@ -84,12 +102,15 @@ def creer_comptes(mot_de_passe: str) -> list[tuple[str, str]]:
                 text(
                     """
                     INSERT INTO core.utilisateur
-                        (email, password_hash, role, assured_id, display_name, is_active)
-                    VALUES (:email, :hache, :role, :assured_id, :nom, true)
+                        (email, password_hash, role, assured_id, prestataire_id,
+                         display_name, is_active)
+                    VALUES (:email, :hache, :role, :assured_id, :prestataire_id,
+                            :nom, true)
                     ON CONFLICT (email) DO UPDATE
                     SET password_hash = EXCLUDED.password_hash,
                         role = EXCLUDED.role,
                         assured_id = EXCLUDED.assured_id,
+                        prestataire_id = EXCLUDED.prestataire_id,
                         display_name = EXCLUDED.display_name,
                         is_active = true
                     """
@@ -99,6 +120,9 @@ def creer_comptes(mot_de_passe: str) -> list[tuple[str, str]]:
                     "hache": hache,
                     "role": str(role),
                     "assured_id": assure_id if rattache else None,
+                    "prestataire_id": (
+                        prestataire_id if role is Role.PROFESSIONNEL_SANTE else None
+                    ),
                     "nom": nom,
                 },
             )

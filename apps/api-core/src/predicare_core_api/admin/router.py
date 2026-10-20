@@ -7,6 +7,7 @@ Toute route de ce module exige le role administrateur.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -18,7 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from predicare import db
-from predicare.auth import hash_password
+from predicare.audit import journaliser
+from predicare.auth import TokenPayload, hash_password
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.dependencies import get_threshold, require_permission
@@ -38,7 +40,7 @@ logger = get_logger("api-core.admin")
 
 #: Garde-fou commun : le role administrateur est verifie avant le corps de la
 #: route, donc avant tout acces base et tout appel reseau sortant.
-AdminUser = Annotated[object, Depends(require_permission("seuil:modifier"))]
+AdminUser = Annotated[TokenPayload, Depends(require_permission("seuil:modifier"))]
 
 
 class ThresholdUpdate(BaseModel):
@@ -55,6 +57,10 @@ class NotificationChannel(BaseModel):
     type: str = Field(pattern="^(slack|email)$")
     actif: bool = True
     destinataire: str = Field(max_length=254)
+    #: `configure` dit si le canal a de quoi emettre (URL, adresse). Un canal
+    #: `actif` mais non configure ne peut rien envoyer : les confondre etait
+    #: exactement le defaut signale a la revue (badge « actif » trompeur).
+    configure: bool = False
 
 
 @router.put("/seuil")
@@ -79,6 +85,14 @@ def update_threshold(
                 """
             ),
             {"valeur": str(payload.seuil), "user": getattr(_admin, "subject", "admin")},
+        )
+        journaliser(
+            session,
+            acteur=str(getattr(_admin, "subject", "admin")),
+            role=str(getattr(_admin, "role", "")),
+            action="seuil_modifie",
+            cible="parametre:seuil_alerte",
+            details={"seuil": payload.seuil, "motif": payload.motif},
         )
 
     propagation = _propagate_threshold(request, payload.seuil)
@@ -113,24 +127,118 @@ def read_threshold(_admin: AdminUser) -> dict[str, float]:
     return {"seuil": get_threshold()}
 
 
-@router.get("/canaux", response_model=list[NotificationChannel])
-def list_channels(_admin: AdminUser) -> list[NotificationChannel]:
-    """Canaux de notification actifs (Slack en priorite, e-mail en option)."""
+def _canaux_par_defaut() -> list[NotificationChannel]:
+    """Canaux deduits de la configuration, avant surcharge administrateur."""
     settings = get_settings()
+    webhook = settings.slack_webhook_url.strip()
+    expeditrice = settings.smtp_from.strip()
     return [
         NotificationChannel(
             nom="slack-gestionnaires",
             type="slack",
-            actif=True,
-            destinataire=settings.slack_webhook_url or "non-configure",
+            actif=bool(webhook),
+            destinataire=webhook or "non-configure",
+            configure=bool(webhook),
         ),
         NotificationChannel(
             nom="email-gestionnaires",
             type="email",
-            actif=False,
-            destinataire=settings.smtp_from or "non-configure",
+            actif=bool(expeditrice),
+            destinataire=expeditrice or "non-configure",
+            configure=bool(expeditrice),
         ),
     ]
+
+
+def _lire_surcharge_canaux(session: Session) -> dict[str, dict]:
+    """Surcharge persistee par l'ecran d'administration, cle par canal."""
+    valeur = session.execute(
+        text("SELECT valeur FROM audit.parametre WHERE cle = 'canaux_notification'")
+    ).scalar()
+    if not valeur:
+        return {}
+    try:
+        charge = json.loads(valeur)
+    except (TypeError, ValueError):
+        return {}
+    return charge if isinstance(charge, dict) else {}
+
+
+def _canaux_effectifs(session: Session) -> list[NotificationChannel]:
+    """Configuration + surcharge, dans cet ordre de priorite."""
+    surcharge = _lire_surcharge_canaux(session)
+    resultat: list[NotificationChannel] = []
+    for canal in _canaux_par_defaut():
+        reglage = surcharge.get(canal.nom)
+        if isinstance(reglage, dict):
+            destinataire = str(reglage.get("destinataire", canal.destinataire))
+            resultat.append(
+                canal.model_copy(
+                    update={
+                        "actif": bool(reglage.get("actif", canal.actif)),
+                        "destinataire": destinataire,
+                        "configure": destinataire.strip().lower() not in {"", "non-configure"},
+                    }
+                )
+            )
+        else:
+            resultat.append(canal)
+    return resultat
+
+
+class ChannelUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actif: bool
+    destinataire: str = Field(min_length=1, max_length=254)
+
+
+@router.get("/canaux", response_model=list[NotificationChannel])
+def list_channels(_admin: AdminUser) -> list[NotificationChannel]:
+    """Canaux de notification, avec leur surcharge eventuelle."""
+    with session_scope() as session:
+        return _canaux_effectifs(session)
+
+
+@router.put("/canaux/{nom}", response_model=NotificationChannel)
+def update_channel(nom: str, payload: ChannelUpdate, _admin: AdminUser) -> NotificationChannel:
+    """Active/desactive un canal et fixe son destinataire, sans redeploiement."""
+    connus = {canal.nom for canal in _canaux_par_defaut()}
+    if nom not in connus:
+        raise NotFoundError("Canal de notification inconnu.")
+
+    acteur = str(getattr(_admin, "subject", "admin"))
+    with session_scope() as session:
+        surcharge = _lire_surcharge_canaux(session)
+        surcharge[nom] = {
+            "actif": payload.actif,
+            "destinataire": payload.destinataire.strip(),
+        }
+        session.execute(
+            text(
+                """
+                INSERT INTO audit.parametre (cle, valeur, modifie_par, modifie_at)
+                VALUES ('canaux_notification', :valeur, :user, now())
+                ON CONFLICT (cle) DO UPDATE
+                    SET valeur = EXCLUDED.valeur,
+                        modifie_par = EXCLUDED.modifie_par,
+                        modifie_at = EXCLUDED.modifie_at
+                """
+            ),
+            {"valeur": json.dumps(surcharge, ensure_ascii=False), "user": acteur},
+        )
+        journaliser(
+            session,
+            acteur=acteur,
+            role=str(getattr(_admin, "role", "")),
+            action="canal_modifie",
+            cible=f"canal:{nom}",
+            details={"actif": payload.actif, "destinataire": payload.destinataire.strip()},
+        )
+        canaux = _canaux_effectifs(session)
+
+    logger.info("admin.canal_modifie", canal=nom, actif=payload.actif, acteur=acteur)
+    return next(canal for canal in canaux if canal.nom == nom)
 
 
 @router.get("/modele", response_model=ModelVersionInfo)
@@ -149,11 +257,16 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
         )
 
 
-def _appeler_inference(request: Request, chemin: str) -> dict:
-    """Appelle le registre du Flux 1, en traduisant une panne en 503 metier."""
+def _appeler_inference(request: Request, chemin: str, *, acteur: str | None = None) -> dict:
+    """Appelle le registre du Flux 1, en traduisant une panne en 503 metier.
+
+    `acteur` est le sujet du jeton administrateur. Il traverse api-core ->
+    api-inference -> n8n pour que la notification de bascule nomme son auteur.
+    """
     inference_url = str(request.app.state.inference_api_url).rstrip("/")
+    headers = {"X-Acteur": acteur} if acteur else None
     try:
-        response = httpx.post(f"{inference_url}{chemin}", timeout=10.0)
+        response = httpx.post(f"{inference_url}{chemin}", headers=headers, timeout=10.0)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("admin.modele_action_impossible", chemin=chemin, erreur=str(exc))
@@ -170,16 +283,19 @@ def charger_candidat(version: str, request: Request, _admin: AdminUser) -> dict[
     C'est l'etape qui rend le deploiement sans interruption possible : le
     modele en service continue de repondre pendant que la candidate charge.
     """
-    return _appeler_inference(request, f"/modele/candidat?version={version}")
+    resultat = _appeler_inference(request, f"/modele/candidat?version={version}")
+    _journaliser_modele(_admin, "modele_candidat_charge", version, resultat)
+    return resultat
 
 
 @router.post("/modele/bascule")
 def basculer_modele(request: Request, _admin: AdminUser) -> dict[str, object]:
     """Bascule la candidate en active, puis aligne le registre en base."""
-    resultat = _appeler_inference(request, "/modele/bascule")
+    resultat = _appeler_inference(request, "/modele/bascule", acteur=_admin.subject)
     version = str(resultat.get("active_version", ""))
     if version:
         activer_version(version)
+        _journaliser_modele(_admin, "modele_bascule", version, resultat)
     return resultat
 
 
@@ -188,7 +304,32 @@ def retour_arriere(version: str, request: Request, _admin: AdminUser) -> dict[st
     """Revient a une version deja presente sur le volume `/models`."""
     resultat = _appeler_inference(request, f"/modele/retour-arriere?version={version}")
     activer_version(version)
+    _journaliser_modele(_admin, "modele_retour_arriere", version, resultat)
     return resultat
+
+
+def _journaliser_modele(
+    admin: object, action: str, version: str, resultat: dict[str, object]
+) -> None:
+    """Trace une operation de registre : qui a bascule, et vers quelle version."""
+    with session_scope() as session:
+        journaliser(
+            session,
+            acteur=str(getattr(admin, "subject", "admin")),
+            role=str(getattr(admin, "role", "")),
+            action=action,
+            cible=f"modele:{version}",
+            details={"active_version": resultat.get("active_version"), "version": version},
+        )
+
+
+def _secret_configure(valeur: str) -> bool:
+    """Un secret est utilisable s'il est present et n'est pas un modele."""
+    texte = (valeur or "").strip()
+    if not texte:
+        return False
+    marqueurs = ("changer", "change-me", "changeme", "not-configured", "votre-cle")
+    return not any(marqueur in texte.lower() for marqueur in marqueurs)
 
 
 @router.get("/sante")
@@ -219,6 +360,31 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
     except Exception:  # une sonde de sante ne doit jamais lever
         base = False
 
+    # Un conteneur RAG « healthy » peut n'avoir ni cle d'embedding ni document
+    # vectorise : il repond alors a /health tout en etant incapable de citer
+    # un contrat. La sonde d'administration doit le dire, sinon le jury
+    # decouvre la panne au moment de poser sa premiere question.
+    try:
+        with session_scope() as session:
+            documents = int(
+                session.execute(text("SELECT count(*) FROM core.document_vectorise")).scalar_one()
+            )
+    except Exception:  # base indisponible : la sonde base le signale deja
+        documents = 0
+
+    rag = sonder(str(request.app.state.rag_url))
+    embedding_ok = _secret_configure(settings.embedding_api_key)
+    llm_ok = _secret_configure(settings.llm_api_key)
+    if rag["status"] == "ok" and (not embedding_ok or documents == 0):
+        rag["status"] = "degraded"
+    rag.update(
+        {
+            "documents": documents,
+            "embedding_configure": embedding_ok,
+            "llm_configure": llm_ok,
+        }
+    )
+
     return {
         "service": request.app.state.service,
         "version": request.app.state.version,
@@ -228,9 +394,80 @@ def sante(request: Request, _admin: AdminUser) -> dict[str, object]:
         "dependances": {
             "base": base,
             "inference": sonder(str(request.app.state.inference_url)),
-            "rag": sonder(str(request.app.state.rag_url)),
+            "rag": rag,
         },
     }
+
+
+@router.get("/observabilite")
+def observabilite(request: Request, _admin: AdminUser) -> dict[str, object]:
+    """Metriques d'exploitation demandees par le CDC (Supervisable).
+
+    Le front ne joint jamais directement api-inference ni api-rag : api-core
+    agrege les indicateurs et reste le seul point d'entree autorise. Chaque
+    bloc est tolerant aux pannes pour que l'ecran reste lisible meme si un
+    service est arrete.
+    """
+    settings = get_settings()
+    resultat: dict[str, object] = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "secrets_manquants": settings.missing_secrets(),
+    }
+
+    # Volume et activite metier, lus dans la base (source de verite).
+    try:
+        with session_scope() as session:
+            resultat["base"] = {
+                "disponible": True,
+                "factures": int(
+                    session.execute(text("SELECT count(*) FROM core.facture")).scalar_one()
+                ),
+                "predictions": int(
+                    session.execute(text("SELECT count(*) FROM ml.prediction")).scalar_one()
+                ),
+                "alertes": int(
+                    session.execute(
+                        text("SELECT count(*) FROM ml.prediction WHERE is_fraud")
+                    ).scalar_one()
+                ),
+                "decisions": int(
+                    session.execute(
+                        text("SELECT count(*) FROM audit.decision_gestionnaire")
+                    ).scalar_one()
+                ),
+                "journal": int(
+                    session.execute(text("SELECT count(*) FROM audit.journal")).scalar_one()
+                ),
+            }
+    except Exception as exc:  # la supervision ne doit jamais lever
+        logger.warning("admin.observabilite_base_echouee", erreur=str(exc))
+        resultat["base"] = {"disponible": False}
+
+    def lire_json(url: str, timeout: float = 3.0) -> dict[str, object] | None:
+        try:
+            reponse = httpx.get(url, timeout=timeout)
+            reponse.raise_for_status()
+            corps = reponse.json()
+            return corps if isinstance(corps, dict) else {"valeur": corps}
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("admin.observabilite_sonde_echouee", url=url, erreur=str(exc))
+            return None
+
+    inference_api = str(request.app.state.inference_api_url).rstrip("/")
+    rag = str(request.app.state.rag_url).rstrip("/")
+    resultat["inference"] = lire_json(f"{inference_api}/stats") or {"disponible": False}
+    resultat["derive"] = lire_json(f"{inference_api}/derive") or {"status": "indisponible"}
+
+    # Le service RAG monte ses routes metier sous `/api` (comme les autres
+    # services derriere la passerelle) : `/api/rag/cache/stats`.
+    cache = lire_json(f"{rag}/api/rag/cache/stats")
+    securite = lire_json(f"{rag}/api/rag/securite")
+    resultat["rag"] = {
+        "disponible": cache is not None or securite is not None,
+        "cache": cache or {},
+        "securite": securite or {},
+    }
+    return resultat
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +487,7 @@ class UserSummary(BaseModel):
     display_name: str | None = None
     is_active: bool
     assured_pseudonyme: str | None = None
+    prestataire_code: str | None = None
     last_login: datetime | None = None
 
 
@@ -270,6 +508,11 @@ class UserCreate(BaseModel):
         max_length=64,
         description="Obligatoire pour un compte assure, interdit pour les autres",
     )
+    prestataire_code: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Obligatoire pour un compte professionnel, interdit pour les autres",
+    )
 
 
 class UserStatusUpdate(BaseModel):
@@ -285,9 +528,11 @@ def _lire_compte(session: Session, user_id: int) -> dict:
             text(
                 """
                 SELECT u.id, u.email, u.role, u.display_name, u.is_active,
-                       a.pseudonyme AS assured_pseudonyme, u.last_login
+                       a.pseudonyme AS assured_pseudonyme, p.code AS prestataire_code,
+                       u.last_login
                 FROM core.utilisateur u
                 LEFT JOIN core.assure a ON a.id = u.assured_id
+                LEFT JOIN core.prestataire p ON p.id = u.prestataire_id
                 WHERE u.id = :user_id
                 """
             ),
@@ -313,9 +558,11 @@ def lister_utilisateurs(
                 text(
                     """
                     SELECT u.id, u.email, u.role, u.display_name, u.is_active,
-                           a.pseudonyme AS assured_pseudonyme, u.last_login
+                           a.pseudonyme AS assured_pseudonyme, p.code AS prestataire_code,
+                           u.last_login
                     FROM core.utilisateur u
                     LEFT JOIN core.assure a ON a.id = u.assured_id
+                    LEFT JOIN core.prestataire p ON p.id = u.prestataire_id
                     ORDER BY u.role, u.email
                     LIMIT :limit
                     """
@@ -336,11 +583,17 @@ def creer_utilisateur(payload: UserCreate, _admin: AdminUser) -> UserSummary:
 
     with session_scope() as session:
         assure_id: int | None = None
+        prestataire_id: int | None = None
         if payload.role == Role.ASSURE:
             if not payload.assured_pseudonyme:
                 raise InvalidInputError(
                     "Un compte assure doit etre rattache a un dossier.",
                     details={"champ": "assured_pseudonyme"},
+                )
+            if payload.prestataire_code:
+                raise InvalidInputError(
+                    "prestataire_code ne s'applique qu'a un compte professionnel.",
+                    details={"champ": "prestataire_code"},
                 )
             assure_id = session.execute(
                 text("SELECT id FROM core.assure WHERE pseudonyme = :pseudonyme"),
@@ -351,19 +604,47 @@ def creer_utilisateur(payload: UserCreate, _admin: AdminUser) -> UserSummary:
                     "assured_pseudonyme : dossier inconnu.",
                     details={"champ": "assured_pseudonyme"},
                 )
-        elif payload.assured_pseudonyme:
-            raise InvalidInputError(
-                "assured_pseudonyme ne s'applique qu'a un compte assure.",
-                details={"champ": "assured_pseudonyme"},
-            )
+        elif payload.role == Role.PROFESSIONNEL_SANTE:
+            if payload.assured_pseudonyme:
+                raise InvalidInputError(
+                    "assured_pseudonyme ne s'applique qu'a un compte assure.",
+                    details={"champ": "assured_pseudonyme"},
+                )
+            if not payload.prestataire_code:
+                raise InvalidInputError(
+                    "Un compte professionnel doit etre rattache a un prestataire.",
+                    details={"champ": "prestataire_code"},
+                )
+            prestataire_id = session.execute(
+                text("SELECT id FROM core.prestataire WHERE code = :code"),
+                {"code": payload.prestataire_code},
+            ).scalar()
+            if prestataire_id is None:
+                raise InvalidInputError(
+                    "prestataire_code : prestataire inconnu.",
+                    details={"champ": "prestataire_code"},
+                )
+        else:
+            if payload.assured_pseudonyme:
+                raise InvalidInputError(
+                    "assured_pseudonyme ne s'applique qu'a un compte assure.",
+                    details={"champ": "assured_pseudonyme"},
+                )
+            if payload.prestataire_code:
+                raise InvalidInputError(
+                    "prestataire_code ne s'applique qu'a un compte professionnel.",
+                    details={"champ": "prestataire_code"},
+                )
 
         try:
             cree = session.execute(
                 text(
                     """
                     INSERT INTO core.utilisateur
-                        (email, password_hash, role, assured_id, display_name, is_active)
-                    VALUES (:email, :hache, :role, :assure_id, :nom, true)
+                        (email, password_hash, role, assured_id, prestataire_id,
+                         display_name, is_active)
+                    VALUES (:email, :hache, :role, :assure_id, :prestataire_id,
+                            :nom, true)
                     RETURNING id
                     """
                 ),
@@ -372,6 +653,7 @@ def creer_utilisateur(payload: UserCreate, _admin: AdminUser) -> UserSummary:
                     "hache": hash_password(payload.password),
                     "role": str(payload.role),
                     "assure_id": assure_id,
+                    "prestataire_id": prestataire_id,
                     "nom": (payload.display_name or "").strip() or None,
                 },
             ).scalar_one()
@@ -382,6 +664,19 @@ def creer_utilisateur(payload: UserCreate, _admin: AdminUser) -> UserSummary:
             ) from exc
 
         ligne = _lire_compte(session, int(cree))
+        journaliser(
+            session,
+            acteur=acteur,
+            role=str(getattr(_admin, "role", "")),
+            action="compte_cree",
+            cible=f"compte:{cree}",
+            details={
+                "email": email,
+                "role": str(payload.role),
+                "assured_pseudonyme": payload.assured_pseudonyme,
+                "prestataire_code": payload.prestataire_code,
+            },
+        )
 
     logger.info("admin.compte_cree", email=email, role=str(payload.role), acteur=acteur)
     return UserSummary(**ligne)
@@ -433,6 +728,14 @@ def changer_statut_compte(
         session.execute(
             text("UPDATE core.utilisateur SET is_active = :actif WHERE id = :user_id"),
             {"actif": payload.is_active, "user_id": user_id},
+        )
+        journaliser(
+            session,
+            acteur=acteur,
+            role=str(getattr(_admin, "role", "")),
+            action="compte_statut",
+            cible=f"compte:{user_id}",
+            details={"actif": payload.is_active, "email": cible["email"]},
         )
         ligne = _lire_compte(session, user_id)
 

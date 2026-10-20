@@ -21,7 +21,8 @@ Vérifier le modèle :
 curl -s http://localhost:8002/api/inference/modele
 ```
 
-Attendu : `"active_version":"2"`, `"threshold":0.287569522857666`.
+Attendu : `"active_version"` vaut `"1"` ou `"2"` selon la version chargée (les
+deux sont disponibles), et `"threshold":0.287569522857666`.
 
 Créer les comptes si nécessaire :
 
@@ -106,7 +107,7 @@ Attendu : 4 lignes, `is_active = t`.
 | Connexion | POST | `/api/core/auth/login` | public | 200 + token |
 | Profil | GET | `/api/core/auth/me` | connecté | 200 |
 | Assuré | GET | `/api/core/factures?limit=5` | assuré | 200 + `items` |
-| Assuré | POST | `/api/rag/question` | assuré | **500** (clé LLM absente) |
+| Assuré | POST | `/api/rag/question` | assuré | **200** + sources (voir § 5.4 : session, extraits, cache, injection) |
 | Pro | GET | `/api/core/factures/references` | pro | 200 + listes |
 | Pro | POST | `/api/core/factures/soumettre` | pro | **202** + score + SHAP |
 | Pro | POST | `/api/core/factures/ordonnances` | pro | 201 |
@@ -178,21 +179,30 @@ Attendu :
   "items": [
     {
       "facture_id": "FAC-...",
-      "assure_pseudonyme": "...",
-      "prestataire_id": "PRS-...",
-      "montant_total": 120000,
-      "date_facture": "2025-...",
-      "statut": "remboursee"
+      "assure_pseudonyme": "assr_...",
+      "prestataire_id": "PRE-00001",
+      "montant_total": 224000,
+      "montant_eligible": 224000,
+      "montant_pris_en_charge": 150000,
+      "reste_a_charge": 74000,
+      "date_facture": "2026-07-22T01:00:00+02:00",
+      "statut": "PAYEE"
     }
   ],
-  "total": 19,
+  "total": 27,
   "limit": 5,
   "offset": 0
 }
 ```
 
-> Le nombre exact dépend du premier dossier `core.assure`. L'important est que
-> `items` ne soit pas vide et que `total` soit cohérent.
+> Le filtre est appliqué **côté serveur**. À la connexion, le jeton contient
+> `ins = core.utilisateur.assured_id`. Pour le rôle `assure`, la requête ajoute
+> `AND f.assure_id = :assure_id`. Aucun paramètre envoyé par le navigateur ne
+> permet de changer de dossier.
+>
+> Preuve attendue : l'API renvoie le nombre de factures du dossier
+> `assure@predicare.local` (27 au 20/10/2026), pas les 84 603 factures de la
+> base. Tous les `assure_pseudonyme` renvoyés sont identiques.
 
 **SQL :**
 
@@ -204,20 +214,37 @@ WHERE a.id = (SELECT assured_id FROM core.utilisateur WHERE email='assure@predic
 
 Le résultat doit être égal à `total`.
 
-**UI :** onglet **Mes remboursements** → un tableau avec les mêmes montants et
-statuts. Si le tableau est vide alors que le SQL renvoie des lignes, le front ne
-lit pas la bonne réponse.
+**UI :** onglet **Mes remboursements** → tableau avec **Facture**, **Pris en
+charge**, **Reste à charge**, **Statut** et **Contrôle**.
+Les factures `PAYEE` doivent afficher `Remboursee` et des montants ; les
+factures `recue` affichent `—` tant qu'elles ne sont pas traitées.
+Si le tableau est vide alors que le SQL renvoie des lignes, le front ne lit pas
+la bonne réponse.
 
 #### `POST /api/rag/question`
 
 ```powershell
-$corps = @{ question = "Quelles sont mes garanties ?" } | ConvertTo-Json
+$corps = @{
+  question   = "Quel est le taux de remboursement d'une consultation en formule PREMIUM ?"
+  session_id = "recette-rag-001"
+} | ConvertTo-Json
 Invoke-RestMethod -Uri "http://localhost:8080/api/rag/question" -Method Post -Headers $h -Body $corps -ContentType "application/json"
 ```
 
-Attendu aujourd'hui : **500** (ou message « momentanément indisponible »),
-car `LLM_API_KEY=CHANGER_MOI_LLM`. Ce n'est **pas** un bug du front.
-Une fois la clé renseignée, attendu : 200 + `reponse` + `sources`.
+**Attendu** : 200 avec `reponse`, `sources`, `etapes_agent`, `latence_ms`,
+`tokens`, `cache_semantique` et `succes = true`.
+
+Vérifier ensuite dans l'interface :
+
+1. la source affiche le contrat, l'article, la garantie et, après clic sur
+   **Voir l'extrait**, le passage contractuel ;
+2. la question de suivi « Et pour l'optique ? » réutilise le même
+   `session_id` et reprend le contexte ;
+3. **Nouvelle conversation** génère un autre `session_id` et vide l'écran ;
+4. une tentative d'injection renvoie 400 et un message lisible, sans trace
+   technique ;
+5. le cache sémantique est signalé sur une question répétée dans une nouvelle
+   conversation (une conversation avec historique n'utilise pas le cache).
 
 ---
 
@@ -529,6 +556,67 @@ Script automatique fourni :
 powershell -ExecutionPolicy Bypass -File .\scripts\verifier_back_front.ps1
 ```
 
+### 4.1 Chaîne n8n (Slack et e-mail)
+
+Prérequis : `SLACK_WEBHOOK_URL` renseigné, Mailpit démarré (`make up-email`),
+workflows importés (`make n8n-import`).
+
+```bash
+make e2e-n8n
+```
+
+Vérifications :
+
+1. `PK-Alerte-Fraude` est actif et `POST /webhook/alerte-fraude` est enregistré.
+2. `FAC-JURY-001` (lot F17) répond **200** avec `score_fraude` ≥ 0,8 et
+   `rapport_shap`.
+3. L'e-mail arrive dans Mailpit (`http://localhost:8025`) avec le rapport SHAP.
+4. `execution_entity.status = 'success'` : Slack a répondu 2xx.
+5. Une facture invalide répond **502**, n'ajoute aucun e-mail et laisse
+   l'exécution en `error` : l'échec est journalisé, sans notification fantôme.
+
+La bascule de modèle se prouve avec `POST /webhook/bascule-modele` (payload
+`version_avant` / `version_apres`) : réponse 200, puis Slack et e-mail. Le
+détail et les credentials par poste sont dans `apps/n8n/README.md`.
+
+### 4.2 Rapport de dérive persisté
+
+Prérequis : `worker-ingest` démarré (`make up-workers` ou `make up`).
+
+```bash
+curl -s http://localhost:8002/api/inference/derive | python3 -m json.tool
+```
+
+Attendu :
+
+1. `status: "ok"`, avec `id`, `calcule_le`, `fenetre_jours`, `psi_global`,
+   `variables_concernees`, `score_moyen_reference`, `score_moyen_courant`,
+   `alerte`.
+2. `variables_concernees.observations_reference` et
+   `observations_courantes` sont présents : sans eux, un PSI n'est pas
+   interprétable.
+3. `ml.rapport_derive` contient au moins une ligne :
+
+   ```bash
+   docker compose exec db psql -U predicare -d predicare \
+     -c "SELECT id, calcule_le, psi_global, alerte FROM ml.rapport_derive ORDER BY id DESC LIMIT 3;"
+   ```
+
+4. Après `docker compose restart api-inference`, l'endpoint renvoie toujours
+   le même rapport : il est lu en base, pas gardé en mémoire du worker.
+5. Le worker ne calcule qu'une fois par heure ; pour forcer un calcul :
+
+   ```bash
+   docker compose exec worker-ingest /opt/venv/bin/python -c \
+     "from predicare_inference_api.derive import calculer_et_persister_derive; print(calculer_et_persister_derive(force=True))"
+   ```
+
+Mesure du 20/10/2026 : rapport `id=1`, `5510` notations rétrospectives contre
+`18` notations courantes, `psi_global=6,5287`, `alerte=true`. Le PSI est
+extrême parce que la fenêtre courante contient le lot F17 et les rejeux e2e,
+pas un échantillon de production ; c'est le comportement attendu d'un
+détecteur de dérive, et l'effectif courant permet de le lire correctement.
+
 ---
 
 ## 5. Tests de sécurité (RBAC)
@@ -572,8 +660,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/api/core/alertes/file" -Headers $h
 
 ## 7. Corrections déjà appliquées (19/10/2026)
 
-Cinq bugs d'intégration ont été trouvés en exécutant ce plan. Ils sont
-corrigés :
+Six écarts ont été trouvés en exécutant ce plan. Ils sont corrigés :
 
 | # | Symptôme | Cause | Correctif |
 |---|---|---|---|
@@ -582,14 +669,21 @@ corrigés :
 | 3 | `POST /alertes/decision` → **500** | `.scalar()` appelé sur un `UPDATE` (SQLAlchemy 2.1 refuse) | `rowcount` + contrôle « alerte introuvable » |
 | 4 | **422** sur presque toutes les factures | plafond métier à 10 000 MGA alors que les actes vont jusqu'à 2 500 000 MGA | plafond porté à 10 000 000 MGA (schéma + validation) |
 | 5 | `POST /audit/evenement` → **500** | psycopg n'adapte pas un `dict` Python à une colonne `jsonb` | sérialisation JSON + `CAST(:details AS jsonb)` |
+| 6 | Onglet **Remboursements** sans montants, statuts `PAYEE`/`REJETEE` bruts, `is_fraud=null` affiché « Clair » | l'API ne renvoyait pas les montants de prise en charge ; le front ne normalisait pas la casse | ajout de `montant_eligible`, `montant_pris_en_charge`, `reste_a_charge` ; statuts normalisés ; badge « Non controle » si aucune prédiction |
 
 Vérification après correction :
 
-- script automatique : **21 OK / 0 KO** ;
+- script automatique : **24 OK / 0 KO** ;
 - `CONS-GEN` à 20 000 MGA → **202**, score `0.149546`, `is_fraud=false` ;
 - `ACC-CESAR` à 2 500 000 MGA → **202**, score `0.999947`, `is_fraud=true` ;
 - `POST /audit/evenement` → `{"status":"ok"}`, puis `audit.journal` contient
-  l'entrée `admin / test_plan / documentation`.
+  l'entrée `admin / test_plan / documentation` ;
+- `GET /factures` avec le jeton de `assure@predicare.local` → **27 factures**
+  sur **84 603** en base, toutes avec le même pseudonyme, et les montants
+  `montant_pris_en_charge` / `reste_a_charge` renseignés pour les `PAYEE` ;
+- UI assuré : colonnes **Facture / Pris en charge / Reste à charge**, statut
+  `Remboursee` pour `PAYEE`, `—` pour les factures non traitées, badge
+  `Non controle` quand aucune prédiction n'existe.
 
 ---
 
@@ -597,11 +691,13 @@ Vérification après correction :
 
 | Symptôme | Cause | Statut |
 |---|---|---|
-| Assistant RAG → 500 | `LLM_API_KEY` / `EMBEDDING_API_KEY` = placeholder | à configurer |
+| Assistant RAG → 500/503 | image `api-rag` obsolète, clés placeholder ou `document_vectorise` vide | reconstruire l'image, vérifier les clés et `count(*)` ; la chaîne est opérationnelle depuis le 20/10 au soir |
 | Aucune alerte au départ | `ml.prediction` vide ; les factures historiques ne sont pas notées | normal |
 | Journal vide au départ | aucune action admin effectuée | normal |
 | Journal vide après une décision | seules les actions explicites `/api/core/audit/evenement` alimentent `audit.journal` | écart connu |
-| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer |
+| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer ; prouver avec `make e2e-n8n` |
+| n8n répond 404 après un import | processus démarré avant la publication CLI | `make n8n-import` redémarre n8n ; sinon `docker compose restart n8n` |
+| E-mail n8n en échec après un import | credential SMTP non reliée sur ce poste | rouvrir le nœud e-mail et sélectionner `Mailpit (dev)` |
 | File d'alertes vide après une facture | score < 28,76 % | baisser le seuil pour tester |
 | Front « pas dynamique » | image `web` non reconstruite | `docker compose build web` |
 | Décision impossible | aucune alerte sélectionnée | soumettre une facture d'abord |

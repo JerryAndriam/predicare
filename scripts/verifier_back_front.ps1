@@ -102,17 +102,109 @@ if (-not $tAdmin) {
 Ecrire-Titre "2. Endpoints par ecran"
 
 Tester-Get "Profil admin" "/api/core/auth/me" $tAdmin | Out-Null
-Tester-Get "Factures assure" "/api/core/factures?limit=5" $tAssure | Out-Null
-Tester-Get "References pro" "/api/core/factures/references" $tPro | Out-Null
+
+$repFactures = Tester-Get "Factures assure" "/api/core/factures?limit=100" $tAssure
+if ($repFactures) {
+    $ficheAssure = $repFactures.Content | ConvertFrom-Json
+    $pseudos = @($ficheAssure.items | ForEach-Object { $_.assure_pseudonyme } | Sort-Object -Unique)
+    if ($pseudos.Count -eq 1 -and $ficheAssure.items.Count -gt 0) {
+        Ecrire-Ok ("Isolation assure : un seul dossier (" + $pseudos[0] + ")")
+    } else {
+        Ecrire-Ko ("Isolation assure : " + $pseudos.Count + " dossier(s) different(s)")
+    }
+
+    $attenduAssure = [int](Sql "SELECT count(*) FROM core.facture f JOIN core.utilisateur u ON u.assured_id = f.assure_id WHERE u.email = 'assure@predicare.local';")
+    if ($ficheAssure.items.Count -eq $attenduAssure) {
+        Ecrire-Ok ("Factures du dossier : " + $attenduAssure + " (aucune fuite)")
+    } else {
+        Ecrire-Ko ("Factures du dossier : API=" + $ficheAssure.items.Count + " SQL=" + $attenduAssure)
+    }
+
+    $payeesAvecMontant = @($ficheAssure.items | Where-Object {
+        $_.statut -eq "PAYEE" -and $null -ne $_.montant_pris_en_charge
+    })
+    if ($payeesAvecMontant.Count -gt 0) {
+        Ecrire-Ok ("Montants de prise en charge presents : " + $payeesAvecMontant.Count + " facture(s) PAYEE")
+    } else {
+        Ecrire-Ko "Montants de prise en charge absents"
+    }
+}
+
+$repRefsPro = Tester-Get "References pro" "/api/core/factures/references" $tPro
+$prestatairePro = $null
+if ($repRefsPro) {
+    $refsPro = $repRefsPro.Content | ConvertFrom-Json
+    $prestatairePro = $refsPro.prestataire_du_compte
+    if ($prestatairePro -and $refsPro.prestataires.Count -eq 1) {
+        Ecrire-Ok ("Perimetre pro declare : " + $prestatairePro)
+    } else {
+        Ecrire-Ko ("Perimetre pro absent ou multiple : " + $refsPro.prestataires.Count)
+    }
+}
+
+$repFacturesPro = Tester-Get "Factures pro (perimetre)" "/api/core/factures?limit=5" $tPro
+if ($repFacturesPro -and $prestatairePro) {
+    $pagePro = $repFacturesPro.Content | ConvertFrom-Json
+    $horsPerimetre = @($pagePro.items | Where-Object { $_.prestataire_id -ne $prestatairePro })
+    if ($horsPerimetre.Count -eq 0 -and $pagePro.total -gt $pagePro.items.Count) {
+        Ecrire-Ok ("Aucune fuite inter-prestataires (total=" + $pagePro.total + ", page=" + $pagePro.items.Count + ")")
+    } else {
+        Ecrire-Ko ("Perimetre pro : " + $horsPerimetre.Count + " fuite(s), total=" + $pagePro.total)
+    }
+}
+
 Tester-Get "File alertes" "/api/core/alertes/file?statut=nouvelle&limit=100" $tGest | Out-Null
 Tester-Get "Historique decisions" "/api/core/alertes/historique?limit=100" $tGest | Out-Null
 Tester-Get "Admin seuil" "/api/core/admin/seuil" $tAdmin | Out-Null
 Tester-Get "Admin modele" "/api/core/admin/modele" $tAdmin | Out-Null
-Tester-Get "Admin sante" "/api/core/admin/sante" $tAdmin | Out-Null
-Tester-Get "Admin canaux" "/api/core/admin/canaux" $tAdmin | Out-Null
+
+$repSante = Tester-Get "Admin sante" "/api/core/admin/sante" $tAdmin
+if ($repSante) {
+    $sante = $repSante.Content | ConvertFrom-Json
+    $proprietesRag = @($sante.dependances.rag.PSObject.Properties.Name)
+    if ($proprietesRag -contains "documents" -and $proprietesRag -contains "embedding_configure") {
+        Ecrire-Ok ("Sante RAG detaillee : statut=" + $sante.dependances.rag.status +
+            ", documents=" + $sante.dependances.rag.documents +
+            ", embeddings=" + $sante.dependances.rag.embedding_configure)
+    } else {
+        Ecrire-Ko "Sante RAG sans detail documents/embeddings"
+    }
+}
+
+$repCanaux = Tester-Get "Admin canaux" "/api/core/admin/canaux" $tAdmin
+if ($repCanaux) {
+    # PowerShell 5.1 : le resultat d'un `ConvertFrom-Json` sur un tableau JSON
+    # arrive dans le pipeline comme un objet unique. On l'affecte d'abord,
+    # sinon `@(...)` emballe le tableau dans un element et la boucle
+    # `Where-Object` ne voit jamais les canaux.
+    $canaux = $repCanaux.Content | ConvertFrom-Json
+    $canaux = @($canaux)
+    $avecConfigure = @($canaux | Where-Object { $_.PSObject.Properties.Name -contains "configure" })
+    if ($avecConfigure.Count -eq $canaux.Count -and $canaux.Count -gt 0) {
+        Ecrire-Ok ("Canaux avec etat de configuration : " + $canaux.Count)
+    } else {
+        Ecrire-Ko "Canaux sans champ configure"
+    }
+}
+
 Tester-Get "Admin utilisateurs" "/api/core/admin/utilisateurs" $tAdmin | Out-Null
 Tester-Get "Audit journal" "/api/core/audit/journal?limit=5" $tAdmin | Out-Null
 Tester-Get "Inference modele" "/api/inference/modele" $tAdmin | Out-Null
+Tester-Post "Assistant RAG (degrade ou configure)" "/api/rag/question" $tAssure '{"question":"Quelles sont les conditions de remboursement ?"}' | Out-Null
+
+$repObs = Tester-Get "Admin observabilite" "/api/core/admin/observabilite" $tAdmin
+if ($repObs) {
+    $obs = $repObs.Content | ConvertFrom-Json
+    $blocs = @("base", "inference", "derive", "rag")
+    $manquants = @($blocs | Where-Object { $obs.PSObject.Properties.Name -notcontains $_ })
+    if ($manquants.Count -eq 0) {
+        Ecrire-Ok ("Observabilite : latence, volume, erreurs et derive exposes (base=" +
+            $obs.base.factures + " factures, latence dispo=" +
+            $obs.inference.latence_ms.disponible + ")")
+    } else {
+        Ecrire-Ko ("Observabilite incomplete : " + ($manquants -join ", "))
+    }
+}
 
 # ---------------------------------------------------------------- soumission
 Ecrire-Titre "3. Soumission d'une facture (bout en bout)"
@@ -199,6 +291,82 @@ try {
     Ecrire-Ko "Lecture de la file d'alertes"
 }
 
+# ---------------------------------------------------------------- ordonnance
+Ecrire-Titre "4bis. Ordonnance enrichie et detection de doublon"
+
+try {
+    $refs = Invoke-RestMethod -Uri "$Base/api/core/factures/references" -Headers @{ Authorization = "Bearer $tPro" } -TimeoutSec 20
+    $assureOrd = $refs.assures[0].pseudonyme
+    $prestataireOrd = $refs.prestataires[0].code
+
+    # On cherche un couple (assure, acte) pour lequel AUCUNE ordonnance
+    # n'existe deja AUJOURD'HUI : le controle de doublon porte sur ce
+    # triplet, et le script doit pouvoir etre relance le meme jour sans
+    # buter sur sa propre run precedente.
+    $acteOrd = $null
+    foreach ($candidat in @($refs.actes | Where-Object { [double]$_.prix_unitaire -gt 0 })) {
+        $deja = [int](Sql ("SELECT count(*) FROM core.ordonnance o JOIN core.acte a ON a.id = o.acte_id JOIN core.assure s ON s.id = o.assure_id WHERE s.pseudonyme = '" + $assureOrd + "' AND a.code = '" + $candidat.code + "' AND CAST(o.date_ordonnance AS date) = CURRENT_DATE;"))
+        if ($deja -eq 0) { $acteOrd = $candidat; break }
+    }
+    if (-not $acteOrd) {
+        throw "Aucun acte libre pour ce dossier aujourd'hui."
+    }
+    $maintenantOrd = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+
+    # Nettoyage des ordonnances de test LANCEES PAR CE SCRIPT les jours
+    # precedents : le controle de doublon porte sur (assure, acte, jour), il
+    # refuserait donc un second passage du script a 24 h d'intervalle. On
+    # ne supprime que CE QUE LE SCRIPT A CREE (reference prefixee), jamais
+    # une ordonnance metier. Les factures liees sont d'abord liberees :
+    # la liaison facture <-> ordonnance est une cle etrangere.
+    Sql ("UPDATE core.facture SET ordonnance_id = NULL WHERE ordonnance_id IN (SELECT id FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%');") | Out-Null
+    Sql ("DELETE FROM core.ordonnance_ligne WHERE ordonnance_id IN (SELECT id FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%');") | Out-Null
+    Sql ("DELETE FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%';") | Out-Null
+
+    $ordonnance = @{
+        assure_pseudonyme = $assureOrd
+        prestataire_id    = $prestataireOrd
+        code_acte         = $acteOrd.code
+        date_ordonnance   = $maintenantOrd
+        quantite          = 1
+        reference         = "ORD-TEST-" + (Get-Date).ToString("yyyyMMddHHmmss")
+        diagnostic        = "Lombalgie aigue"
+        validite_jours    = 45
+    } | ConvertTo-Json
+
+    $rOrd = Tester-Post "Depot ordonnance (diagnostic + validite)" "/api/core/factures/ordonnances" $tPro $ordonnance
+    if ($rOrd) {
+        $ord = $rOrd.Content | ConvertFrom-Json
+        $enBase = Sql ("SELECT count(*) FROM core.ordonnance o JOIN core.ordonnance_ligne ol ON ol.ordonnance_id = o.id WHERE o.reference = '" + $ord.reference + "';")
+        $avecLigne = [int]$enBase
+        if ($avecLigne -gt 0) {
+            Ecrire-Ok ("Ordonnance " + $ord.reference + " : ligne de prescription enregistree")
+        } else {
+            Ecrire-Ko ("Ordonnance " + $ord.reference + " : aucune ligne de prescription")
+        }
+    }
+
+    # Le meme dossier, le meme acte, le meme jour : le doublon doit etre refuse.
+    try {
+        Invoke-WebRequest -Uri "$Base/api/core/factures/ordonnances" -Method Post -Headers @{ Authorization = "Bearer $tPro" } -Body $ordonnance -ContentType "application/json" -UseBasicParsing -TimeoutSec 20 | Out-Null
+        Ecrire-Ko "Doublon d'ordonnance accepte (il devait etre refuse)"
+    } catch {
+        $codeDoublon = $_.Exception.Response.StatusCode.value__
+        if ($codeDoublon -eq 409) {
+            Ecrire-Ok "Doublon d'ordonnance refuse (409)"
+        } else {
+            Ecrire-Ko ("Doublon d'ordonnance : code " + $codeDoublon)
+        }
+    }
+
+    # Nettoyage final : le script ne doit pas laisser de trace en base.
+    Sql ("UPDATE core.facture SET ordonnance_id = NULL WHERE ordonnance_id IN (SELECT id FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%');") | Out-Null
+    Sql ("DELETE FROM core.ordonnance_ligne WHERE ordonnance_id IN (SELECT id FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%');") | Out-Null
+    Sql ("DELETE FROM core.ordonnance WHERE reference LIKE 'ORD-TEST-%';") | Out-Null
+} catch {
+    Ecrire-Ko "Depot ordonnance (references indisponibles)"
+}
+
 # ---------------------------------------------------------------- base
 Ecrire-Titre "5. Etat de la base"
 Write-Host ("  factures      : " + (Sql "SELECT count(*) FROM core.facture;"))
@@ -213,4 +381,4 @@ Ecrire-Titre "Bilan"
 Write-Host ("  OK : " + $script:ok) -ForegroundColor Green
 Write-Host ("  KO : " + $script:ko) -ForegroundColor Red
 Write-Host ""
-Write-Host "Rappel : l'assistant RAG renvoie 500 tant que LLM_API_KEY est un placeholder." -ForegroundColor Yellow
+Write-Host "Rappel : l'assistant RAG repond en mode degrade (200, succes=false) tant que LLM_API_KEY et EMBEDDING_API_KEY sont des placeholders ; /admin/sante le signale." -ForegroundColor Yellow

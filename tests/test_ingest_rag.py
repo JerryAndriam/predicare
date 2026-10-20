@@ -186,7 +186,7 @@ def test_article_7_un_segment_par_type_de_soins():
         assert {s.garantie for s in par_type} == set(CATEGORIES_ARTICLE_5), nom
         for segment in par_type:
             assert segment.article.startswith("Article 7 - Pièces justificatives")
-            assert segment.contrat == f"Conditions générales {nom.split('_')[-1][:-4]}"
+            assert segment.contrat == f"{ingest_rag.CONTRAT_CG} {nom.split('_')[-1][:-4]}"
             assert segment.source_fichier == nom
             assert _sans_accents(segment.garantie) in _sans_accents(segment.texte)
             assert "Pièces justificatives" in segment.texte

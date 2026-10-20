@@ -245,6 +245,10 @@ REQUETES_HOSTILES = [
     "SELECT * FROM core.facture WHERE 1=1 AND assure_id != :assure_id",
     "SELECT f.* FROM core.facture f WHERE 1=1 AND f.assure_id = :assure_id",
     "SELECT * FROM core.facture f, core.assure a WHERE f.assure_id = a.id",
+    # `SELECT ... INTO` ecrit le resultat dans une table : la transaction
+    # en lecture seule l'arreterait, mais la liste blanche doit le refuser.
+    "SELECT * INTO TEMP stolen FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
+    "SELECT id INTO copy_facture FROM core.facture WHERE 1=1 AND assure_id = :assure_id",
     # Variations de casse.
     "sElEcT * FrOm CoRe.FaCtUrE WhErE 1=1 aNd AsSuRe_Id = :assure_id; DrOp TaBlE core.assure",
 ]

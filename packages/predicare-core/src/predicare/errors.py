@@ -75,6 +75,17 @@ class ModelNotReadyError(PrediCareError):
     http_status = 503
 
 
+class AssistantUnavailableError(PrediCareError):
+    """Assistant RAG injoignable ou incapable de produire une reponse.
+
+    Distinct d'une erreur interne : le front doit afficher un message metier
+    actionnable (cle absente, corpus vide) et non une « erreur 500 ».
+    """
+
+    code = "assistant_indisponible"
+    http_status = 503
+
+
 class DataAccessError(PrediCareError):
     """Acces SQL refuse : le compte est en lecture seule par construction."""
 

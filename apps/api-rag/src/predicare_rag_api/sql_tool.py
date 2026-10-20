@@ -1,6 +1,6 @@
 """Outil SQL de l'agent : historique de remboursement de l'assure connecte.
 
-Point de securite le plus note du projet (15 %). Trois barrières
+Point de securite le plus note du projet (15 %). Trois barrieres
 independantes, dont chacune seule serait insuffisante :
 
 1. Connexion sur une URL dediee (`PREDICARE_DB_RO_URL`) qui pointe vers un
@@ -107,6 +107,10 @@ FORME_AUTORISEE = re.compile(
 MOTIFS_REFUSES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)\b", re.I),
     re.compile(r"\b(UNION|INTERSECT|EXCEPT)\b", re.I),
+    # `SELECT ... INTO table` ecrit le resultat dans une table : c'est une
+    # creation de table deguisee. La transaction est en lecture seule, mais
+    # la liste blanche ne doit pas laisser passer l'ecriture.
+    re.compile(r"\bINTO\b", re.I),
     re.compile(r"--|/\*|\*/", re.I),
     re.compile(r"\bpg_sleep\b|\bpg_read_file\b|\bcopy\b", re.I),
     re.compile(r"\b(information_schema|pg_catalog|sys\.|sqlite_)\b", re.I),
@@ -341,7 +345,7 @@ class InsuredHistoryTool:
 
         Le LLM doit pouvoir lire `type_erreur`, `forme_attendue` et
         `exemple` pour corriger sa requete, au lieu de recevoir une simple
-        chaine d'erreur qu'il risque de répéter a l'identique.
+        chaine d'erreur qu'il risque de repeter a l'identique.
 
         Une panne du service d'historique porte un `type_erreur`
         `indisponible` et un conseil different : rejouer la requete ne

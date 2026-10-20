@@ -70,6 +70,11 @@ export function ManagerPage() {
     try {
       const detail = await api<AlertDetail>(`/api/core/alertes/detail/${predictionId}`)
       setSelection(detail)
+      // Chaque dossier repart d'un formulaire neutre : sinon la decision et le
+      // motif du dossier precedent restaient selectionnes et pouvaient etre
+      // envoyes par inadvertance sur une autre alerte.
+      setDecision('valider_fraude')
+      setCommentaire('')
     } catch (probleme) {
       setErreur(messageErreur(probleme))
       setSelection(null)
@@ -82,6 +87,14 @@ export function ManagerPage() {
     if (selection === null) return
     if (commentaire.trim().length < 3) {
       setErreur('Le commentaire est obligatoire (au moins 3 caracteres).')
+      return
+    }
+    if (
+      decision === 'valider_fraude' &&
+      !window.confirm(
+        'Confirmer la fraude ? Cette decision engage le dossier et reste tracee dans le journal.',
+      )
+    ) {
       return
     }
 

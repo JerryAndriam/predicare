@@ -19,6 +19,7 @@ from collections.abc import Callable
 from predicare import db
 from predicare.config import get_settings
 from predicare.logging_config import configure_logging, get_logger
+from predicare_inference_api.derive import calculer_et_persister_derive
 
 INTERVALLE_PAR_DEFAUT = 60
 
@@ -96,11 +97,11 @@ def main() -> None:
         fenetre_derive=settings.drift_window_days,
     )
 
-    # Placeholder du rapport de derive : la fonction reelle sera branchee
-    # quand `ml.rapport_derive` sera alimente. Elle existe des maintenant
-    # pour que le contrat de la tache soit visible et testeable.
+    # Le calcul ecrit dans `ml.rapport_derive` ; l'API relit la derniere ligne.
+    # Le garde-fou horaire est dans `derive.py`, pas dans la boucle : la tache
+    # peut donc etre appelee a chaque tour sans faire grossir la table.
     def _calculer_derive() -> None:
-        get_logger("worker-ingest").debug("derive.placeholder")
+        calculer_et_persister_derive()
 
     boucle("worker-ingest", [("verifier_base", _verifier_base), ("derive", _calculer_derive)])
 

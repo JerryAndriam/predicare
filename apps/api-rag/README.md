@@ -250,10 +250,10 @@ L'agent n'a aucun outil d'écriture, aucun accès réseau et une mémoire limit�
 
 Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 
-- **Le p95 de latence dépasse la cible de 5 s.** Cinq exécutions de
+- **Le p95 de latence dépasse la cible de 5 s.** Six exécutions de
   l'évaluation de référence (30 questions, cache désactivé) ont été mesurées
   sur la pile de développement. La première, publiée avant la refonte des
-  garde-fous, donnait **p50 = 5,7 s / p95 = 9,8 s**. Les quatre suivantes ont
+  garde-fous, donnait **p50 = 5,7 s / p95 = 9,8 s**. Les cinq suivantes ont
   été rejouées sur le code actuel et sont versionnées dans le dépôt :
 
   | Exécution | Artefact | p50 | p95 |
@@ -262,6 +262,7 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
   | 2 | [`reports/eval_rag_2026-10-19_2.json`](../../reports/eval_rag_2026-10-19_2.json) | 3,91 s | 6,58 s |
   | 3 | [`reports/eval_rag_2026-10-19_3.json`](../../reports/eval_rag_2026-10-19_3.json) | 3,71 s | 5,56 s |
   | 4 | [`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json) | 3,98 s | 8,10 s |
+  | 5 | [`reports/eval_rag_2026-10-19_5.json`](../../reports/eval_rag_2026-10-19_5.json) | 3,41 s | 6,19 s |
 
   La cible de 5 s **n'est donc pas tenue de façon fiable** : le p50 est
   désormais autour de 3,6–4,0 s (contre 5,7 s avant), mais le p95 reste
@@ -288,8 +289,9 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
   regroupait les neuf types de soins dans trois segments seulement. La
   correction a porté sur le découpage, pas sur le seuil : l'article 7 est
   désormais segmenté par type de soins (« Article 7 - Pièces justificatives -
-  Optique »), et le cosinus du même passage passe à **0,6586**. Les cinq
-  évaluations suivantes tiennent **1,00** de citation. Un retour à 0,95
+  Optique »), et le cosinus du même passage passe à **0,6586**. Les trois
+  exécutions qui précèdent le correctif tenaient 0,95 ; l'exécution qui le
+  suit et les suivantes tiennent **1,00** de citation. Un retour à 0,95
   signifierait qu'un type de soins a de nouveau été regroupé avec d'autres.
 - **Le filtre de prompt injection est une liste de motifs.** Il refuse les
   formulations déclarées et testées ; il ne peut pas couvrir une formulation
@@ -302,7 +304,7 @@ Documentées telles qu'elles sont mesurées, pas aspirationnellement.
 ## Coût mesuré par requête
 
 Sur le jeu de référence (30 questions, cache désactivé, `gpt-4o-mini`), d'après
-les trois exécutions versionnées dans [`reports/`](../../reports) :
+les cinq exécutions versionnées dans [`reports/`](../../reports) :
 
 | Mesure | Valeur |
 | --- | --- |
@@ -332,16 +334,19 @@ efficace — au prix de la précision de la recherche.
 
 ### Dernière évaluation
 
-Quatrième exécution versionnée : [`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json),
-après le segmentage de l'article 7 par type de soins.
+Cinquième exécution versionnée : [`reports/eval_rag_2026-10-19_5.json`](../../reports/eval_rag_2026-10-19_5.json).
+Elle suit le segmentage de l'article 7 par type de soins (quatrième exécution,
+[`reports/eval_rag_2026-10-19_4.json`](../../reports/eval_rag_2026-10-19_4.json))
+et les correctifs de revue : elle est la première dont les citations portent
+l'orthographe unique du contrat.
 
 | Mesure | Valeur |
 | --- | --- |
 | Fidélité | **30/30 = 1,00** |
 | Citation | **20/20 = 1,00** |
 | Exactitude des valeurs | **26/26 = 1,00** |
-| Latence p50 / p95 | 3,98 s / 8,10 s |
-| Coût estimé (30 questions) | 0,0703 USD |
+| Latence p50 / p95 | 3,41 s / 6,19 s |
+| Coût estimé (30 questions) | 0,0670 USD |
 
 ## Vérification
 

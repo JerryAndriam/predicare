@@ -12,7 +12,43 @@ testables en quelques millisecondes, sans infrastructure.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+
+
+def chemin_referentiels() -> Path:
+    """Chemin du `referentiels.json` du modele ACTIF, resolu a l'execution.
+
+    Les artefacts de modele sont VOLATILS : le dossier `models/` est ignore
+    par Git et le numero de version change a chaque entrainement. Un test
+    qui fige `models/1/referentiels.json` echoue donc sur la machine ou la
+    version 2 est active, sans que le code teste soit en cause.
+
+    On cherche d'abord la version active (variable `MODEL_ACTIVE_VERSION`),
+    puis, a defaut, la version la plus recente presente sur le poste.
+    """
+    import os
+    from pathlib import Path
+
+    racine = Path(os.getenv("MODEL_DIR", "models"))
+    active = os.getenv("MODEL_ACTIVE_VERSION", "").strip()
+    if active:
+        candidat = racine / active / "referentiels.json"
+        if candidat.exists():
+            return candidat
+
+    versions = sorted(
+        (dossier for dossier in racine.glob("*") if (dossier / "referentiels.json").exists()),
+        key=lambda dossier: dossier.name,
+    )
+    if not versions:
+        raise FileNotFoundError(
+            f"Aucun referentiel de modele dans {racine}/. Lancez `make train` "
+            "pour construire les artefacts du modele."
+        )
+    return versions[-1] / "referentiels.json"
+
 
 #: Facture valide de reference. Les tests partent de ce dictionnaire et le
 #: modifient pour declencher un rejet precis : ecrire un jeu de donnees par
@@ -57,3 +93,16 @@ def cle_chiffrement() -> str:
     os.environ["IDENTITY_ENCRYPTION_KEY"] = cle
     yield cle
     os.environ.pop("IDENTITY_ENCRYPTION_KEY", None)
+
+
+@pytest.fixture(autouse=True)
+def _pas_de_webhook_n8n_reel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Aucun test unitaire ne doit appeler le webhook n8n de la machine.
+
+    Le `.env` de developpement peut definir `N8N_BASCULE_WEBHOOK_URL` : sans ce
+    garde-fou, un test de bascule enverrait une vraie notification Slack. Les
+    tests qui verifient la notification repositionnent l'URL eux-memes.
+    """
+    from predicare.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "n8n_bascule_webhook_url", "")

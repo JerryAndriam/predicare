@@ -22,13 +22,191 @@ import {
   pourcentage,
 } from '../components/ui'
 
-type Onglet = 'depot' | 'suivi' | 'ordonnance'
+type Onglet = 'depot' | 'suivi' | 'ordonnance' | 'lot'
 
 interface LigneForm {
   code_acte: string
   quantite: number
   montant_unitaire: number
   date_acte: string
+}
+
+interface ResultatLot {
+  ligne: number
+  reference: string
+  statut: 'ok' | 'erreur'
+  message: string
+}
+
+/** Statuts de facture proposes dans le filtre du suivi. */
+const STATUTS_AFFICHES: { valeur: string; libelle: string }[] = [
+  { valeur: 'recue', libelle: 'Recue' },
+  { valeur: 'en_cours', libelle: 'En cours' },
+  { valeur: 'payee', libelle: 'Payee' },
+  { valeur: 'rejetee', libelle: 'Rejetee' },
+  { valeur: 'fraude_confirmee', libelle: 'Fraude confirmee' },
+  { valeur: 'piece_demandee', libelle: 'Piece demandee' },
+]
+
+function convertirDate(valeur: string): string {
+  if (valeur.trim() === '') return ''
+  const date = new Date(valeur)
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString()
+}
+
+function normaliserFacture(
+  brut: unknown,
+  index: number,
+  impose: string | null,
+): InvoiceInput {
+  if (typeof brut !== 'object' || brut === null) {
+    throw new Error(`Facture ${index + 1} : objet attendu.`)
+  }
+  const objet = brut as Record<string, unknown>
+  const assure = String(objet.assure_pseudonyme ?? '').trim()
+  const prestataire = impose ?? String(objet.prestataire_id ?? '').trim()
+  const dateFacture = convertirDate(String(objet.date_facture ?? ''))
+  const lignesBrutes = Array.isArray(objet.lignes) ? objet.lignes : []
+
+  if (assure === '' || prestataire === '' || dateFacture === '' || lignesBrutes.length === 0) {
+    // Le message nomme le champ fautif : sans cela, l'utilisateur ne sait
+    // pas QUOI corriger. Le prestataire est particulierement piegeux : il
+    // est impose par le serveur pour le professionnel, et le laisser vide
+    // dans le fichier ne peut pas fonctionner.
+    const manquants: string[] = []
+    if (assure === '') manquants.push('assure_pseudonyme')
+    if (prestataire === '') manquants.push('prestataire_id')
+    if (dateFacture === '') manquants.push('date_facture')
+    if (lignesBrutes.length === 0) manquants.push('lignes')
+    throw new Error(
+      `Facture ${index + 1} : champ(s) manquant(s) ou invalide(s) : ${manquants.join(', ')}.`,
+    )
+  }
+
+  const lignes = lignesBrutes.map((ligne, position) => {
+    const valeur = (typeof ligne === 'object' && ligne !== null ? ligne : {}) as Record<
+      string,
+      unknown
+    >
+    const code = String(valeur.code_acte ?? '').trim()
+    const quantite = Number(valeur.quantite)
+    const montantUnitaire = Number(valeur.montant_unitaire)
+    const dateActe = convertirDate(String(valeur.date_acte ?? ''))
+    const fautifs: string[] = []
+    if (code === '') fautifs.push('code_acte')
+    if (!Number.isFinite(quantite) || quantite < 1) fautifs.push('quantite')
+    if (!Number.isFinite(montantUnitaire) || montantUnitaire < 0) fautifs.push('montant_unitaire')
+    if (dateActe === '') fautifs.push('date_acte')
+    if (fautifs.length > 0) {
+      throw new Error(
+        `Facture ${index + 1}, ligne ${position + 1} : ${fautifs.join(', ')} invalide(s).`,
+      )
+    }
+    return {
+      code_acte: code,
+      quantite,
+      montant_unitaire: montantUnitaire,
+      date_acte: dateActe,
+    }
+  })
+
+  return {
+    assure_pseudonyme: assure,
+    prestataire_id: prestataire,
+    date_facture: dateFacture,
+    montant_total:
+      Math.round(lignes.reduce((total, l) => total + l.quantite * l.montant_unitaire, 0) * 100) /
+      100,
+    lignes,
+  }
+}
+
+/** Une facture du lot, avec le numero de ligne qu'elle occupe dans le fichier. */
+interface FactureDuLot {
+  ligne: number
+  facture: InvoiceInput
+}
+
+/** Une ligne du lot rejetee a la lecture du fichier. */
+interface LigneRejetee {
+  ligne: number
+  message: string
+}
+
+interface LotAnalyse {
+  factures: FactureDuLot[]
+  rejetees: LigneRejetee[]
+}
+
+/**
+ * Analyse un lot ligne par ligne, SANS qu'une ligne invalide annule le lot.
+ *
+ * Le CDC demande au jury de soumettre 20 factures inedites dont des
+ * invalides : une facture fautive doit etre REJETEE, pas faire echouer
+ * les 19 autres. Une erreur de lecture est donc capturee ligne par ligne
+ * et remontee telle quelle, avec son numero.
+ */
+function analyserLot(texte: string, nom: string, impose: string | null): LotAnalyse {
+  const contenu = texte.trim()
+  if (contenu === '') throw new Error('Le fichier est vide.')
+
+  const brut: { ligne: number; valeur: unknown }[] = []
+
+  const estJson =
+    nom.toLowerCase().endsWith('.json') || contenu.startsWith('[') || contenu.startsWith('{')
+  if (estJson) {
+    const charge: unknown = JSON.parse(contenu)
+    const elements = Array.isArray(charge) ? charge : [charge]
+    elements.forEach((element, index) => brut.push({ ligne: index + 1, valeur: element }))
+  } else {
+    const lignes = contenu.split(/\r?\n/).filter((ligne) => ligne.trim() !== '')
+    if (lignes.length < 2) {
+      throw new Error('Le CSV doit contenir un en-tete et au moins une facture.')
+    }
+    const entete = lignes[0]
+    const separateur =
+      (entete.match(/;/g)?.length ?? 0) >= (entete.match(/,/g)?.length ?? 0) ? ';' : ','
+    const colonnes = entete.split(separateur).map((valeur) => valeur.trim())
+    lignes.slice(1).forEach((ligne, index) => {
+      const valeurs = ligne.split(separateur)
+      const champs = Object.fromEntries(
+        colonnes.map((colonne, position) => [colonne, (valeurs[position] ?? '').trim()]),
+      )
+      brut.push({
+        ligne: index + 1,
+        valeur: {
+          assure_pseudonyme: champs.assure_pseudonyme,
+          prestataire_id: champs.prestataire_id,
+          date_facture: champs.date_facture,
+          lignes: [
+            {
+              code_acte: champs.code_acte,
+              quantite: champs.quantite,
+              montant_unitaire: champs.montant_unitaire,
+              date_acte: champs.date_acte || champs.date_facture,
+            },
+          ],
+        },
+      })
+    })
+  }
+
+  const factures: FactureDuLot[] = []
+  const rejetees: LigneRejetee[] = []
+  for (const entree of brut) {
+    try {
+      factures.push({
+        ligne: entree.ligne,
+        facture: normaliserFacture(entree.valeur, entree.ligne - 1, impose),
+      })
+    } catch (probleme) {
+      rejetees.push({
+        ligne: entree.ligne,
+        message: probleme instanceof Error ? probleme.message : 'Ligne illisible.',
+      })
+    }
+  }
+  return { factures, rejetees }
 }
 
 function maintenantLocal(): string {
@@ -51,18 +229,34 @@ export function ProPage() {
   const [resultat, setResultat] = useState<Prediction | null>(null)
 
   const [factures, setFactures] = useState<InvoiceSummary[]>([])
+  const [totalSuivi, setTotalSuivi] = useState(0)
   const [chargementSuivi, setChargementSuivi] = useState(true)
+  const [filtreStatut, setFiltreStatut] = useState('')
+
+  const [lotNom, setLotNom] = useState('')
+  const [lotTexte, setLotTexte] = useState('')
+  const [lotEnCours, setLotEnCours] = useState(false)
+  const [lotResultats, setLotResultats] = useState<ResultatLot[]>([])
 
   const [ordonnance, setOrdonnance] = useState({
     code_acte: '',
     date_ordonnance: maintenantLocal(),
     quantite: 1,
+    reference: '',
+    diagnostic: '',
+    validite_jours: 30,
   })
 
-  const chargerSuivi = () => {
+  const chargerSuivi = (offset = 0) => {
     setChargementSuivi(true)
-    api<Page<InvoiceSummary>>('/api/core/factures?limit=100')
-      .then((page) => setFactures(page.items))
+    const filtre = filtreStatut === '' ? '' : `&statut=${encodeURIComponent(filtreStatut)}`
+    api<Page<InvoiceSummary>>(`/api/core/factures?limit=100&offset=${offset}${filtre}`)
+      .then((page) => {
+        setFactures((precedent) =>
+          offset === 0 ? page.items : [...precedent, ...page.items],
+        )
+        setTotalSuivi(page.total)
+      })
       .catch((probleme: unknown) => setErreur(messageErreur(probleme)))
       .finally(() => setChargementSuivi(false))
   }
@@ -72,7 +266,9 @@ export function ProPage() {
       .then((valeurs) => {
         setReferences(valeurs)
         if (valeurs.assures.length > 0) setAssure(valeurs.assures[0].pseudonyme)
-        if (valeurs.prestataires.length > 0) setPrestataire(valeurs.prestataires[0].code)
+        const propre = valeurs.prestataire_du_compte ?? null
+        if (propre !== null) setPrestataire(propre)
+        else if (valeurs.prestataires.length > 0) setPrestataire(valeurs.prestataires[0].code)
         const premier = valeurs.actes[0]
         if (premier !== undefined) {
           setLignes([
@@ -186,22 +382,108 @@ export function ProPage() {
     setSucces(null)
     setEnvoi(true)
     try {
-      await api<{ status: string }>('/api/core/factures/ordonnances', {
-        method: 'POST',
-        body: JSON.stringify({
-          assure_pseudonyme: assure,
-          prestataire_id: prestataire,
-          code_acte: ordonnance.code_acte,
-          date_ordonnance: new Date(ordonnance.date_ordonnance).toISOString(),
-          quantite: ordonnance.quantite,
-        }),
-      })
-      setSucces('Ordonnance enregistree.')
+      const reponse = await api<{ status: string; reference: string }>(
+        '/api/core/factures/ordonnances',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            assure_pseudonyme: assure,
+            prestataire_id: prestataire,
+            code_acte: ordonnance.code_acte,
+            date_ordonnance: new Date(ordonnance.date_ordonnance).toISOString(),
+            quantite: ordonnance.quantite,
+            reference: ordonnance.reference.trim() || undefined,
+            diagnostic: ordonnance.diagnostic.trim() || undefined,
+            validite_jours: ordonnance.validite_jours,
+          }),
+        },
+      )
+      setSucces(`Ordonnance enregistree (${reponse.reference}).`)
     } catch (probleme) {
       setErreur(messageErreur(probleme))
     } finally {
       setEnvoi(false)
     }
+  }
+
+  const chargerFichierLot = (fichier: File | undefined) => {
+    if (fichier === undefined) return
+    setLotNom(fichier.name)
+    setLotResultats([])
+    fichier
+      .text()
+      .then(setLotTexte)
+      .catch(() => setErreur('Fichier illisible.'))
+  }
+
+  const importerLot = async () => {
+    setErreur(null)
+    setSucces(null)
+    setLotResultats([])
+    // Le prestataire du compte prime (perimetre serveur). A defaut, on prend
+    // celui selectionne dans le formulaire de depot : un administrateur, qui
+    // n'a pas de perimetre impose, peut ainsi importer un lot sans avoir a
+    // recopier le code dans chaque ligne du fichier.
+    const impose = references?.prestataire_du_compte ?? (prestataire || null)
+
+    let analyse: LotAnalyse
+    try {
+      analyse = analyserLot(lotTexte, lotNom, impose)
+    } catch (probleme) {
+      setErreur(probleme instanceof Error ? probleme.message : 'Lot illisible.')
+      return
+    }
+
+    if (analyse.factures.length + analyse.rejetees.length === 0) {
+      setErreur('Aucune facture dans le lot.')
+      return
+    }
+    if (analyse.factures.length + analyse.rejetees.length > 100) {
+      setErreur('Un lot est limite a 100 factures.')
+      return
+    }
+
+    setLotEnCours(true)
+    // Les lignes rejetees a la LECTURE du fichier sont reportees telles
+    // quelles : une facture fautive ne doit pas disparaitre du bilan.
+    const resultats: ResultatLot[] = analyse.rejetees.map((rejetee) => ({
+      ligne: rejetee.ligne,
+      reference: '-',
+      statut: 'erreur',
+      message: rejetee.message,
+    }))
+
+    for (const entree of analyse.factures) {
+      try {
+        const prediction = await api<Prediction>('/api/core/factures/soumettre', {
+          method: 'POST',
+          body: JSON.stringify(entree.facture),
+        })
+        resultats.push({
+          ligne: entree.ligne,
+          reference: prediction.facture_id,
+          statut: 'ok',
+          message: `${pourcentage(prediction.score_fraude)} - ${
+            prediction.is_fraud ? 'alerte' : 'sous le seuil'
+          }`,
+        })
+      } catch (probleme) {
+        resultats.push({
+          ligne: entree.ligne,
+          reference: entree.facture.facture_id ?? '-',
+          statut: 'erreur',
+          message: messageErreur(probleme),
+        })
+      }
+      setLotResultats([...resultats].sort((a, b) => a.ligne - b.ligne))
+    }
+    setLotEnCours(false)
+    const reussies = resultats.filter((resultat) => resultat.statut === 'ok').length
+    const refusees = resultats.length - reussies
+    setSucces(
+      `${reussies} facture(s) importee(s), ${refusees} rejetee(s) sur ${resultats.length}.`,
+    )
+    chargerSuivi()
   }
 
   return (
@@ -215,6 +497,7 @@ export function ProPage() {
         {(
           [
             ['depot', 'Deposer une facture'],
+            ['lot', 'Import de lot'],
             ['suivi', 'Suivi des dossiers'],
             ['ordonnance', 'Ordonnance'],
           ] as const
@@ -256,6 +539,7 @@ export function ProPage() {
                     <select
                       value={prestataire}
                       onChange={(event) => setPrestataire(event.target.value)}
+                      disabled={references.prestataire_du_compte != null}
                     >
                       {references.prestataires.map((valeur) => (
                         <option key={valeur.code} value={valeur.code}>
@@ -265,6 +549,12 @@ export function ProPage() {
                     </select>
                   </Champ>
                 </div>
+                {references.prestataire_du_compte != null && (
+                  <p className="aide">
+                    Votre compte est rattache a {references.prestataire_du_compte} : le
+                    prestataire est impose par le serveur.
+                  </p>
+                )}
 
                 <Champ label="Date de la facture">
                   <input
@@ -391,7 +681,32 @@ export function ProPage() {
       )}
 
       {onglet === 'suivi' && (
-        <Carte titre={`${factures.length} dossier(s)`}>
+        <Carte
+          titre={`${factures.length} sur ${totalSuivi} dossier(s)`}
+          actions={
+            <>
+              <label className="champ-label" htmlFor="filtre-statut">
+                Statut
+              </label>
+              <select
+                id="filtre-statut"
+                value={filtreStatut}
+                onChange={(event) => {
+                  setFiltreStatut(event.target.value)
+                  setFactures([])
+                  chargerSuivi(0)
+                }}
+              >
+                <option value="">Tous les statuts</option>
+                {STATUTS_AFFICHES.map((statut) => (
+                  <option key={statut.valeur} value={statut.valeur}>
+                    {statut.libelle}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+        >
           {chargementSuivi && <Chargement />}
           {!chargementSuivi && factures.length === 0 && <Vide>Aucun dossier depose.</Vide>}
           {factures.length > 0 && (
@@ -426,6 +741,101 @@ export function ProPage() {
               </table>
             </div>
           )}
+          {!chargementSuivi && factures.length < totalSuivi && (
+            <button
+              type="button"
+              className="bouton discret"
+              onClick={() => chargerSuivi(factures.length)}
+            >
+              Charger la suite ({totalSuivi - factures.length} restantes)
+            </button>
+          )}
+        </Carte>
+      )}
+
+      {onglet === 'lot' && (
+        <Carte titre="Import de lot">
+          <p className="aide">
+            Fichier JSON (tableau de factures) ou CSV avec les colonnes
+            assure_pseudonyme, date_facture, code_acte, quantite, montant_unitaire,
+            date_acte. Chaque facture est notee individuellement : une ligne en erreur
+            n arrete pas le lot.
+          </p>
+
+          <div className="formulaire">
+            <Champ label="Fichier (.json ou .csv)">
+              <input
+                type="file"
+                accept=".json,.csv,application/json,text/csv"
+                onChange={(event) => chargerFichierLot(event.target.files?.[0])}
+              />
+            </Champ>
+
+            <Champ
+              label="Contenu (modifiable)"
+              aide="Collez un tableau JSON ou un CSV. Le prestataire impose par le serveur prime."
+            >
+              <textarea
+                rows={6}
+                value={lotTexte}
+                onChange={(event) => setLotTexte(event.target.value)}
+                placeholder='[{"assure_pseudonyme":"ASS-00001","date_facture":"2026-10-20T10:00:00Z","lignes":[{"code_acte":"ACT-001","quantite":1,"montant_unitaire":50,"date_acte":"2026-10-20T10:00:00Z"}]}]'
+              />
+            </Champ>
+
+            <div className="boutons-ligne">
+              <button
+                type="button"
+                className="bouton principal"
+                onClick={() => void importerLot()}
+                disabled={lotEnCours || lotTexte.trim() === ''}
+              >
+                {lotEnCours ? 'Import en cours...' : 'Importer le lot'}
+              </button>
+              <button
+                type="button"
+                className="bouton discret"
+                disabled={lotEnCours}
+                onClick={() => {
+                  setLotTexte('')
+                  setLotNom('')
+                  setLotResultats([])
+                }}
+              >
+                Vider
+              </button>
+            </div>
+            {lotNom !== '' && <p className="aide">Fichier : {lotNom}</p>}
+          </div>
+
+          {lotResultats.length > 0 && (
+            <div className="table-enveloppe">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Reference</th>
+                    <th>Statut</th>
+                    <th>Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lotResultats.map((resultat) => (
+                    <tr key={resultat.ligne}>
+                      <td>{resultat.ligne}</td>
+                      <td className="mono">{resultat.reference}</td>
+                      <td>
+                        <Badge ton={resultat.statut === 'ok' ? 'ok' : 'alerte'}>
+                          {resultat.statut}
+                        </Badge>
+                      </td>
+                      <td>{resultat.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Carte>
       )}
 
@@ -449,6 +859,7 @@ export function ProPage() {
                   <select
                     value={prestataire}
                     onChange={(event) => setPrestataire(event.target.value)}
+                    disabled={references.prestataire_du_compte != null}
                   >
                     {references.prestataires.map((valeur) => (
                       <option key={valeur.code} value={valeur.code}>
@@ -500,7 +911,51 @@ export function ProPage() {
                     }
                   />
                 </Champ>
+                <Champ label="Validite (jours)">
+                  <input
+                    type="number"
+                    min={1}
+                    max={730}
+                    value={ordonnance.validite_jours}
+                    onChange={(event) =>
+                      setOrdonnance((precedent) => ({
+                        ...precedent,
+                        validite_jours: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </Champ>
+                <Champ label="Reference (facultatif)">
+                  <input
+                    value={ordonnance.reference}
+                    maxLength={64}
+                    placeholder="Generee automatiquement si vide"
+                    onChange={(event) =>
+                      setOrdonnance((precedent) => ({
+                        ...precedent,
+                        reference: event.target.value,
+                      }))
+                    }
+                  />
+                </Champ>
+                <Champ label="Diagnostic (facultatif)">
+                  <input
+                    value={ordonnance.diagnostic}
+                    maxLength={256}
+                    placeholder="Ex. lombalgie aigue"
+                    onChange={(event) =>
+                      setOrdonnance((precedent) => ({
+                        ...precedent,
+                        diagnostic: event.target.value,
+                      }))
+                    }
+                  />
+                </Champ>
               </div>
+              <p className="aide">
+                La validite et le diagnostic alimentent les variables de prescription du
+                modele. Un doublon (meme assure, meme acte, meme jour) est refuse.
+              </p>
               <button type="submit" className="bouton principal" disabled={envoi}>
                 {envoi ? 'Enregistrement...' : 'Enregistrer l ordonnance'}
               </button>

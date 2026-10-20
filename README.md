@@ -111,7 +111,7 @@ Ce tableau répond à la seule question qui compte quand on reprend le projet :
 | **Après ajout d'une migration** | `make migrate` puis `make db-status` | `make up` applique déjà les migrations. En revanche, `migrate` ne se rejoue pas tout seul si le job a déjà abouti : c'est précisément ce que `db-status` détecte. |
 | **Après modification du jeu de données** | déposer les CSV dans `data/raw/` puis `make reload-data` | Rechargement idempotent : `TRUNCATE … RESTART IDENTITY CASCADE` puis 14 tables, en une transaction. |
 | **Mémoire insuffisante** | `make up-light` | Le noyau reste démontrable ; seul l'outillage de pilotage manque. |
-| **Jour de démonstration** | `make down`, `make start`, `make health`, `make smoke`, `make acces`, `make n8n-compte` | Checklist détaillée plus bas. |
+| **Jour de démonstration** | `make down`, `make start`, `make health`, `make smoke`, `make e2e-n8n`, `make acces`, `make n8n-compte` | Checklist détaillée plus bas. |
 | **Incident** | `make health`, puis `make logs-service S=<service>` | `make restore` si la base est corrompue, après confirmation. |
 
 ### Le jour de démonstration
@@ -120,6 +120,7 @@ Ce tableau répond à la seule question qui compte quand on reprend le projet :
 make down && make start   # redémarrage propre, sans reconstruction
 make health                # chaque service doit répondre
 make smoke                 # parcours de bout en bout
+make e2e-n8n               # alerte réelle Slack + e-mail, puis échec journalisé
 make acces                 # fiche d'identifiants régénérée, hors dépôt, mode 600
 make n8n-compte            # l'état du compte n8n de CE poste
 ```
@@ -133,7 +134,7 @@ l'interface, avec l'email saisi par le visiteur, et **le mot de passe n'est
 
 ## Commandes
 
-`make help` liste les 44 commandes. Cette section les regroupe par tâche.
+`make help` liste les 58 commandes. Cette section les regroupe par tâche.
 
 ### Cycle de vie
 
@@ -203,6 +204,8 @@ s'entraîne et ce qui sert.
 | --- | --- |
 | `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts + rapports). |
 | `make evaluate` | Compare SMOTE / `scale_pos_weight` / aucun traitement et produit l'audit d'équité. |
+| `make noter LIMITE=500` | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic. |
+| `make lot-jury` | Soumet les 20 factures inédites du CDC (F17) par la même porte que le front. 15 valides dont 7 alertes attendues, 5 invalides rejetées avec le champ fautif. `ARGS=--rescorer` pour rejouer, `ARGS=--dry-run` pour simuler. |
 | `make model-state` | Version active du modèle et seuil courant. |
 | `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
 | `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
@@ -210,6 +213,25 @@ s'entraîne et ce qui sert.
 | `make score-historique` | Rejoue le jeu étiqueté (backfill idempotent, statut `historique`). |
 | `make score-factures` | Note les nouvelles factures et alimente la file d'alertes. |
 | `make import-factures` | Importe le lot CSV du jour J depuis `data/import/`. |
+
+`make noter` est le seul job qui **écrit en masse** dans `ml.prediction`. Par
+défaut il marque ses prédictions `statut = 'archive'` : ce sont des notations
+rétrospectives, utiles à la mesure de la qualité du modèle et au volume du
+tableau de bord, mais qui n'entrent pas dans la file de travail du gestionnaire.
+Sans cette distinction, des milliers d'alertes historiques non décidées
+feraient afficher un taux de faux positifs de 100 % et un délai de décision de
+plusieurs années. `STATUT=nouvelle` force l'entrée en file, pour une
+démonstration sur un petit lot.
+
+`make lot-jury` porte le lot de 20 factures du CDC (F17) : il lit
+`data/seed/lot_20_factures.json`, source unique et versionnée, et le soumet à
+`POST /api/core/factures/soumettre`. Ce n'est pas un raccourci : la validation,
+la vérification des référentiels, la notation et la persistance passent par le
+même chemin que le formulaire. Le fichier porte le résultat attendu
+(`cas_attendu`, `attendu`) ; le job compare la réponse réelle à ce résultat et
+sort en erreur au premier écart. Le front, lui, n'importe toujours pas de lot :
+c'est un choix explicite, documenté dans
+[`docs/analyse_front_vs_cdc.md`](docs/analyse_front_vs_cdc.md).
 
 L'entraînement écrit quatre fichiers par version :
 
@@ -251,6 +273,7 @@ une part importante des vraies fraudes. Le détail de l'arbitrage est dans
 | `make n8n-compte` | Compte propriétaire de ce poste, et procédure s'il n'existe pas. |
 | `make n8n-export` | Exporte les workflows dans `apps/n8n/workflows/`. |
 | `make n8n-import` | Restaure et publie les workflows après un `down`/`up`. |
+| `make e2e-n8n` | Envoie une facture du lot F17 au webhook et vérifie Slack, l'e-mail (Mailpit) et l'absence de notification fantôme. |
 
 Les workflows se partagent **par Git**, pas à l'intérieur de n8n : l'édition
 Community n'a pas de partage de projet. Détails dans
@@ -403,7 +426,7 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
 | `scripts/`                 |    Jerry     | Ce qu'on exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                                   |
-| `tests/`                   |    Jerry     | pytest : 212 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision. E2E dans `tests/e2e/`                                          |
+| `tests/`                   |    Jerry     | pytest : 677 tests, majoritairement sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision, contrat des workflows n8n, dérive. E2E dans `tests/e2e/` |
 | `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
 
 ### Dossiers créés à l'exécution

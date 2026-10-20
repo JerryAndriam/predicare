@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2150" viewBox="0 0 1800 2150">
+<defs>
+<marker id="arrow-0f766e" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0,0 L11,4.5 L0,9" fill="none" stroke="#0f766e" stroke-width="1.6"/></marker>
+<marker id="arrow-0b5c56" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0,0 L11,4.5 L0,9" fill="none" stroke="#0b5c56" stroke-width="1.6"/></marker>
+<marker id="arrow-b42318" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto"><path d="M0,0 L11,4.5 L0,9" fill="none" stroke="#b42318" stroke-width="1.6"/></marker>
+</defs>
+<rect x="0" y="0" width="1800" height="2150" fill="#ffffff"/>
+<text x="60" y="52" font-size="30" font-weight="700" fill="#0e1a27" text-anchor="start" >PrediCare TPA — Diagramme de cas d'utilisation du front web</text>
+<text x="60" y="82" font-size="14" font-weight="400" fill="#5b6b7a" text-anchor="start" >Lecture du code réel de apps/web (React + TypeScript) — état au 20/10/2026 — 4 rôles, 6 écrans, 23 endpoints consommés</text>
+<text x="1400" y="52" font-size="12" font-weight="600" fill="#5b6b7a" text-anchor="start" >n8n (Slack/Email) et Superset (BI) :</text>
+<text x="1400" y="69" font-size="12" font-weight="400" fill="#5b6b7a" text-anchor="start" >briques séparées, non liées au front.</text>
+<text x="850" y="103" font-size="12" font-weight="600" fill="#b42318" text-anchor="start">Execution du 20/10/2026 : 24 OK / 0 KO, build vert, 586 tests au vert ; assistant RAG en erreur 500 (voir G10).</text>
+<rect x="250" y="115" width="1320" height="1715" rx="14" fill="#f9fcfc" stroke="#0f766e" stroke-width="2"/>
+<rect x="262" y="99" width="560" height="30" fill="#ffffff"/>
+<text x="274" y="121" font-size="16" font-weight="700" fill="#0b5c56" text-anchor="start" >Interface web PrediCare — cas réalisés</text>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="133" r="12" fill="#ffffff"/><line x1="100" y1="145" x2="100" y2="185"/><line x1="76" y1="161" x2="124" y2="161"/><line x1="100" y1="185" x2="82" y2="219"/><line x1="100" y1="185" x2="118" y2="219"/></g>
+<text x="100" y="245.42" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Visiteur</text>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="288" r="12" fill="#ffffff"/><line x1="100" y1="300" x2="100" y2="340"/><line x1="76" y1="316" x2="124" y2="316"/><line x1="100" y1="340" x2="82" y2="374"/><line x1="100" y1="340" x2="118" y2="374"/></g>
+<text x="100" y="392.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Utilisateur</text>
+<text x="100" y="407.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >authentifié</text>
+<ellipse cx="650" cy="180" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="153" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >C1</text>
+<text x="650" y="185.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >S'authentifier</text>
+<ellipse cx="650" cy="270" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="243" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >C2</text>
+<text x="650" y="275.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Se déconnecter</text>
+<ellipse cx="650" cy="360" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="333" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >C3</text>
+<text x="650" y="355.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter son espace</text>
+<text x="650" y="374.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >d'accueil</text>
+<line x1="145" y1="175" x2="480" y2="180" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="330" x2="480" y2="270" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="330" x2="480" y2="360" stroke="#49606b" stroke-width="1.5"/>
+<path d="M60,405 h164 l14,14 v44 h-178 z" fill="#fffdf5" stroke="#c9b458" stroke-width="1.2"/>
+<path d="M224,405 v14 h14" fill="none" stroke="#c9b458" stroke-width="1.2"/>
+<text x="70" y="423" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Les 4 rôles héritent de</text>
+<text x="70" y="436" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >« Utilisateur authentifié »</text>
+<text x="70" y="449" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >et donc de C2 et C3.</text>
+<text x="70" y="462" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >L'admin accède aux 4 espaces.</text>
+<text x="650" y="430" font-size="12" font-weight="600" fill="#5b6b7a" text-anchor="middle" font-style="italic">Socle commun aux quatre rôles</text>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="478" r="12" fill="#ffffff"/><line x1="100" y1="490" x2="100" y2="530"/><line x1="76" y1="506" x2="124" y2="506"/><line x1="100" y1="530" x2="82" y2="564"/><line x1="100" y1="530" x2="118" y2="564"/></g>
+<text x="100" y="590.42" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Assuré</text>
+<ellipse cx="650" cy="530" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="503" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC1</text>
+<text x="650" y="525.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter ses</text>
+<text x="650" y="544.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >remboursements</text>
+<ellipse cx="650" cy="640" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="613" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC2</text>
+<text x="650" y="635.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Interroger l'assistant</text>
+<text x="650" y="654.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >RAG</text>
+<ellipse cx="1080" cy="590" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="563" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC2a</text>
+<text x="1080" y="585.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Rechercher dans</text>
+<text x="1080" y="604.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >les contrats</text>
+<ellipse cx="1080" cy="700" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="673" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC2b</text>
+<text x="1080" y="695.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Lire l'historique</text>
+<text x="1080" y="714.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >de l'assuré</text>
+<line x1="145" y1="520" x2="480" y2="530" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="520" x2="480" y2="640" stroke="#49606b" stroke-width="1.5"/>
+<line x1="820" y1="640" x2="918" y2="598" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="864" y="606" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<line x1="820" y1="640" x2="918" y2="692" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="864" y="684" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<path d="M890,458 h346 l14,14 v38 h-360 z" fill="#fffdf5" stroke="#c9b458" stroke-width="1.2"/>
+<path d="M1236,458 v14 h14" fill="none" stroke="#c9b458" stroke-width="1.2"/>
+<text x="900" y="476" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Montants pris en charge / reste à charge,</text>
+<text x="900" y="489" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >statut normalisé et badge de contrôle.</text>
+<text x="900" y="502" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Filtre assuré appliqué côté serveur.</text>
+<line x1="890" y1="484.0" x2="818" y2="525" stroke="#c9b458" stroke-width="1" stroke-dasharray="3 3"/>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="1640" cy="603" r="12" fill="#ffffff"/><line x1="1640" y1="615" x2="1640" y2="655"/><line x1="1616" y1="631" x2="1664" y2="631"/><line x1="1640" y1="655" x2="1622" y2="689"/><line x1="1640" y1="655" x2="1658" y2="689"/></g>
+<text x="1640" y="707.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Agent RAG</text>
+<text x="1640" y="722.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >LLM + pgvector + SQL</text>
+<line x1="1235" y1="590" x2="1595" y2="620" stroke="#49606b" stroke-width="1.5"/>
+<line x1="1235" y1="700" x2="1595" y2="670" stroke="#49606b" stroke-width="1.5"/>
+<text x="1410" y="585" font-size="11" font-weight="600" fill="#5b6b7a" text-anchor="middle" font-style="italic">outils de l'agent</text>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="798" r="12" fill="#ffffff"/><line x1="100" y1="810" x2="100" y2="850"/><line x1="76" y1="826" x2="124" y2="826"/><line x1="100" y1="850" x2="82" y2="884"/><line x1="100" y1="850" x2="118" y2="884"/></g>
+<text x="100" y="902.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Professionnel</text>
+<text x="100" y="917.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >de santé</text>
+<ellipse cx="650" cy="760" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="733" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC3</text>
+<text x="650" y="765.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Déposer une facture</text>
+<ellipse cx="1080" cy="760" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="733" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC4</text>
+<text x="1080" y="755.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter la notation</text>
+<text x="1080" y="774.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >SHAP</text>
+<ellipse cx="650" cy="870" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="843" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC5</text>
+<text x="650" y="875.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Déposer une ordonnance</text>
+<ellipse cx="650" cy="980" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="953" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC6</text>
+<text x="650" y="975.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Suivre les dossiers</text>
+<text x="650" y="994.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >déposés</text>
+<line x1="145" y1="840" x2="480" y2="760" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="840" x2="480" y2="870" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="840" x2="480" y2="980" stroke="#49606b" stroke-width="1.5"/>
+<line x1="820" y1="760" x2="918" y2="760" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="869" y="748" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<path d="M890,820 h346 l14,14 v38 h-360 z" fill="#fffdf5" stroke="#c9b458" stroke-width="1.2"/>
+<path d="M1236,820 v14 h14" fill="none" stroke="#c9b458" stroke-width="1.2"/>
+<text x="900" y="838" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Référentiels /references, lignes d'actes,</text>
+<text x="900" y="851" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >plafond 10 000 000 MGA, rejet 422</text>
+<text x="900" y="864" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >affiché avec le champ fautif.</text>
+<line x1="890" y1="846.0" x2="820" y2="770" stroke="#c9b458" stroke-width="1" stroke-dasharray="3 3"/>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="1640" cy="738" r="12" fill="#ffffff"/><line x1="1640" y1="750" x2="1640" y2="790"/><line x1="1616" y1="766" x2="1664" y2="766"/><line x1="1640" y1="790" x2="1622" y2="824"/><line x1="1640" y1="790" x2="1658" y2="824"/></g>
+<text x="1640" y="842.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Service d'inférence</text>
+<text x="1640" y="857.92" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >XGBoost + SHAP</text>
+<line x1="1235" y1="760" x2="1595" y2="775" stroke="#49606b" stroke-width="1.5"/>
+<text x="1410" y="750" font-size="11" font-weight="600" fill="#5b6b7a" text-anchor="middle" font-style="italic">score + seuil + SHAP</text>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="1128" r="12" fill="#ffffff"/><line x1="100" y1="1140" x2="100" y2="1180"/><line x1="76" y1="1156" x2="124" y2="1156"/><line x1="100" y1="1180" x2="82" y2="1214"/><line x1="100" y1="1180" x2="118" y2="1214"/></g>
+<text x="100" y="1240.42" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Gestionnaire</text>
+<ellipse cx="650" cy="1110" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1083" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC7</text>
+<text x="650" y="1105.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter la file</text>
+<text x="650" y="1124.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >d'alertes</text>
+<ellipse cx="1080" cy="1060" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="1033" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC8</text>
+<text x="1080" y="1065.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Lire le détail SHAP</text>
+<ellipse cx="1080" cy="1170" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="1143" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC9</text>
+<text x="1080" y="1165.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Prendre une décision</text>
+<text x="1080" y="1184.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >motivée</text>
+<ellipse cx="650" cy="1240" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1213" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC10</text>
+<text x="650" y="1235.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter l'historique</text>
+<text x="650" y="1254.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >des décisions</text>
+<line x1="145" y1="1170" x2="480" y2="1110" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="1170" x2="480" y2="1240" stroke="#49606b" stroke-width="1.5"/>
+<line x1="925" y1="1060" x2="828" y2="1098" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="875" y="1062" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«extend»</text>
+<line x1="1080" y1="1128" x2="1080" y2="1102" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="1130" y="1120" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«extend»</text>
+<path d="M890,1230 h346 l14,14 v38 h-360 z" fill="#fffdf5" stroke="#c9b458" stroke-width="1.2"/>
+<path d="M1236,1230 v14 h14" fill="none" stroke="#c9b458" stroke-width="1.2"/>
+<text x="900" y="1248" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Commentaire obligatoire (≥ 3 caractères).</text>
+<text x="900" y="1261" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >3 issues : valider la fraude, rejeter,</text>
+<text x="900" y="1274" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >demander une pièce.</text>
+<line x1="1250" y1="1256.0" x2="1080" y2="1212" stroke="#c9b458" stroke-width="1" stroke-dasharray="3 3"/>
+<g stroke="#0e1a27" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="100" cy="1518" r="12" fill="#ffffff"/><line x1="100" y1="1530" x2="100" y2="1570"/><line x1="76" y1="1546" x2="124" y2="1546"/><line x1="100" y1="1570" x2="82" y2="1604"/><line x1="100" y1="1570" x2="118" y2="1604"/></g>
+<text x="100" y="1630.42" font-size="13" font-weight="600" fill="#0e1a27" text-anchor="middle" >Administrateur</text>
+<ellipse cx="650" cy="1440" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1413" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC11</text>
+<text x="650" y="1435.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Régler le seuil</text>
+<text x="650" y="1454.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >d'alerte</text>
+<ellipse cx="650" cy="1540" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1513" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC12</text>
+<text x="650" y="1535.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Gérer le modèle</text>
+<text x="650" y="1554.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >et les versions</text>
+<ellipse cx="650" cy="1640" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1613" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC13</text>
+<text x="650" y="1635.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Superviser la</text>
+<text x="650" y="1654.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >plateforme</text>
+<ellipse cx="650" cy="1740" rx="170" ry="42" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="490" y="1713" font-size="10" font-weight="700" fill="#0f766e" text-anchor="start" >UC14</text>
+<text x="650" y="1745.1" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Gérer les comptes</text>
+<line x1="145" y1="1560" x2="480" y2="1440" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="1560" x2="480" y2="1540" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="1560" x2="480" y2="1640" stroke="#49606b" stroke-width="1.5"/>
+<line x1="145" y1="1560" x2="480" y2="1740" stroke="#49606b" stroke-width="1.5"/>
+<ellipse cx="1080" cy="1580" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="1553" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC13a</text>
+<text x="1080" y="1575.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter la santé</text>
+<text x="1080" y="1594.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >et les secrets</text>
+<ellipse cx="1080" cy="1660" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="1633" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC13b</text>
+<text x="1080" y="1655.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter le journal</text>
+<text x="1080" y="1674.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >d'audit</text>
+<ellipse cx="1080" cy="1740" rx="155" ry="42" fill="#f2f8f9" stroke="#4f8f88" stroke-width="1.8"/>
+<text x="935" y="1713" font-size="10" font-weight="700" fill="#4f8f88" text-anchor="start" >UC13c</text>
+<text x="1080" y="1735.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >Consulter les canaux</text>
+<text x="1080" y="1754.6" font-size="15" font-weight="600" fill="#0e1a27" text-anchor="middle" >de notification</text>
+<line x1="820" y1="1640" x2="918" y2="1588" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="870" y="1596" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<line x1="820" y1="1640" x2="918" y2="1658" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="870" y="1650" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<line x1="820" y1="1640" x2="918" y2="1732" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="870" y="1746" font-size="11" font-weight="700" fill="#0b5c56" text-anchor="middle" font-style="italic">«include»</text>
+<path d="M890,1465 h346 l14,14 v38 h-360 z" fill="#fffdf5" stroke="#c9b458" stroke-width="1.2"/>
+<path d="M1236,1465 v14 h14" fill="none" stroke="#c9b458" stroke-width="1.2"/>
+<text x="900" y="1483" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >Charger / basculer / retour arrière</text>
+<text x="900" y="1496" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >sans redémarrage ; métriques de la</text>
+<text x="900" y="1509" font-size="11" font-weight="400" fill="#4a4224" text-anchor="start" >version active exposées par l'API.</text>
+<line x1="890" y1="1491.0" x2="820" y2="1530" stroke="#c9b458" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="650" y="1818" font-size="11" font-weight="400" fill="#5b6b7a" text-anchor="middle" font-style="italic">L'administrateur peut aussi ouvrir les trois autres espaces (règle peut() + RBAC API).</text>
+<rect x="250" y="1880" width="1320" height="205" rx="14" fill="#fffafa" stroke="#b42318" stroke-width="2" stroke-dasharray="9 6"/>
+<rect x="262" y="1864" width="610" height="30" fill="#ffffff"/>
+<text x="274" y="1886" font-size="16" font-weight="700" fill="#b42318" text-anchor="start" >Cas requis par le CDC, non exposés dans l'interface web</text>
+<ellipse cx="500" cy="1940" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="332" y="1915" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G1</text>
+<text x="500" y="1935.92" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Importer un lot de factures</text>
+<text x="500" y="1952.92" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Professionnel)</text>
+<ellipse cx="900" cy="1940" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="732" y="1915" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G2</text>
+<text x="900" y="1927.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Détecter les anomalies</text>
+<text x="900" y="1944.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >de prescription</text>
+<text x="900" y="1961.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Pro, Gestionnaire)</text>
+<ellipse cx="1300" cy="1940" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="1132" y="1915" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G3</text>
+<text x="1300" y="1927.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Consulter le tableau</text>
+<text x="1300" y="1944.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >de bord BI</text>
+<text x="1300" y="1961.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Gestionnaire, Admin)</text>
+<ellipse cx="500" cy="2030" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="332" y="2005" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G4</text>
+<text x="500" y="2017.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Configurer canaux</text>
+<text x="500" y="2034.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >et secrets</text>
+<text x="500" y="2051.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Admin)</text>
+<ellipse cx="900" cy="2030" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="732" y="2005" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G5</text>
+<text x="900" y="2017.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Superviser métriques</text>
+<text x="900" y="2034.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >et dérive</text>
+<text x="900" y="2051.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Admin)</text>
+<ellipse cx="1300" cy="2030" rx="178" ry="40" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="1132" y="2005" font-size="10" font-weight="700" fill="#b42318" text-anchor="start" >G6</text>
+<text x="1300" y="2017.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >Changer son</text>
+<text x="1300" y="2034.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >mot de passe</text>
+<text x="1300" y="2051.42" font-size="13" font-weight="600" fill="#6b1a12" text-anchor="middle" >(Tous)</text>
+<line x1="60" y1="2096" x2="1740" y2="2096" stroke="#c8d6dc" stroke-width="1"/>
+<ellipse cx="100" cy="2122" rx="18" ry="9" fill="#e6f4f1" stroke="#0f766e" stroke-width="1.8"/>
+<text x="130" y="2126" font-size="12" font-weight="600" fill="#0e1a27" text-anchor="start" >cas réalisé</text>
+<ellipse cx="300" cy="2122" rx="18" ry="9" fill="#fff4f2" stroke="#b42318" stroke-width="1.8" stroke-dasharray="7 5"/>
+<text x="330" y="2126" font-size="12" font-weight="600" fill="#b42318" text-anchor="start" >écart CDC</text>
+<g stroke="#0e1a27" stroke-width="1.6" fill="none" stroke-linecap="round"><circle cx="470" cy="2104" r="5" fill="#ffffff"/><line x1="470" y1="2109" x2="470" y2="2124"/><line x1="458" y1="2115" x2="482" y2="2115"/><line x1="470" y1="2124" x2="461" y2="2136"/><line x1="470" y1="2124" x2="479" y2="2136"/></g>
+<text x="500" y="2126" font-size="12" font-weight="600" fill="#0e1a27" text-anchor="start" >acteur</text>
+<line x1="630" y1="2122" x2="690" y2="2122" stroke="#0b5c56" stroke-width="1.5" stroke-dasharray="7 5" marker-end="url(#arrow-0b5c56)"/>
+<text x="704" y="2126" font-size="12" font-weight="600" fill="#0e1a27" text-anchor="start" >include / extend</text>
+<text x="900" y="2126" font-size="12" font-weight="400" fill="#5b6b7a" text-anchor="start" >Le contrôle d'accès est assuré par l'API (RBAC), pas seulement par les gardes de routes.</text>
+</svg>
