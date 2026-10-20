@@ -143,8 +143,13 @@ def load_candidate(version: str, request: Request) -> dict:
 
 @router.post("/modele/bascule")
 def promote(request: Request) -> dict:
-    """Bascule la candidate en version active."""
-    version = request.app.state.registry.promote_candidate()
+    """Bascule la candidate en version active.
+
+    `X-Acteur` est pose par api-core (sujet du jeton administrateur) et recopie
+    tel quel dans la notification n8n. Un appel direct (Makefile) n'en pose
+    pas : l'acteur vaut alors null.
+    """
+    version = request.app.state.registry.promote_candidate(acteur=request.headers.get("X-Acteur"))
     return {"status": "ok", "active_version": version}
 
 

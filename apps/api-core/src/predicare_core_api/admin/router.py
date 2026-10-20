@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from predicare import db
-from predicare.auth import hash_password
+from predicare.auth import TokenPayload, hash_password
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.dependencies import get_threshold, require_permission
@@ -38,7 +38,7 @@ logger = get_logger("api-core.admin")
 
 #: Garde-fou commun : le role administrateur est verifie avant le corps de la
 #: route, donc avant tout acces base et tout appel reseau sortant.
-AdminUser = Annotated[object, Depends(require_permission("seuil:modifier"))]
+AdminUser = Annotated[TokenPayload, Depends(require_permission("seuil:modifier"))]
 
 
 class ThresholdUpdate(BaseModel):
@@ -149,11 +149,16 @@ def model_state(request: Request, _admin: AdminUser) -> ModelVersionInfo:
         )
 
 
-def _appeler_inference(request: Request, chemin: str) -> dict:
-    """Appelle le registre du Flux 1, en traduisant une panne en 503 metier."""
+def _appeler_inference(request: Request, chemin: str, *, acteur: str | None = None) -> dict:
+    """Appelle le registre du Flux 1, en traduisant une panne en 503 metier.
+
+    `acteur` est le sujet du jeton administrateur. Il traverse api-core ->
+    api-inference -> n8n pour que la notification de bascule nomme son auteur.
+    """
     inference_url = str(request.app.state.inference_api_url).rstrip("/")
+    headers = {"X-Acteur": acteur} if acteur else None
     try:
-        response = httpx.post(f"{inference_url}{chemin}", timeout=10.0)
+        response = httpx.post(f"{inference_url}{chemin}", headers=headers, timeout=10.0)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("admin.modele_action_impossible", chemin=chemin, erreur=str(exc))
@@ -176,7 +181,7 @@ def charger_candidat(version: str, request: Request, _admin: AdminUser) -> dict[
 @router.post("/modele/bascule")
 def basculer_modele(request: Request, _admin: AdminUser) -> dict[str, object]:
     """Bascule la candidate en active, puis aligne le registre en base."""
-    resultat = _appeler_inference(request, "/modele/bascule")
+    resultat = _appeler_inference(request, "/modele/bascule", acteur=_admin.subject)
     version = str(resultat.get("active_version", ""))
     if version:
         activer_version(version)

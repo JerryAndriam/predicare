@@ -1,0 +1,320 @@
+{
+  "name": "PK-Bascule-Modele",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bascule-modele",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000001",
+      "name": "Webhook bascule",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        0
+      ],
+      "webhookId": "predicare-bascule-modele",
+      "notes": "Appele par api-inference apres une bascule reussie (`POST /api/inference/modele/bascule`). URL interne : http://n8n:5678/webhook/bascule-modele. Repond en moins de 2 s : api-inference abandonne la notification au-dela, sans jamais annuler la bascule."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "version-apres-presente",
+              "leftValue": "={{ !!($json.body && $json.body.version_apres) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "name": "Valider la bascule",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -60,
+        0
+      ],
+      "notes": "Sans `version_apres`, la notification serait vide : on refuse la charge."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"ok\"\n}",
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000003",
+      "name": "Repondre OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        180,
+        0
+      ],
+      "notes": "Repond AVANT Slack/e-mail : api-inference n'attend pas la notification."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: '🔁 *Bascule de modèle* — v' + ($('Webhook bascule').first().json.body.version_avant || 'aucune') + ' → v' + $('Webhook bascule').first().json.body.version_apres + '\\nActeur : ' + ($('Webhook bascule').first().json.body.acteur || 'appel direct') + '\\n' + $('Webhook bascule').first().json.body.timestamp }) }}",
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000004",
+      "name": "Notifier Slack bascule",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        -120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Meme webhook entrant Slack que l'alerte fraude, sans scope OAuth. Le corps DOIT etre un objet `{ text }` serialise : un texte brut fait repondre `400 invalid_payload` a Slack."
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_FROM }}",
+        "toEmail": "={{ $env.SMTP_GESTIONNAIRE }}",
+        "subject": "={{ '🔁 Bascule de modèle — v' + ($('Webhook bascule').first().json.body.version_avant || 'aucune') + ' → v' + $('Webhook bascule').first().json.body.version_apres }}",
+        "emailFormat": "text",
+        "options": {},
+        "text": "={{ 'Nouvelle version active : v' + $('Webhook bascule').first().json.body.version_apres + '\\nVersion precedente : v' + ($('Webhook bascule').first().json.body.version_avant || 'aucune') + '\\nActeur : ' + ($('Webhook bascule').first().json.body.acteur || 'appel direct') + '\\nHorodatage : ' + $('Webhook bascule').first().json.body.timestamp }}"
+      },
+      "id": "b2000000-0000-4000-8000-000000000005",
+      "name": "Notifier par e-mail bascule",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        -120
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "notes": "Lit la charge du webhook par son NOM, pas `$json` : le noeud precedent est Slack, donc `$json` ne contient que sa reponse.",
+      "credentials": {
+        "smtp": {
+          "id": "MailpitDev000001",
+          "name": "Mailpit (dev)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "notification-bascule-en-echec",
+              "leftValue": "={{ $('Notifier Slack bascule').first().json.error !== undefined || $json.error !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000000-0000-4000-8000-000000000006",
+      "name": "Notification en echec ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        920,
+        -120
+      ],
+      "notes": "Une panne Slack n'empeche pas l'e-mail ; l'echec est journalise apres coup."
+    },
+    {
+      "parameters": {
+        "errorMessage": "Notification de bascule en echec : Slack ou e-mail n'a pas pu etre envoye. La bascule reste appliquee."
+      },
+      "id": "b2000000-0000-4000-8000-000000000007",
+      "name": "Notification en echec",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -180
+      ],
+      "notes": "Marque l'execution n8n en `error`. La bascule, elle, est deja faite."
+    },
+    {
+      "parameters": {},
+      "id": "b2000000-0000-4000-8000-000000000008",
+      "name": "Notifications envoyees",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"detail\": \"version_apres requis\"\n}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000009",
+      "name": "Repondre 422",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        180,
+        160
+      ],
+      "notes": "Charge invalide : api-inference journalise l'echec et continue."
+    },
+    {
+      "parameters": {
+        "errorMessage": "Bascule invalide : `version_apres` est absent de la charge."
+      },
+      "id": "b2000000-0000-4000-8000-000000000010",
+      "name": "Bascule invalide",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        440,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook bascule": {
+      "main": [
+        [
+          {
+            "node": "Valider la bascule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valider la bascule": {
+      "main": [
+        [
+          {
+            "node": "Repondre OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repondre OK": {
+      "main": [
+        [
+          {
+            "node": "Notifier Slack bascule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier Slack bascule": {
+      "main": [
+        [
+          {
+            "node": "Notifier par e-mail bascule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier par e-mail bascule": {
+      "main": [
+        [
+          {
+            "node": "Notification en echec ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification en echec ?": {
+      "main": [
+        [
+          {
+            "node": "Notification en echec",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notifications envoyees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repondre 422": {
+      "main": [
+        [
+          {
+            "node": "Bascule invalide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "pinData": {},
+  "staticData": null
+}

@@ -57,3 +57,16 @@ def cle_chiffrement() -> str:
     os.environ["IDENTITY_ENCRYPTION_KEY"] = cle
     yield cle
     os.environ.pop("IDENTITY_ENCRYPTION_KEY", None)
+
+
+@pytest.fixture(autouse=True)
+def _pas_de_webhook_n8n_reel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Aucun test unitaire ne doit appeler le webhook n8n de la machine.
+
+    Le `.env` de developpement peut definir `N8N_BASCULE_WEBHOOK_URL` : sans ce
+    garde-fou, un test de bascule enverrait une vraie notification Slack. Les
+    tests qui verifient la notification repositionnent l'URL eux-memes.
+    """
+    from predicare.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "n8n_bascule_webhook_url", "")

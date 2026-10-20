@@ -3,21 +3,17 @@
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "alerte-fraude",
-        "responseMode": "lastNode",
-        "options": {}
+        "errorMessage": "Inference indisponible : aucune notification n'a ete envoyee. Voir l'execution n8n pour le detail."
       },
-      "id": "a1000000-0000-4000-8000-000000000001",
-      "name": "Webhook entree",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
+      "id": "a1000000-0000-4000-8000-00000000000d",
+      "name": "Inference indisponible",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
       "position": [
-        -320,
-        0
+        160,
+        220
       ],
-      "webhookId": "predicare-alerte-fraude",
-      "notes": "Declencheur unique de la chaine. L'ecran de gestion (ou le lot de 20 factures du jury) POST la facture brute ici ; c'est le workflow qui appelle l'API d'inference."
+      "notes": "Marque l'execution n8n en `error` : c'est le journal d'exploitation de la chaine. Aucune notification Slack/e-mail n'est atteinte, donc aucune alerte fantome."
     },
     {
       "parameters": {
@@ -36,13 +32,7 @@
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify($json.body) }}",
-        "options": {
-          "response": {
-            "response": {
-              "neverError": true
-            }
-          }
-        }
+        "options": {}
       },
       "id": "a1000000-0000-4000-8000-000000000004",
       "name": "Invoquer l'API d'inference",
@@ -55,9 +45,22 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000,
-      "notes": "Corps = `$json.body`. n8n place le payload recu sous `body` et y ajoute ses propres cles (`headers`, `params`, `query`, `webhookUrl`) a la racine. Envoyer `$json` entier ferait refuser la requete : `InvoiceSubmission` est `extra: forbid`. 3 tentatives espacees de 2 s : l'API peut etre en cours de redemarrage au moment d'une soumission.",
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      "notes": "Corps = `$json.body`. n8n place le payload recu sous `body` et y ajoute ses propres cles (`headers`, `params`, `query`, `webhookUrl`) a la racine. Envoyer `$json` entier ferait refuser la requete : `InvoiceSubmission` est `extra: forbid`. 3 tentatives espacees de 2 s : l'API peut etre en cours de redemarrage au moment d'une soumission. `continueErrorOutput` route un echec vers la branche `Repondre echec inference` : sans elle, un 422/500 continuait vers l'IF avec un score absent et l'execution paraissait reussie.",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "errorMessage": "Notification en echec : Slack ou e-mail n'a pas pu etre envoye. Voir l'execution n8n pour le detail du noeud fautif."
+      },
+      "id": "a1000000-0000-4000-8000-00000000000f",
+      "name": "Notification en echec",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        -280
+      ],
+      "notes": "Journalise l'echec dans `execution_entity` sans annuler la prediction deja enregistree."
     },
     {
       "parameters": {
@@ -70,12 +73,12 @@
           },
           "conditions": [
             {
-              "id": "score-fraude-eleve",
-              "leftValue": "={{ $json.score_fraude }}",
-              "rightValue": "={{ Number($env.SEUIL_NOTIFICATION_SLACK) }}",
+              "id": "notification-en-echec",
+              "leftValue": "={{ $('Notifier Slack').first().json.error !== undefined || $json.error !== undefined }}",
+              "rightValue": "",
               "operator": {
-                "type": "number",
-                "operation": "gte"
+                "type": "boolean",
+                "operation": "true"
               }
             }
           ],
@@ -83,15 +86,27 @@
         },
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000005",
-      "name": "Score au-dessus du seuil de notification",
+      "id": "a1000000-0000-4000-8000-00000000000e",
+      "name": "Notification en echec ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        180,
-        0
+        940,
+        -220
       ],
-      "notes": "SEUIL DE NOTIFICATION (0.8), exige par le CDC : une alerte Slack est une interruption humaine, donc seulement pour les cas tres nets. Le SEUIL DE DETECTION (0.2876, dans FRAUD_ALERT_THRESHOLD) reste regi par l'API : toute facture au-dessus entre dans la file du gestionnaire, qu'elle soit notifiee ou non."
+      "notes": "Slack et e-mail restent en `continueRegularOutput` : une panne Slack n'empeche pas l'e-mail de partir. Ce noeud inspecte les deux resultats apres coup et transforme un echec en execution n8n `error`."
+    },
+    {
+      "parameters": {},
+      "id": "a1000000-0000-4000-8000-000000000010",
+      "name": "Notifications envoyees",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1180,
+        -160
+      ],
+      "notes": "Slack et e-mail ont repondu sans erreur."
     },
     {
       "parameters": {
@@ -152,6 +167,74 @@
       }
     },
     {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000000b",
+      "name": "Repondre au client",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        160,
+        0
+      ],
+      "notes": "Repond AVANT les notifications : le client (ecran de gestion, lot du jury) recoit le score et le rapport SHAP sans attendre Slack ni le SMTP. Le workflow continue ensuite pour notifier."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"detail\": \"Inference indisponible : aucune notification n'a ete envoyee.\"\n}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "a1000000-0000-4000-8000-00000000000c",
+      "name": "Repondre echec inference",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -80,
+        220
+      ],
+      "notes": "Une panne d'inference est une erreur 502 explicite, pas un succes silencieux."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "score-fraude-eleve",
+              "leftValue": "={{ $json.score_fraude }}",
+              "rightValue": "={{ Number($env.SEUIL_NOTIFICATION_SLACK) }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Score au-dessus du seuil de notification",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        180,
+        0
+      ],
+      "notes": "SEUIL DE NOTIFICATION (0.8), exige par le CDC : une alerte Slack est une interruption humaine, donc seulement pour les cas tres nets. Le SEUIL DE DETECTION (0.2876, dans FRAUD_ALERT_THRESHOLD) reste regi par l'API : toute facture au-dessus entre dans la file du gestionnaire, qu'elle soit notifiee ou non."
+    },
+    {
       "parameters": {},
       "id": "a1000000-0000-4000-8000-000000000009",
       "name": "Sous le seuil de notification",
@@ -162,6 +245,24 @@
         120
       ],
       "notes": "Pas d'interruption humaine, mais la prediction EST deja ecrite dans ml.prediction par l'API : la facture reste dans la file du gestionnaire, consultable au tableau de bord."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerte-fraude",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Webhook entree",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        0
+      ],
+      "webhookId": "predicare-alerte-fraude",
+      "notes": "Declencheur unique de la chaine. L'ecran de gestion (ou le lot de 20 factures du jury) POST la facture brute ici ; c'est le workflow qui appelle l'API d'inference."
     }
   ],
   "connections": {
@@ -177,6 +278,24 @@
       ]
     },
     "Invoquer l'API d'inference": {
+      "main": [
+        [
+          {
+            "node": "Repondre au client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Repondre echec inference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repondre au client": {
       "main": [
         [
           {
@@ -210,6 +329,46 @@
         [
           {
             "node": "Notifier par e-mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notifier par e-mail": {
+      "main": [
+        [
+          {
+            "node": "Notification en echec ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification en echec ?": {
+      "main": [
+        [
+          {
+            "node": "Notification en echec",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notifications envoyees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repondre echec inference": {
+      "main": [
+        [
+          {
+            "node": "Inference indisponible",
             "type": "main",
             "index": 0
           }

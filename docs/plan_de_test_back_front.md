@@ -541,6 +541,29 @@ Script automatique fourni :
 powershell -ExecutionPolicy Bypass -File .\scripts\verifier_back_front.ps1
 ```
 
+### 4.1 Chaîne n8n (Slack et e-mail)
+
+Prérequis : `SLACK_WEBHOOK_URL` renseigné, Mailpit démarré (`make up-email`),
+workflows importés (`make n8n-import`).
+
+```bash
+make e2e-n8n
+```
+
+Vérifications :
+
+1. `PK-Alerte-Fraude` est actif et `POST /webhook/alerte-fraude` est enregistré.
+2. `FAC-JURY-001` (lot F17) répond **200** avec `score_fraude` ≥ 0,8 et
+   `rapport_shap`.
+3. L'e-mail arrive dans Mailpit (`http://localhost:8025`) avec le rapport SHAP.
+4. `execution_entity.status = 'success'` : Slack a répondu 2xx.
+5. Une facture invalide répond **502**, n'ajoute aucun e-mail et laisse
+   l'exécution en `error` : l'échec est journalisé, sans notification fantôme.
+
+La bascule de modèle se prouve avec `POST /webhook/bascule-modele` (payload
+`version_avant` / `version_apres`) : réponse 200, puis Slack et e-mail. Le
+détail et les credentials par poste sont dans `apps/n8n/README.md`.
+
 ---
 
 ## 5. Tests de sécurité (RBAC)
@@ -619,7 +642,9 @@ Vérification après correction :
 | Aucune alerte au départ | `ml.prediction` vide ; les factures historiques ne sont pas notées | normal |
 | Journal vide au départ | aucune action admin effectuée | normal |
 | Journal vide après une décision | seules les actions explicites `/api/core/audit/evenement` alimentent `audit.journal` | écart connu |
-| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer |
+| Notification Slack absente | `SLACK_WEBHOOK_URL` vide | à configurer ; prouver avec `make e2e-n8n` |
+| n8n répond 404 après un import | processus démarré avant la publication CLI | `make n8n-import` redémarre n8n ; sinon `docker compose restart n8n` |
+| E-mail n8n en échec après un import | credential SMTP non reliée sur ce poste | rouvrir le nœud e-mail et sélectionner `Mailpit (dev)` |
 | File d'alertes vide après une facture | score < 28,76 % | baisser le seuil pour tester |
 | Front « pas dynamique » | image `web` non reconstruite | `docker compose build web` |
 | Décision impossible | aucune alerte sélectionnée | soumettre une facture d'abord |

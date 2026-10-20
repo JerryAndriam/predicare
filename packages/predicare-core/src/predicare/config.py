@@ -114,6 +114,9 @@ class Settings(BaseSettings):
     # Canaux de notification, affiches par l'ecran d'administration.
     slack_webhook_url: str = ""
     smtp_from: str = ""
+    #: Webhook n8n appele apres une bascule de modele. Vide = desactive.
+    #: En conteneur, l'adresse est `http://n8n:5678/webhook/bascule-modele`.
+    n8n_bascule_webhook_url: str = ""
 
     @field_validator("log_level")
     @classmethod

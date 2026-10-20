@@ -52,6 +52,10 @@ x-env-common: &env-common
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
   EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
   SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  # Webhook n8n appele par api-inference apres une bascule de modele.
+  # Vide = notification desactivee. En conteneur, utiliser le nom de service
+  # (`http://n8n:5678/...`), jamais `localhost`.
+  N8N_BASCULE_WEBHOOK_URL: ${N8N_BASCULE_WEBHOOK_URL:-}
   SMTP_FROM: ${SMTP_FROM:-alertes@predicare.local}
   RAG_TOP_K: ${RAG_TOP_K:-6}
   RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD:-0.55}

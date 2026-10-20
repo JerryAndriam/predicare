@@ -13,8 +13,9 @@ tests/
 
 ## Etat actuel
 
-212 tests, 74 % de couverture, execution en 9 secondes. Aucun ne demarre de
-conteneur ni ne touche PostgreSQL : tout porte sur des fonctions pures.
+652 tests, 17 ignores (`e2e` sans pile), execution en environ 2 minutes. Aucun
+ne demarre de conteneur ni ne touche PostgreSQL : tout porte sur des fonctions
+pures ou des artefacts temporaires.
 
 ## Repartition cible
 
@@ -38,13 +39,16 @@ conteneur ni ne touche PostgreSQL : tout porte sur des fonctions pures.
 | `test_explainability.py` | Tri SHAP, libelles, rapport lisible | Mirado |
 | `test_semantic_cache.py` | Cache semantique et calcul du gain FinOps | Mirado |
 | `test_health.py` | Les trois API se construisent et exposent leur supervision | Jerry |
+| `test_notifications.py` | Webhook n8n de bascule : URL vide, payload, timeout, jamais d'exception | Mirado |
+| `test_n8n_workflow.py` | Contrat JSON des workflows : connexions, branches d'erreur, aucun secret | Mirado |
+| `test_lot_jury.py` | Les 20 factures F17, rejets nommes, attentes du lot | Jerry |
 
 ## Brouillon / TODO
 
 - [x] `conftest.py` avec jeu de facture de reference et cle de chiffrement
 - [x] Tests de validation, dont tous les cas de rejet nommes
 - [x] Tests d'injection de prompt sur l'agent
-- [ ] Test de bascule et de retour arriere du modele
+- [x] Test de bascule et de retour arriere du modele
 - [ ] Test de persistance apres `docker compose down` puis `up`
 
 Proprietaire : Jerry

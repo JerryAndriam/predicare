@@ -459,3 +459,7 @@ n8n-export: ## Exporte les workflows n8n dans apps/n8n/workflows/
 .PHONY: n8n-import
 n8n-import: ## Restaure et reactive les workflows n8n
 	@scripts/n8n-import.sh
+
+.PHONY: e2e-n8n
+e2e-n8n: ## Verifie la chaine n8n de bout en bout (pile demarree)
+	@scripts/e2e_n8n.sh

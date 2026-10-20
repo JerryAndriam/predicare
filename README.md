@@ -111,7 +111,7 @@ Ce tableau répond à la seule question qui compte quand on reprend le projet :
 | **Après ajout d'une migration** | `make migrate` puis `make db-status` | `make up` applique déjà les migrations. En revanche, `migrate` ne se rejoue pas tout seul si le job a déjà abouti : c'est précisément ce que `db-status` détecte. |
 | **Après modification du jeu de données** | déposer les CSV dans `data/raw/` puis `make reload-data` | Rechargement idempotent : `TRUNCATE … RESTART IDENTITY CASCADE` puis 14 tables, en une transaction. |
 | **Mémoire insuffisante** | `make up-light` | Le noyau reste démontrable ; seul l'outillage de pilotage manque. |
-| **Jour de démonstration** | `make down`, `make start`, `make health`, `make smoke`, `make acces`, `make n8n-compte` | Checklist détaillée plus bas. |
+| **Jour de démonstration** | `make down`, `make start`, `make health`, `make smoke`, `make e2e-n8n`, `make acces`, `make n8n-compte` | Checklist détaillée plus bas. |
 | **Incident** | `make health`, puis `make logs-service S=<service>` | `make restore` si la base est corrompue, après confirmation. |
 
 ### Le jour de démonstration
@@ -120,6 +120,7 @@ Ce tableau répond à la seule question qui compte quand on reprend le projet :
 make down && make start   # redémarrage propre, sans reconstruction
 make health                # chaque service doit répondre
 make smoke                 # parcours de bout en bout
+make e2e-n8n               # alerte réelle Slack + e-mail, puis échec journalisé
 make acces                 # fiche d'identifiants régénérée, hors dépôt, mode 600
 make n8n-compte            # l'état du compte n8n de CE poste
 ```
@@ -133,7 +134,7 @@ l'interface, avec l'email saisi par le visiteur, et **le mot de passe n'est
 
 ## Commandes
 
-`make help` liste les 56 commandes. Cette section les regroupe par tâche.
+`make help` liste les 58 commandes. Cette section les regroupe par tâche.
 
 ### Cycle de vie
 
@@ -265,6 +266,7 @@ une part importante des vraies fraudes. Le détail de l'arbitrage est dans
 | `make n8n-compte` | Compte propriétaire de ce poste, et procédure s'il n'existe pas. |
 | `make n8n-export` | Exporte les workflows dans `apps/n8n/workflows/`. |
 | `make n8n-import` | Restaure et publie les workflows après un `down`/`up`. |
+| `make e2e-n8n` | Envoie une facture du lot F17 au webhook et vérifie Slack, l'e-mail (Mailpit) et l'absence de notification fantôme. |
 
 Les workflows se partagent **par Git**, pas à l'intérieur de n8n : l'édition
 Community n'a pas de partage de projet. Détails dans
@@ -417,7 +419,7 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
 | `scripts/`                 |    Jerry     | Ce qu'on exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                                   |
-| `tests/`                   |    Jerry     | pytest : 212 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision. E2E dans `tests/e2e/`                                          |
+| `tests/`                   |    Jerry     | pytest : 652 tests sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision, contrat des workflows n8n. E2E dans `tests/e2e/`                    |
 | `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
 
 ### Dossiers créés à l'exécution
