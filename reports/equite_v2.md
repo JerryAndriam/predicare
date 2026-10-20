@@ -6,37 +6,37 @@ Rappel par segment, sur le jeu de test. Un rappel faible sur un segment suffisam
 
 | segment | n | rappel | precision |
 |---|---:|---:|---:|
-| 0-17 | 3378 | 0.8933 | 0.6555 |
-| 18-29 | 927 | 0.9048 | 0.5588 |
-| 30-49 | 2638 | 0.8509 | 0.5826 |
-| 50-64 | 3009 | 0.8603 | 0.5565 |
+| 0-17 | 3378 | 0.8902 | 0.6651 |
+| 18-29 | 927 | 0.8929 | 0.5639 |
+| 30-49 | 2638 | 0.8465 | 0.5778 |
+| 50-64 | 3009 | 0.8559 | 0.5460 |
 | 65+ | 134 | 0.8889 | 0.5333 |
 ## Par niveau_tarif
 
 | segment | n | rappel | precision |
 |---|---:|---:|---:|
-| ELEVE | 2623 | 0.9182 | 0.4725 |
-| RAISONNABLE | 6593 | 0.8592 | 0.6940 |
+| ELEVE | 2623 | 0.9214 | 0.4741 |
+| RAISONNABLE | 6593 | 0.8489 | 0.6914 |
 | TRES_ELEVE | 870 | 0.7922 | 0.8841 |
 ## Par type_prestataire
 
 | segment | n | rappel | precision |
 |---|---:|---:|---:|
-| CABINET_DENTAIRE | 202 | 0.9722 | 0.6140 |
-| CABINET_GENERALISTE | 2518 | 0.7805 | 0.4904 |
-| CABINET_SPECIALISTE | 535 | 0.9667 | 0.2283 |
+| CABINET_DENTAIRE | 202 | 0.9722 | 0.6481 |
+| CABINET_GENERALISTE | 2518 | 0.7622 | 0.4941 |
+| CABINET_SPECIALISTE | 535 | 0.9667 | 0.2358 |
 | CENTRE_IMAGERIE | 205 | 0.8571 | 0.9474 |
-| CLINIQUE | 1922 | 0.8687 | 0.4028 |
+| CLINIQUE | 1922 | 0.8586 | 0.3899 |
 | LABORATOIRE | 667 | 0.9216 | 1.0000 |
 | OPTICIEN | 80 | 0.8889 | 1.0000 |
-| PHARMACIE | 3910 | 0.8984 | 0.9849 |
+| PHARMACIE | 3910 | 0.9011 | 0.9850 |
 ## Par formule
 
 | segment | n | rappel | precision |
 |---|---:|---:|---:|
-| CONFORT | 2125 | 0.8610 | 0.5279 |
-| ESSENTIEL | 5580 | 0.8733 | 0.5965 |
-| PREMIUM | 2381 | 0.8933 | 0.6943 |
+| CONFORT | 2125 | 0.8556 | 0.5498 |
+| ESSENTIEL | 5580 | 0.8733 | 0.5910 |
+| PREMIUM | 2381 | 0.8764 | 0.6753 |
 ## Par type de fraude (jeu de test)
 
 Rappel par famille de fraude : indique quels mecanismes le modele ne detecte pas encore, et donc ou une regle deterministe serait complementaire du modele.
@@ -45,16 +45,16 @@ Rappel par famille de fraude : indique quels mecanismes le modele ne detecte pas
 |---|---:|---:|
 | ACTE_FICTIF | 53 | 1.0000 |
 | DOUBLON | 111 | 0.2252 |
-| FRACTIONNEMENT | 37 | 0.8108 |
+| FRACTIONNEMENT | 37 | 0.7838 |
 | INCOHERENCE_PROFIL | 33 | 1.0000 |
 | LIGNES_NON_PRESCRITES | 87 | 1.0000 |
 | ORDONNANCE_EXPIREE | 76 | 1.0000 |
 | PRESTATAIRE_RADIE | 55 | 1.0000 |
 | QUANTITE_EXCESSIVE | 59 | 0.9153 |
 | SUBSTITUTION_PRODUIT | 43 | 1.0000 |
-| SURCONSOMMATION | 37 | 0.9730 |
+| SURCONSOMMATION | 37 | 1.0000 |
 | SURFACTURATION | 165 | 1.0000 |
-| UPCODING | 82 | 0.8659 |
+| UPCODING | 82 | 0.8171 |
 
 ### Lecture : DOUBLON est une limite des DONNEES, pas du modele
 
