@@ -416,6 +416,13 @@ noter: ## Note en lot les factures historiques pour peupler ml.prediction (make 
 		$(if $(RESCORER),--rescorer,) \
 		$(ARGS)
 
+.PHONY: lot-jury
+lot-jury: ## Soumet le lot de 20 factures inedites du CDC (F17) par l'API
+	@$(COMPOSE_CORE) run --rm \
+		-e DEMO_PASSWORD="$${DEMO_PASSWORD:-}" \
+		-e API_CORE_URL="http://api-core:8001" \
+		seed python -m predicare_seed.lot_jury $(ARGS)
+
 .PHONY: model-promote
 model-promote: ## Bascule la version N en service (make model-promote VERSION=2)
 	@curl -fsS -X POST "http://localhost:$${API_INFERENCE_PORT:-8002}/api/inference/modele/candidat?version=$(VERSION)" \

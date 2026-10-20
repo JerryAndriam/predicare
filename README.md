@@ -200,6 +200,7 @@ s'entraîne et ce qui sert.
 | `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts + rapports). |
 | `make evaluate` | Compare SMOTE / `scale_pos_weight` / aucun traitement et produit l'audit d'équité. |
 | `make noter LIMITE=500` | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic. |
+| `make lot-jury` | Soumet les 20 factures inédites du CDC (F17) par la même porte que le front. 15 valides dont 7 alertes attendues, 5 invalides rejetées avec le champ fautif. `ARGS=--rescorer` pour rejouer, `ARGS=--dry-run` pour simuler. |
 | `make model-state` | Version active du modèle et seuil courant. |
 | `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
 | `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
@@ -213,6 +214,16 @@ Sans cette distinction, des milliers d'alertes historiques non décidées
 feraient afficher un taux de faux positifs de 100 % et un délai de décision de
 plusieurs années. `STATUT=nouvelle` force l'entrée en file, pour une
 démonstration sur un petit lot.
+
+`make lot-jury` porte le lot de 20 factures du CDC (F17) : il lit
+`data/seed/lot_20_factures.json`, source unique et versionnée, et le soumet à
+`POST /api/core/factures/soumettre`. Ce n'est pas un raccourci : la validation,
+la vérification des référentiels, la notation et la persistance passent par le
+même chemin que le formulaire. Le fichier porte le résultat attendu
+(`cas_attendu`, `attendu`) ; le job compare la réponse réelle à ce résultat et
+sort en erreur au premier écart. Le front, lui, n'importe toujours pas de lot :
+c'est un choix explicite, documenté dans
+[`docs/analyse_front_vs_cdc.md`](docs/analyse_front_vs_cdc.md).
 
 L'entraînement écrit quatre fichiers par version :
 

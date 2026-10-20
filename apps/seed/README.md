@@ -73,6 +73,41 @@ Si `/data/raw` est vide ou absent, le job journalise un avertissement et
 **sort en succes**. La plateforme demarre normalement, avec une base vide :
 mieux vaut une base vide qu'une pile qui refuse de demarrer le jour J.
 
+## Lot du jury (F17 du CDC)
+
+Le CDC exige vingt factures inédites le jour J, dont des factures invalides.
+Le front ne sait pas importer un lot ; le job `predicare_seed.lot_jury` porte
+ce parcours côté exploitation.
+
+Le fichier `data/seed/lot_20_factures.json` est la **source unique** :
+
+| Cas | Nombre | Attendu |
+| --- | --- | --- |
+| `valide`, alerte | 7 | notée, score au-dessus du seuil, visible dans la file |
+| `valide`, conforme | 8 | notée, score sous le seuil |
+| `invalide:<champ>` | 5 | rejetée par l'API en nommant le champ fautif |
+
+Le job est un **client d'api-core**, pas un chargeur SQL : il appelle
+`POST /api/core/factures/soumettre`, qui valide, vérifie les référentiels,
+note et persiste. Rejouer la validation dans le job créerait une seconde
+vérité, et le jour J une facture acceptée par le job pourrait être refusée
+par le front.
+
+```sh
+DEMO_PASSWORD='<mot-de-passe>' make comptes    # une seule fois
+DEMO_PASSWORD='<mot-de-passe>' make lot-jury
+make lot-jury ARGS=--dry-run                   # lecture seule
+make lot-jury ARGS=--rescorer                  # rejoue les factures déjà notées
+```
+
+Le job est idempotent : une facture qui a déjà une prédiction est ignorée
+(`--rescorer` lève ce filtre). Les factures invalides ne laissent aucune
+trace en base, puisque la validation précède l'écriture.
+
+Le même fichier est consommé par `tests/e2e/test_lot_jury_e2e.py`, qui vérifie le
+cycle complet : notation → file d'alertes → détail SHAP → décision →
+historique.
+
 ## Choisi et justifie (Phase 1.4)
 
 - **Types** : une valeur non convertible n'est jamais inventee -> rejet.

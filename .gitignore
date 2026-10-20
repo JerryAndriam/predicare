@@ -27,7 +27,11 @@ apps/web/.vite/
 *.key
 
 # ---------------------------------------------------------------- Donnees runtime
-/data/
+# Les donnees brutes (44 Mo) restent hors du depot, mais le lot du jury est
+# un livrable : il est versionne, et consomme tel quel par le job et les e2e.
+/data/*
+!/data/seed/
+!/data/seed/lot_20_factures.json
 /models/
 /backups/
 /artifacts/

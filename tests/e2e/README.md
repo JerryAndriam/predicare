@@ -79,11 +79,32 @@ Le script sort en erreur dès qu'une vérification échoue et affiche un résum�
 `DEMO_PASSWORD non defini. Lancez : DEMO_PASSWORD='<mot-de-passe>' make comptes (le mot de passe est affiché une seule fois)`.
 Le mot de passe n'est jamais imprimé dans la sortie.
 
+## Le lot de 20 factures (F17)
+
+`tests/e2e/test_lot_jury_e2e.py` soumet `data/seed/lot_20_factures.json` par la
+même porte que le front (`POST /api/core/factures/soumettre`), puis vérifie :
+
+- les 15 factures valides sont notées, dont 7 alertes attendues ;
+- ces 7 alertes sont visibles dans la file du gestionnaire ;
+- les 5 factures invalides sont rejetées en nommant le champ fautif ;
+- une alerte parcourt le cycle complet : détail SHAP, décision, historique.
+
+Le job `make lot-jury` exécute la même soumission en exploitation, avec un
+rapport lisible et un code de sortie non nul au premier écart.
+
+```sh
+DEMO_PASSWORD='<mot-de-passe>' PREDICARE_E2E=1 \
+  uv run --all-packages pytest tests/e2e/test_lot_jury_e2e.py -q
+```
+
+> Ce parcours **écrit** dans la base de démonstration : c'est le but, le jury
+> doit voir les alertes. Ne pas le lancer sur une base de production.
+
 ## Brouillon / TODO
 
-- [ ] `conftest.py` : fixture de pile démarrée, avecignor des services absents
-- [ ] Lot de 20 factures inédites, dont au moins 5 invalides
-- [ ] Parcours complet : facture → alerte → rapport SHAP → décision
+- [ ] `conftest.py` : fixture de pile démarrée, avec ignor des services absents
+- [x] Lot de 20 factures inédites, dont au moins 5 invalides
+- [x] Parcours complet : facture → alerte → rapport SHAP → décision
 - [x] Parcours assuré : question RAG → réponse sourcée
 - [ ] Vérification de la persistance après `make down` puis `make up`
 - [ ] Vérification de la bascule de modèle puis du retour arrière

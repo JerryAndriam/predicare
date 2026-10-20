@@ -213,6 +213,8 @@ Conséquences :
 
 **Recommandation** : ajouter un onglet « Import » acceptant un CSV ou un JSON de 20 factures, appeler `soumettre` en boucle, afficher un tableau de résultats (202/422, score, message par ligne) et un récapitulatif. C'est le quick win qui rapporte le plus de crédibilité au critère « Robuste ».
 
+**Réalisé (20/10/2026)** : le lot existe et il est versionné (`data/seed/lot_20_factures.json`), mais il est porté par un job CLI (`make lot-jury`), pas par le front. Le job appelle `POST /api/core/factures/soumettre` en boucle : validation, référentiels, notation et persistance passent par le même chemin que le formulaire. Les 5 factures invalides sont rejetées avec le champ fautif, les 15 valides sont notées et les 7 alertes attendues entrent dans la file. L'onglet « Import » reste donc un écart **d'interface**, pas un écart de capacité.
+
 ### G2 — Les anomalies de prescription ne sont pas un cas d'utilisation (priorité démo : haute)
 
 **Constat** : le front dépose une ordonnance minimale : un acte, une date, une quantité. L'API insère dans `core.ordonnance` **sans** renseigner `reference`, `validite_jours`, `diagnostic`, et **sans** créer de `core.ordonnance_ligne`. La facture déposée ne renseigne pas non plus `ordonnance_id`.
