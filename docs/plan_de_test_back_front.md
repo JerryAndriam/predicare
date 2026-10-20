@@ -106,7 +106,7 @@ Attendu : 4 lignes, `is_active = t`.
 | Connexion | POST | `/api/core/auth/login` | public | 200 + token |
 | Profil | GET | `/api/core/auth/me` | connecté | 200 |
 | Assuré | GET | `/api/core/factures?limit=5` | assuré | 200 + `items` |
-| Assuré | POST | `/api/rag/question` | assuré | **500** (clé LLM absente) |
+| Assuré | POST | `/api/rag/question` | assuré | **500** (voir § 5.4 : image `api-rag` obsolète + base vectorielle vide) |
 | Pro | GET | `/api/core/factures/references` | pro | 200 + listes |
 | Pro | POST | `/api/core/factures/soumettre` | pro | **202** + score + SHAP |
 | Pro | POST | `/api/core/factures/ordonnances` | pro | 201 |
@@ -227,9 +227,12 @@ $corps = @{ question = "Quelles sont mes garanties ?" } | ConvertTo-Json
 Invoke-RestMethod -Uri "http://localhost:8080/api/rag/question" -Method Post -Headers $h -Body $corps -ContentType "application/json"
 ```
 
-Attendu aujourd'hui : **500** (ou message « momentanément indisponible »),
-car `LLM_API_KEY=CHANGER_MOI_LLM`. Ce n'est **pas** un bug du front.
-Une fois la clé renseignée, attendu : 200 + `reponse` + `sources`.
+**Constaté le 20/10/2026** : **500** `invalid input syntax for type vector`.
+Ce n'est pas la clé LLM qui est en cause : le conteneur `api-rag` exécute un
+`retriever.py` obsolète qui envoie la question brute à `CAST(:query AS vector)`,
+et `core.document_vectorise` contient 0 ligne. Reconstruire l'image, renseigner
+`EMBEDDING_API_KEY` / `LLM_API_KEY`, puis lancer l'ingestion des contrats.
+Une fois corrigé, attendu : 200 + `reponse` + `sources`.
 
 ---
 
@@ -615,7 +618,7 @@ Vérification après correction :
 
 | Symptôme | Cause | Statut |
 |---|---|---|
-| Assistant RAG → 500 | `LLM_API_KEY` / `EMBEDDING_API_KEY` = placeholder | à configurer |
+| Assistant RAG → 500 | image `api-rag` obsolète (retriever sans embedding) + `document_vectorise` vide + clés placeholder | à reconstruire / configurer / ingérer |
 | Aucune alerte au départ | `ml.prediction` vide ; les factures historiques ne sont pas notées | normal |
 | Journal vide au départ | aucune action admin effectuée | normal |
 | Journal vide après une décision | seules les actions explicites `/api/core/audit/evenement` alimentent `audit.journal` | écart connu |

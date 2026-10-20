@@ -131,7 +131,13 @@ export interface PlatformHealth {
   dependances: {
     base: boolean
     inference: { status: string; version: string | null }
-    rag: { status: string; version: string | null }
+    rag: {
+      status: string
+      version: string | null
+      documents?: number
+      embedding_configure?: boolean
+      llm_configure?: boolean
+    }
   }
 }
 
@@ -142,6 +148,7 @@ export interface RagAnswer {
   latence_ms: number
   tokens: number
   cache_semantique: boolean
+  succes?: boolean
 }
 
 export interface ReferenceAssure {
@@ -164,6 +171,7 @@ export interface References {
   assures: ReferenceAssure[]
   prestataires: ReferencePrestataire[]
   actes: ReferenceActe[]
+  prestataire_du_compte?: string | null
 }
 
 export interface NotificationChannel {
@@ -171,6 +179,48 @@ export interface NotificationChannel {
   type: 'slack' | 'email'
   actif: boolean
   destinataire: string
+  configure: boolean
+}
+
+export interface Observability {
+  timestamp: string
+  secrets_manquants: string[]
+  base: {
+    disponible: boolean
+    factures?: number
+    predictions?: number
+    alertes?: number
+    decisions?: number
+    journal?: number
+  }
+  inference: {
+    disponible?: boolean
+    service?: string
+    version?: string | null
+    seuil?: number
+    latence_ms?: {
+      disponible: boolean
+      echantillons: number
+      moyenne: number | null
+      p50: number | null
+      p95: number | null
+      p99: number | null
+    }
+    erreurs_total?: number
+    requetes_total?: number
+    volume?: {
+      disponible: boolean
+      predictions_total?: number
+      alertes_total?: number
+      derniere_prediction?: string | null
+    }
+  }
+  derive: Record<string, unknown>
+  rag: {
+    disponible: boolean
+    cache: Record<string, unknown>
+    securite: Record<string, unknown>
+  }
 }
 
 export interface AuditEntry {
@@ -190,6 +240,7 @@ export interface AdminUser {
   display_name: string | null
   is_active: boolean
   assured_pseudonyme: string | null
+  prestataire_code: string | null
   last_login: string | null
 }
 
@@ -199,6 +250,7 @@ export interface AdminUserCreate {
   role: Role
   display_name?: string
   assured_pseudonyme?: string
+  prestataire_code?: string
 }
 
 export interface InvoiceLineInput {

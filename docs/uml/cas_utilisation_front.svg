@@ -9,6 +9,7 @@
 <text x="60" y="82" font-size="14" font-weight="400" fill="#5b6b7a" text-anchor="start" >Lecture du code réel de apps/web (React + TypeScript) — état au 20/10/2026 — 4 rôles, 6 écrans, 23 endpoints consommés</text>
 <text x="1400" y="52" font-size="12" font-weight="600" fill="#5b6b7a" text-anchor="start" >n8n (Slack/Email) et Superset (BI) :</text>
 <text x="1400" y="69" font-size="12" font-weight="400" fill="#5b6b7a" text-anchor="start" >briques séparées, non liées au front.</text>
+<text x="850" y="103" font-size="12" font-weight="600" fill="#b42318" text-anchor="start">Execution du 20/10/2026 : 24 OK / 0 KO, build vert, 586 tests au vert ; assistant RAG en erreur 500 (voir G10).</text>
 <rect x="250" y="115" width="1320" height="1715" rx="14" fill="#f9fcfc" stroke="#0f766e" stroke-width="2"/>
 <rect x="262" y="99" width="560" height="30" fill="#ffffff"/>
 <text x="274" y="121" font-size="16" font-weight="700" fill="#0b5c56" text-anchor="start" >Interface web PrediCare — cas réalisés</text>

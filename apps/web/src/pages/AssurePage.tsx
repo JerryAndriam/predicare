@@ -19,6 +19,7 @@ interface Message {
   auteur: 'vous' | 'assistant'
   texte: string
   sources?: Record<string, unknown>[]
+  etapes?: Record<string, unknown>[]
   meta?: string
 }
 
@@ -31,10 +32,25 @@ const STATUTS: Record<string, string> = {
   rejete: 'Rejetee',
   recue: 'Recue',
   en_cours: 'En cours',
+  fraude_confirmee: 'Fraude confirmee',
+  piece_demandee: 'Piece demandee',
 }
 
 function libelleStatut(statut: string): string {
   return STATUTS[statut.trim().toLowerCase()] ?? statut
+}
+
+function controleFacture(facture: InvoiceSummary): {
+  ton: 'ok' | 'alerte' | 'neutre'
+  texte: string
+} {
+  const statut = facture.statut.trim().toLowerCase()
+  if (statut === 'fraude_confirmee') return { ton: 'alerte', texte: 'Fraude confirmee' }
+  if (statut === 'piece_demandee') return { ton: 'alerte', texte: 'Piece demandee' }
+  if (statut === 'rejetee' || statut === 'rejete') return { ton: 'ok', texte: 'Clair' }
+  if (facture.is_fraud === true) return { ton: 'alerte', texte: 'En verification' }
+  if (facture.is_fraud === false) return { ton: 'ok', texte: 'Clair' }
+  return { ton: 'neutre', texte: 'Non controle' }
 }
 
 function Source({ source }: { source: Record<string, unknown> }) {
@@ -56,6 +72,7 @@ export function AssurePage() {
   const [onglet, setOnglet] = useState<Onglet>('remboursements')
 
   const [factures, setFactures] = useState<InvoiceSummary[]>([])
+  const [total, setTotal] = useState(0)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
 
@@ -63,11 +80,21 @@ export function AssurePage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [envoi, setEnvoi] = useState(false)
 
-  useEffect(() => {
-    api<Page<InvoiceSummary>>('/api/core/factures?limit=100')
-      .then((page) => setFactures(page.items))
+  const chargerFactures = (offset = 0) => {
+    setChargement(true)
+    api<Page<InvoiceSummary>>(`/api/core/factures?limit=100&offset=${offset}`)
+      .then((page) => {
+        setFactures((precedent) =>
+          offset === 0 ? page.items : [...precedent, ...page.items],
+        )
+        setTotal(page.total)
+      })
       .catch((error: unknown) => setErreur(messageErreur(error)))
       .finally(() => setChargement(false))
+  }
+
+  useEffect(() => {
+    chargerFactures()
   }, [])
 
   const demander = async (event: FormEvent<HTMLFormElement>) => {
@@ -90,13 +117,16 @@ export function AssurePage() {
           auteur: 'assistant',
           texte: reponse.reponse,
           sources: reponse.sources,
-          meta: `${reponse.latence_ms.toFixed(0)} ms${reponse.cache_semantique ? ' - reponse en cache' : ''}`,
+          etapes: reponse.etapes_agent,
+          meta: `${reponse.latence_ms.toFixed(0)} ms - ${reponse.tokens} token(s)${
+            reponse.cache_semantique ? ' - reponse en cache' : ''
+          }${reponse.succes === false ? ' - mode degrade' : ''}`,
         },
       ])
     } catch (error) {
       const indisponible =
-        error instanceof ApiError && error.status === 503
-          ? "L'assistant est momentanement indisponible : la cle du modele de langage n'est pas configuree."
+        error instanceof ApiError && (error.status === 503 || error.status === 500)
+          ? "L'assistant est momentanement indisponible : verifiez la configuration des embeddings et du modele de langage, puis reessayez."
           : messageErreur(error)
       setMessages((precedent) => [
         ...precedent,
@@ -136,7 +166,7 @@ export function AssurePage() {
       </div>
 
       {onglet === 'remboursements' && (
-        <Carte titre={`${factures.length} facture(s)`}>
+        <Carte titre={`${factures.length} sur ${total} facture(s)`}>
           <Erreur message={erreur} />
           {chargement && <Chargement />}
           {!chargement && factures.length === 0 && (
@@ -168,19 +198,25 @@ export function AssurePage() {
                       <td className="droite">{montantOuTiret(facture.reste_a_charge)}</td>
                       <td>{libelleStatut(facture.statut)}</td>
                       <td>
-                        {facture.is_fraud === true ? (
-                          <Badge ton="alerte">En verification</Badge>
-                        ) : facture.is_fraud === false ? (
-                          <Badge ton="ok">Clair</Badge>
-                        ) : (
-                          <Badge ton="neutre">Non controle</Badge>
-                        )}
+                        {(() => {
+                          const controle = controleFacture(facture)
+                          return <Badge ton={controle.ton}>{controle.texte}</Badge>
+                        })()}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          )}
+          {!chargement && factures.length < total && (
+            <button
+              type="button"
+              className="bouton discret"
+              onClick={() => chargerFactures(factures.length)}
+            >
+              Charger la suite ({total - factures.length} restantes)
+            </button>
           )}
         </Carte>
       )}
@@ -213,6 +249,23 @@ export function AssurePage() {
                       ))}
                     </ul>
                   </div>
+                )}
+                {message.etapes !== undefined && message.etapes.length > 0 && (
+                  <details className="sources">
+                    <summary>Etapes de l'agent ({message.etapes.length})</summary>
+                    <ul>
+                      {message.etapes.map((etape, position) => (
+                        <li key={position}>
+                          <span className="mono">{String(etape.outil ?? 'outil')}</span>
+                          {' - '}
+                          {String(etape.resultat ?? 'ok')}
+                          {typeof etape.duree_ms === 'number'
+                            ? ` (${etape.duree_ms.toFixed(0)} ms)`
+                            : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 {message.meta !== undefined && <span className="bulle-meta">{message.meta}</span>}
               </div>

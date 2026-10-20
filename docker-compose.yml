@@ -474,6 +474,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_GATEWAY_URL: /api
+        VITE_SUPERSET_URL: ${VITE_SUPERSET_URL:-http://localhost:8088}
     image: predicare-web:latest
     container_name: predicare-web
     restart: unless-stopped

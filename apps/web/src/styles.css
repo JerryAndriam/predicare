@@ -226,6 +226,31 @@ a {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
 
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.kpi-valeur {
+  color: var(--encre);
+  font-size: 1.8rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.kpi-libelle {
+  color: var(--encre-douce);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.grille-kpi {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
 .titre-page p {
   color: var(--encre-douce);
   max-width: 70ch;

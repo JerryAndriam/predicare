@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 
+from predicare.audit import journaliser
 from predicare.auth import TokenPayload
 from predicare.db import session_scope
 from predicare.dependencies import get_threshold, require_permission
@@ -31,6 +32,15 @@ from predicare.schemas import ManagerDecision, ShapContribution
 
 router = APIRouter(prefix="/alertes", tags=["alertes"])
 logger = get_logger("api-core.decisions")
+
+#: Traduction de la decision du gestionnaire vers le statut metier de la
+#: facture. Sans elle, l'assure continuait de voir « recue » apres une fraude
+#: confirmee : la decision restait dans le schema ML, invisible pour lui.
+STATUT_FACTURE: dict[str, str] = {
+    "valider_fraude": "fraude_confirmee",
+    "rejeter": "rejetee",
+    "demander_piece": "piece_demandee",
+}
 
 AlertReader = Annotated[TokenPayload, Depends(require_permission("alerte:lire"))]
 AlertDecider = Annotated[TokenPayload, Depends(require_permission("alerte:decider"))]
@@ -155,12 +165,13 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
     prediction_id = int(payload.prediction_id)
 
     with session_scope() as session:
-        mise_a_jour = session.execute(
+        facture_id = session.execute(
             text(
                 """
                 UPDATE ml.prediction SET statut = :decision, decided_by = :user,
                        decided_at = :now
                 WHERE id = :prediction_id
+                RETURNING facture_id
                 """
             ),
             {
@@ -169,9 +180,15 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
                 "now": payload.decided_at,
                 "prediction_id": prediction_id,
             },
-        )
-        if mise_a_jour.rowcount == 0:
+        ).scalar()
+        if facture_id is None:
             raise NotFoundError("Alerte introuvable.")
+
+        statut = STATUT_FACTURE[payload.decision]
+        session.execute(
+            text("UPDATE core.facture SET statut = :statut WHERE id = :facture_id"),
+            {"statut": statut, "facture_id": int(facture_id)},
+        )
 
         session.execute(
             text(
@@ -187,6 +204,20 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
                 "commentaire": payload.commentaire,
                 "user": user.subject,
                 "now": payload.decided_at,
+            },
+        )
+
+        journaliser(
+            session,
+            acteur=user.subject,
+            role=str(user.role),
+            action="decision_alerte",
+            cible=f"prediction:{prediction_id}",
+            details={
+                "decision": payload.decision,
+                "facture_id": int(facture_id),
+                "statut_facture": statut,
+                "commentaire": payload.commentaire,
             },
         )
 

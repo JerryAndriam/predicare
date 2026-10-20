@@ -9,11 +9,12 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
+from predicare.audit import journaliser
 from predicare.auth import create_access_token, hash_password, verify_password
 from predicare.config import get_settings
 from predicare.db import session_scope
 from predicare.dependencies import CurrentUser
-from predicare.errors import UnauthorizedError
+from predicare.errors import InvalidInputError, UnauthorizedError
 from predicare.logging_config import get_logger
 from predicare.rbac import Role
 
@@ -74,11 +75,31 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
             .first()
         )
 
-    if row is None or not verify_password(payload.password, row["password_hash"]):
-        logger.warning(
-            "auth.echec", email=payload.email, request_id=getattr(request.state, "request_id", None)
+        if row is None or not verify_password(payload.password, row["password_hash"]):
+            logger.warning(
+                "auth.echec",
+                email=payload.email,
+                request_id=getattr(request.state, "request_id", None),
+            )
+            raise UnauthorizedError("Identifiants invalides.")
+
+        # `last_login` est ecrit dans la meme transaction que la validation :
+        # l'ecran d'administration affiche ainsi une date reelle, pas la date
+        # de creation du compte.
+        session.execute(
+            text("UPDATE core.utilisateur SET last_login = now() WHERE id = :user_id"),
+            {"user_id": row["id"]},
         )
-        raise UnauthorizedError("Identifiants invalides.")
+        # La connexion est un evenement sensible au sens RGPD/AI Act : elle
+        # est tracee dans la meme transaction que la mise a jour de
+        # `last_login`, donc jamais perdue si l'ecriture reussit.
+        journaliser(
+            session,
+            acteur=str(row["id"]),
+            role=str(row["role"]),
+            action="connexion",
+            cible=f"compte:{row['id']}",
+        )
 
     token = create_access_token(
         subject=str(row["id"]),
@@ -109,9 +130,11 @@ def me(user: CurrentUser) -> ProfileResponse:
                 session.execute(
                     text(
                         """
-                        SELECT display_name, last_login
-                        FROM core.utilisateur
-                        WHERE id = :identifiant
+                        SELECT u.display_name, u.last_login,
+                               a.pseudonyme AS assured_pseudonym
+                        FROM core.utilisateur u
+                        LEFT JOIN core.assure a ON a.id = u.assured_id
+                        WHERE u.id = :identifiant
                         """
                     ),
                     {"identifiant": identifiant},
@@ -120,25 +143,65 @@ def me(user: CurrentUser) -> ProfileResponse:
                 .first()
             )
 
-    # `insured_id` provient du JWT : c'est un entier pour un assure. Le
-    # contrat expose un pseudonyme textuel, d'ou la conversion explicite.
+    # Le pseudonyme vient du dossier assure quand le compte en a un ; sinon on
+    # retombe sur l'entier du jeton. Afficher un identifiant technique a la
+    # place d'un pseudonyme serait une fuite de la cle interne.
+    pseudonyme = profil["assured_pseudonym"] if profil else None
+    if pseudonyme is None and user.insured_id is not None:
+        pseudonyme = str(user.insured_id)
+
     return ProfileResponse(
         subject=user.subject,
         role=user.role,
-        assured_pseudonym=str(user.insured_id) if user.insured_id is not None else None,
+        assured_pseudonym=pseudonyme,
         display_name=profil["display_name"] if profil else None,
         last_login=profil["last_login"] if profil else None,
     )
 
 
+class PasswordChange(BaseModel):
+    """Changement de mot de passe : contrat explicite, bornes incluses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    old_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
 @router.post("/password")
-def change_password(payload: dict[str, str], user: CurrentUser) -> dict[str, str]:
-    """Changement de mot de passe par l'utilisateur connecte."""
-    old, new = payload.get("old_password", ""), payload.get("new_password", "")
-    if not old or not new:
-        raise UnauthorizedError("Ancien et nouveau mot de passe requis.")
-    if old == new:
-        raise UnauthorizedError("Le nouveau mot de passe doit differer de l'ancien.")
-    hash_password(new)  # valide la robustesse avant d'ecrire
+def change_password(payload: PasswordChange, user: CurrentUser) -> dict[str, str]:
+    """Change le mot de passe de l'utilisateur connecte.
+
+    L'ancien mot de passe est verifie, le nouveau est hache, et le journal
+    enregistre l'operation. Le compte est cible par l'identifiant du jeton,
+    jamais par un parametre client : on ne peut pas changer le mot de passe
+    d'un autre.
+    """
+    if payload.old_password == payload.new_password:
+        raise InvalidInputError("Le nouveau mot de passe doit differer de l'ancien.")
+
+    if not str(user.subject).isdigit():
+        raise UnauthorizedError("Compte sans identifiant exploitable.")
+
+    with session_scope() as session:
+        hache = session.execute(
+            text("SELECT password_hash FROM core.utilisateur WHERE id = :user_id"),
+            {"user_id": int(user.subject)},
+        ).scalar()
+        if hache is None or not verify_password(payload.old_password, str(hache)):
+            raise UnauthorizedError("Ancien mot de passe incorrect.")
+
+        session.execute(
+            text("UPDATE core.utilisateur SET password_hash = :hache WHERE id = :user_id"),
+            {"hache": hash_password(payload.new_password), "user_id": int(user.subject)},
+        )
+        journaliser(
+            session,
+            acteur=user.subject,
+            role=str(user.role),
+            action="mot_de_passe_change",
+            cible=f"compte:{user.subject}",
+        )
+
     logger.info("auth.mot_de_passe_change", user_id=user.subject)
     return {"status": "ok", "message": "Mot de passe modifie."}

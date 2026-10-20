@@ -143,14 +143,28 @@ class Settings(BaseSettings):
         return self.environment.lower() in {"production", "prod"}
 
     def missing_secrets(self) -> list[str]:
-        """Liste les secrets encore a l'etat du modele. Alimente /health."""
+        """Liste les secrets encore a l'etat du modele. Alimente /health.
+
+        Les cles LLM et d'embedding sont incluses : sans elles, l'assistant
+        demarre et repond « OK » a la sonde de vivacite, mais ne peut ni
+        chercher un contrat ni formuler une reponse. Les taire donnerait une
+        fausse impression de completude a l'ecran d'administration.
+        """
         if self.is_production:
             return []
         placeholders = {
             "app_secret_key": self.app_secret_key,
             "jwt_secret_key": self.jwt_secret_key,
+            "llm_api_key": self.llm_api_key,
+            "embedding_api_key": self.embedding_api_key,
         }
-        return [name for name, value in placeholders.items() if "change-me" in value or not value]
+        marqueurs = ("change-me", "changer", "changeme", "not-configured", "votre-cle")
+        return [
+            name
+            for name, value in placeholders.items()
+            if not value.strip()
+            or any(marqueur in value.lower() for marqueur in marqueurs)
+        ]
 
 
 @lru_cache(maxsize=1)

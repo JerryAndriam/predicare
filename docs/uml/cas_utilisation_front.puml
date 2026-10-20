@@ -51,6 +51,10 @@ rectangle "Interface web PrediCare — cas réalisés" {
   ' -------------------------------------------------------------- assuré
   usecase "UC1 — Consulter ses remboursements" as UC1
   usecase "UC2 — Interroger l'assistant RAG" as UC2
+note right of UC2
+  Interface livree, mais chaine RAG
+  en erreur 500 au 20/10/2026 (G10).
+end note
   usecase "UC2a — Rechercher dans les contrats" as UC2a
   usecase "UC2b — Lire l'historique de l'assuré" as UC2b
 
