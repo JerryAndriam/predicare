@@ -241,7 +241,7 @@ export function ProPage() {
             {references === null ? (
               <Chargement texte="Chargement des referentiels..." />
             ) : (
-              <form className="formulaire" onSubmit={soumettre}>
+              <form className="formulaire" onSubmit={soumettre} style={{ background: 'rgba(255,255,255,0.5)', padding: '1.2rem', borderRadius: 'var(--rayon)', border: '1px solid var(--bord)' }}>
                 <div className="grille deux">
                   <Champ label="Assure (pseudonyme)">
                     <select value={assure} onChange={(event) => setAssure(event.target.value)}>

@@ -56,7 +56,11 @@ def create_app() -> FastAPI:
     app.state.version = __version__
     # URL interne du Flux 1 : utilisee par l'ecran d'administration pour
     # pousser le seuil et lire l'etat du modele sans passer par n8n.
-    app.state.inference_url = os.getenv("INFERENCE_API_URL", "http://api-inference:8002")
+    # `inference_url` reste la racine (sonde /health) ; les routes metier
+    # vivent sous /api/inference, comme derriere la passerelle.
+    inference_base = os.getenv("INFERENCE_API_URL", "http://api-inference:8002").rstrip("/")
+    app.state.inference_url = inference_base
+    app.state.inference_api_url = f"{inference_base}/api/inference"
     app.state.rag_url = os.getenv("RAG_API_URL", "http://api-rag:8003")
 
     app.add_middleware(

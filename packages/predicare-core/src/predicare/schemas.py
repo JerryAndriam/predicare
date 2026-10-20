@@ -44,7 +44,7 @@ class InvoiceLine(BaseModel):
 
     code_acte: str = Field(min_length=2, max_length=20, description="Code de l'acte (referentiel)")
     quantite: int = Field(ge=1, le=999, description="Quantite facturablee")
-    montant_unitaire: float = Field(ge=0, le=1_000_000, description="Montant unitaire en euros")
+    montant_unitaire: float = Field(ge=0, le=10_000_000, description="Montant unitaire en ariary")
     date_acte: datetime = Field(description="Date de realisation de l'acte")
 
 

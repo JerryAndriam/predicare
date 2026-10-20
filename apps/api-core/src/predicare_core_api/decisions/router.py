@@ -155,7 +155,7 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
     prediction_id = int(payload.prediction_id)
 
     with session_scope() as session:
-        session.execute(
+        mise_a_jour = session.execute(
             text(
                 """
                 UPDATE ml.prediction SET statut = :decision, decided_by = :user,
@@ -169,7 +169,9 @@ def decider(payload: ManagerDecision, user: AlertDecider) -> dict[str, str]:
                 "now": payload.decided_at,
                 "prediction_id": prediction_id,
             },
-        ).scalar()
+        )
+        if mise_a_jour.rowcount == 0:
+            raise NotFoundError("Alerte introuvable.")
 
         session.execute(
             text(

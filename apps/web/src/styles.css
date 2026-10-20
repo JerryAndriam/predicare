@@ -5,22 +5,29 @@
    ============================================================================= */
 
 :root {
-  --fond: #f2f5f9;
+  --fond: #f0f4f8;
+  --fond-degrade: linear-gradient(135deg, #f0f4f8 0%, #e8f0f6 100%);
   --surface: #ffffff;
-  --encre: #16202c;
+  --surface-degrade: linear-gradient(180deg, #ffffff, #f8fafc);
+  --encre: #0e1a27;
   --encre-douce: #5b6776;
   --bord: #dde3eb;
+  --bord-fonce: #c5cdd6;
   --primaire: #0f766e;
   --primaire-fonce: #0b5c56;
   --primaire-clair: #e6f4f2;
+  --primaire-degrade: linear-gradient(135deg, #0f766e, #0b5c56);
   --alerte: #b42318;
   --alerte-clair: #fee4e2;
   --ok: #067647;
   --ok-clair: #dcfae6;
   --info: #1d4ed8;
   --info-clair: #e8efff;
-  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.05);
-  --rayon: 12px;
+  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.05), 0 12px 40px rgba(0,0,0,0.04);
+  --ombre-levite: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
+  --rayon: 14px;
+  --rayon-sm: 8px;
+  --transition: all 0.2s ease;
 }
 
 * {
@@ -35,11 +42,13 @@ body,
 }
 
 body {
-  background: var(--fond);
+  background: var(--fond-degrade);
   color: var(--encre);
   font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 15.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
@@ -86,9 +95,9 @@ a {
 }
 
 .entete {
-  background: #0e1a27;
+  background: linear-gradient(160deg, #0e1a27 0%, #16202c 100%);
   color: #fff;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
 }
 
 .barre-haut {
@@ -222,12 +231,9 @@ a {
   max-width: 70ch;
 }
 
-.carte {
-  background: var(--surface);
-  border: 1px solid var(--bord);
-  border-radius: var(--rayon);
-  box-shadow: var(--ombre);
-  padding: 1.1rem 1.2rem 1.25rem;
+.carte:hover {
+  box-shadow: var(--ombre-levite);
+  transform: translateY(-2px);
 }
 
 .carte-entete {
@@ -262,14 +268,15 @@ a {
 .bouton {
   background: #fff;
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--encre);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
-  padding: 0.5rem 0.9rem;
+  padding: 0.55rem 1rem;
   text-decoration: none;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: var(--transition);
+  box-shadow: 0 1px 2px rgba(16,24,40,0.04);
 }
 
 .bouton:hover {
@@ -282,13 +289,17 @@ a {
 }
 
 .bouton.principal {
-  background: var(--primaire);
-  border-color: var(--primaire);
+  background: var(--primaire-degrade);
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
   color: #fff;
+  letter-spacing: 0.01em;
 }
 
 .bouton.principal:hover {
-  background: var(--primaire-fonce);
+  background: linear-gradient(135deg, #0b5c56, #0a4e48);
+  box-shadow: 0 4px 16px rgba(15, 118, 110, 0.35);
+  transform: translateY(-1px);
 }
 
 .bouton.discret {
@@ -311,9 +322,14 @@ a {
 }
 
 .bouton.danger {
-  background: var(--alerte-clair);
+  background: linear-gradient(135deg, #fee4e2, #ffd5d0);
   border-color: #f3b6b0;
-  color: var(--alerte);
+  color: #b42318;
+}
+
+.bouton.danger:hover {
+  background: linear-gradient(135deg, #ffd5d0, #fcb5aa);
+  border-color: var(--alerte);
 }
 
 .bouton.large {
@@ -413,7 +429,7 @@ a {
 .formulaire {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 1rem;
 }
 
 .champ {
@@ -543,10 +559,13 @@ textarea {
 .badge {
   border-radius: 999px;
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  padding: 0.16rem 0.6rem;
+  letter-spacing: 0.015em;
+  padding: 0.24rem 0.7rem;
   white-space: nowrap;
+  transition: var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 .badge.neutre {
@@ -669,15 +688,26 @@ textarea {
 
 .score-bloc {
   align-items: baseline;
+  background: linear-gradient(135deg, var(--primaire-clair), #fff);
+  border: 1px solid var(--bord);
+  border-radius: 14px;
+  box-shadow: var(--ombre);
   display: flex;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.6rem;
 }
 
 .score-valeur {
+  background: linear-gradient(135deg, var(--primaire), #0b5c56);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   color: var(--primaire);
-  font-size: 2.1rem;
+  font-size: 2.4rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 .score-legende {
