@@ -178,21 +178,30 @@ Attendu :
   "items": [
     {
       "facture_id": "FAC-...",
-      "assure_pseudonyme": "...",
-      "prestataire_id": "PRS-...",
-      "montant_total": 120000,
-      "date_facture": "2025-...",
-      "statut": "remboursee"
+      "assure_pseudonyme": "assr_...",
+      "prestataire_id": "PRE-00001",
+      "montant_total": 224000,
+      "montant_eligible": 224000,
+      "montant_pris_en_charge": 150000,
+      "reste_a_charge": 74000,
+      "date_facture": "2026-07-22T01:00:00+02:00",
+      "statut": "PAYEE"
     }
   ],
-  "total": 19,
+  "total": 27,
   "limit": 5,
   "offset": 0
 }
 ```
 
-> Le nombre exact dépend du premier dossier `core.assure`. L'important est que
-> `items` ne soit pas vide et que `total` soit cohérent.
+> Le filtre est appliqué **côté serveur**. À la connexion, le jeton contient
+> `ins = core.utilisateur.assured_id`. Pour le rôle `assure`, la requête ajoute
+> `AND f.assure_id = :assure_id`. Aucun paramètre envoyé par le navigateur ne
+> permet de changer de dossier.
+>
+> Preuve attendue : l'API renvoie le nombre de factures du dossier
+> `assure@predicare.local` (27 au 20/10/2026), pas les 84 603 factures de la
+> base. Tous les `assure_pseudonyme` renvoyés sont identiques.
 
 **SQL :**
 
@@ -204,9 +213,12 @@ WHERE a.id = (SELECT assured_id FROM core.utilisateur WHERE email='assure@predic
 
 Le résultat doit être égal à `total`.
 
-**UI :** onglet **Mes remboursements** → un tableau avec les mêmes montants et
-statuts. Si le tableau est vide alors que le SQL renvoie des lignes, le front ne
-lit pas la bonne réponse.
+**UI :** onglet **Mes remboursements** → tableau avec **Facture**, **Pris en
+charge**, **Reste à charge**, **Statut** et **Contrôle**.
+Les factures `PAYEE` doivent afficher `Remboursee` et des montants ; les
+factures `recue` affichent `—` tant qu'elles ne sont pas traitées.
+Si le tableau est vide alors que le SQL renvoie des lignes, le front ne lit pas
+la bonne réponse.
 
 #### `POST /api/rag/question`
 
@@ -572,8 +584,7 @@ Invoke-WebRequest -Uri "http://localhost:8080/api/core/alertes/file" -Headers $h
 
 ## 7. Corrections déjà appliquées (19/10/2026)
 
-Cinq bugs d'intégration ont été trouvés en exécutant ce plan. Ils sont
-corrigés :
+Six écarts ont été trouvés en exécutant ce plan. Ils sont corrigés :
 
 | # | Symptôme | Cause | Correctif |
 |---|---|---|---|
@@ -582,14 +593,21 @@ corrigés :
 | 3 | `POST /alertes/decision` → **500** | `.scalar()` appelé sur un `UPDATE` (SQLAlchemy 2.1 refuse) | `rowcount` + contrôle « alerte introuvable » |
 | 4 | **422** sur presque toutes les factures | plafond métier à 10 000 MGA alors que les actes vont jusqu'à 2 500 000 MGA | plafond porté à 10 000 000 MGA (schéma + validation) |
 | 5 | `POST /audit/evenement` → **500** | psycopg n'adapte pas un `dict` Python à une colonne `jsonb` | sérialisation JSON + `CAST(:details AS jsonb)` |
+| 6 | Onglet **Remboursements** sans montants, statuts `PAYEE`/`REJETEE` bruts, `is_fraud=null` affiché « Clair » | l'API ne renvoyait pas les montants de prise en charge ; le front ne normalisait pas la casse | ajout de `montant_eligible`, `montant_pris_en_charge`, `reste_a_charge` ; statuts normalisés ; badge « Non controle » si aucune prédiction |
 
 Vérification après correction :
 
-- script automatique : **21 OK / 0 KO** ;
+- script automatique : **24 OK / 0 KO** ;
 - `CONS-GEN` à 20 000 MGA → **202**, score `0.149546`, `is_fraud=false` ;
 - `ACC-CESAR` à 2 500 000 MGA → **202**, score `0.999947`, `is_fraud=true` ;
 - `POST /audit/evenement` → `{"status":"ok"}`, puis `audit.journal` contient
-  l'entrée `admin / test_plan / documentation`.
+  l'entrée `admin / test_plan / documentation` ;
+- `GET /factures` avec le jeton de `assure@predicare.local` → **27 factures**
+  sur **84 603** en base, toutes avec le même pseudonyme, et les montants
+  `montant_pris_en_charge` / `reste_a_charge` renseignés pour les `PAYEE` ;
+- UI assuré : colonnes **Facture / Pris en charge / Reste à charge**, statut
+  `Remboursee` pour `PAYEE`, `—` pour les factures non traitées, badge
+  `Non controle` quand aucune prédiction n'existe.
 
 ---
 

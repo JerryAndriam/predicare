@@ -54,6 +54,9 @@ class InvoiceSummary(BaseModel):
     prestataire_id: str
     date_facture: datetime
     montant_total: float
+    montant_eligible: float | None = None
+    montant_pris_en_charge: float | None = None
+    reste_a_charge: float | None = None
     statut: str
     score_fraude: float | None = None
     is_fraud: bool | None = None
@@ -287,6 +290,7 @@ def list_invoices(
                     f"""
                 SELECT f.id::text AS facture_id, a.pseudonyme AS assure_pseudonyme,
                        pr.code AS prestataire_id, f.date_facture, f.montant_total,
+                       f.montant_eligible, f.montant_pris_en_charge, f.reste_a_charge,
                        f.statut, p.score_fraude, p.is_fraud
                 FROM core.facture f
                 JOIN core.assure a ON a.id = f.assure_id

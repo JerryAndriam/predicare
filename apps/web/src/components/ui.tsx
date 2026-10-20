@@ -77,6 +77,11 @@ export function montant(valeur: number): string {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(valeur) + ' Ar'
 }
 
+/** Montant facultatif : les factures non traitees n'ont pas encore de prise en charge. */
+export function montantOuTiret(valeur: number | null | undefined): string {
+  return valeur === null || valeur === undefined ? '—' : montant(valeur)
+}
+
 export function dateCourte(iso: string | null): string {
   if (iso === null) return '-'
   const date = new Date(iso)
