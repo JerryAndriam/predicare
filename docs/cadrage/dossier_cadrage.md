@@ -200,7 +200,7 @@ L'économie est un **coût de contrôle évité**, pas une fraude recouvrée. El
 mesure ce que la plateforme fait gagner par rapport à un contrôle exhaustif,
 à qualité de détection égale.
 
-**Projection annuelle.** Le jeu d'entraînement contient 84 593 factures ; le
+**Projection annuelle.** Le jeu de données contient 84 593 factures ; le
 jeu de test en contient 10 086, soit un facteur 8,387. À taux de fraude et à
 coût unitaire constants, l'économie annuelle serait de **190,0 millions MGA**
 (22 656 000 × 8,387), soit **2 246 MGA par facture**. C'est une extrapolation,
@@ -819,7 +819,7 @@ Le cache est donc un accélérateur, pas une promesse.
 | Coût faux positif | 3 000 MGA | Coût d'un contrôle |
 | Coût faux négatif | 30 000 MGA | Fraude non détectée |
 | Taux de fraude du test | 8,7 % | 878 / 10 086 |
-| Volume annuel | 84 593 factures | Jeu d'entraînement |
+| Volume annuel | 84 593 factures | Jeu de données |
 
 ### Références externes
 
