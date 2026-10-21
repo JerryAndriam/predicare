@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { api, apiFormData, messageErreur } from '../../api/client'
 import type { InvoiceInput, Prediction, References, ShapContribution } from '../../api/types'
@@ -37,6 +38,8 @@ interface ResultatLot {
   seuil_applique?: number | null
   prediction_id?: number | null
   shap?: ShapContribution[] | null
+  notification_envoye?: boolean | null
+  notification_message?: string | null
   champ?: string | null
 }
 
@@ -50,6 +53,8 @@ interface ItemImport {
   seuil_applique: number | null
   prediction_id: number | null
   shap: ShapContribution[] | null
+  notification_envoye: boolean | null
+  notification_message: string | null
   message: string
   champ?: string | null
 }
@@ -257,6 +262,7 @@ export function ImportLotPage() {
   // et l'aide changent, le traitement est identique.
   const { profile } = useAuth()
   const estAdmin = profile?.role === 'administrateur'
+  const navigate = useNavigate()
 
   const [references, setReferences] = useState<References | null>(null)
   const [prestataire, setPrestataire] = useState('')
@@ -511,6 +517,8 @@ export function ImportLotPage() {
         seuil_applique: item.seuil_applique,
         prediction_id: item.prediction_id,
         shap: item.shap,
+        notification_envoye: item.notification_envoye,
+        notification_message: item.notification_message,
         champ: item.champ,
       }))
       setLotResultats(bilan)
@@ -847,6 +855,18 @@ export function ImportLotPage() {
         )}
 
         {lotResultats.length > 0 && (
+          <div className="boutons-ligne" style={{ marginBottom: 'var(--espace-3)' }}>
+            <button
+              type="button"
+              className="bouton discret"
+              onClick={() => navigate('/professionnel/suivi')}
+            >
+              Voir dans le suivi des dossiers
+            </button>
+          </div>
+        )}
+
+        {lotResultats.length > 0 && (
           <div className="table-enveloppe">
             <table className="table table-dense">
               <caption className="visuellement-cache">
@@ -954,6 +974,15 @@ export function ImportLotPage() {
                   <div>
                     <dt>Champ fautif</dt>
                     <dd className="mono">{detail.champ}</dd>
+                  </div>
+                )}
+                {detail.notification_envoye !== null && detail.notification_envoye !== undefined && (
+                  <div>
+                    <dt>Notification</dt>
+                    <dd>
+                      {detail.notification_envoye ? '✓ alerte envoyée' : 'ℹ non envoyée'}
+                      {detail.notification_message ? ` — ${detail.notification_message}` : ''}
+                    </dd>
                   </div>
                 )}
                 <div>

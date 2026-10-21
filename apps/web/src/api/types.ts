@@ -38,8 +38,10 @@ export interface Profile {
 
 export interface InvoiceSummary {
   facture_id: string
+  reference: string | null
   assure_pseudonyme: string
   prestataire_id: string
+  prestataire_nom: string | null
   date_facture: string
   montant_total: number
   montant_eligible: number | null

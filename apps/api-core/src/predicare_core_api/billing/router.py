@@ -61,8 +61,10 @@ class InvoiceSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     facture_id: str
+    reference: str | None = None
     assure_pseudonyme: str
     prestataire_id: str
+    prestataire_nom: str | None = None
     date_facture: datetime
     montant_total: float
     montant_eligible: float | None = None
@@ -210,6 +212,8 @@ class ImportItem(BaseModel):
     seuil_applique: float | None = None
     prediction_id: int | None = None
     shap: list[ShapContribution] | None = None
+    notification_envoye: bool | None = None
+    notification_message: str | None = None
     message: str = ""
     champ: str | None = None
 
@@ -379,6 +383,8 @@ def _importer_un_pdf(
             seuil_applique=resultat.seuil_applique,
             prediction_id=resultat.prediction_id,
             shap=resultat.shap,
+            notification_envoye=getattr(resultat, "notification", {}).get("envoye") if isinstance(getattr(resultat, "notification", None), dict) else None,
+            notification_message=getattr(resultat, "notification", {}).get("message") if isinstance(getattr(resultat, "notification", None), dict) else None,
             message=(f"score {resultat.score_fraude:.4f} / seuil {resultat.seuil_applique:.4f}"),
         )
     except pdf_facture.PdfSansTexteError:
@@ -396,6 +402,17 @@ def _importer_un_pdf(
         )
     except pdf_facture.FactureIllisibleError as exc:
         return _echec(nom, str(exc) or "Facture illisible.", reference)
+    except ForbiddenError as exc:
+        return ImportItem(
+            fichier=nom,
+            statut="rejetee",
+            reference=reference,
+            message=(
+                "Ce PDF porte un prestataire different du votre : un professionnel "
+                "ne peut importer que ses propres factures. (champ : prestataire_id)"
+            ),
+            champ="prestataire_id",
+        )
     except PrediCareError as exc:
         return ImportItem(
             fichier=nom,
@@ -794,8 +811,8 @@ def list_invoices(
         # Les statuts sont en majuscules, partout : le filtre compare donc
         # directement, sans passer par `upper()` qui empecherait d'indexer
         # la colonne.
-        where += " AND f.statut = :statut"
-        params["statut"] = statut.strip().upper()
+        where += " AND LOWER(f.statut) = LOWER(:statut)"
+        params["statut"] = statut.strip()
     if prestataire is not None and prestataire.strip():
         where += " AND pr.code = :prestataire_code"
         params["prestataire_code"] = prestataire.strip()
@@ -818,8 +835,10 @@ def list_invoices(
             session.execute(
                 text(
                     f"""
-                SELECT f.id::text AS facture_id, a.pseudonyme AS assure_pseudonyme,
-                       pr.code AS prestataire_id, f.date_facture, f.montant_total,
+                SELECT f.id::text AS facture_id, f.reference AS reference,
+                       a.pseudonyme AS assure_pseudonyme,
+                       pr.code AS prestataire_id, pr.nom AS prestataire_nom,
+                       f.date_facture, f.montant_total,
                        f.montant_eligible, f.montant_pris_en_charge, f.reste_a_charge,
                        f.statut, p.score_fraude, p.is_fraud
                 FROM core.facture f
@@ -1248,8 +1267,10 @@ def detail_facture(facture_id: str, user: ReadUser) -> FactureDetail:
             session.execute(
                 text(
                     """
-                SELECT f.id::text AS facture_id, a.pseudonyme AS assure_pseudonyme,
-                       pr.code AS prestataire_id, f.date_facture, f.montant_total,
+                SELECT f.id::text AS facture_id, f.reference AS reference,
+                       a.pseudonyme AS assure_pseudonyme,
+                       pr.code AS prestataire_id, pr.nom AS prestataire_nom,
+                       f.date_facture, f.montant_total,
                        f.montant_eligible, f.montant_pris_en_charge, f.reste_a_charge,
                        f.statut, p.score_fraude, p.is_fraud, p.seuil_applique,
                        p.model_version

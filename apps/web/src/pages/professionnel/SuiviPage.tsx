@@ -21,12 +21,11 @@ const LIMITE_SUIVI = 100
 
 /** Statuts de facture proposes dans le filtre du suivi. */
 const STATUTS_AFFICHES: { valeur: string; libelle: string }[] = [
-  { valeur: 'reçue', libelle: 'Reçue' },
-  { valeur: 'en_cours', libelle: 'En cours' },
-  { valeur: 'payee', libelle: 'Payée' },
-  { valeur: 'rejetée', libelle: 'Rejetée' },
-  { valeur: 'fraude_confirmee', libelle: 'Fraude confirmée' },
-  { valeur: 'piece_demandee', libelle: 'Pièce demandée' },
+  { valeur: 'recue', libelle: 'Reçue' },
+  { valeur: 'EN_COURS', libelle: 'En cours' },
+  { valeur: 'PAYEE', libelle: 'Payée' },
+  { valeur: 'REJETEE', libelle: 'Rejetée' },
+  { valeur: 'PIECE_DEMANDEE', libelle: 'Pièce demandée' },
 ]
 
 /**
@@ -121,6 +120,7 @@ export function SuiviPage() {
                 </caption>
                 <thead>
                   <tr>
+                    <th scope="col">Référence</th>
                     <th scope="col">Date</th>
                     <th scope="col">Assuré</th>
                     <th scope="col">Prestataire</th>
@@ -136,9 +136,12 @@ export function SuiviPage() {
                 <tbody>
                   {factures.map((facture) => (
                     <tr key={facture.facture_id}>
+                      <td className="mono">{facture.reference ?? facture.facture_id}</td>
                       <td>{dateCourte(facture.date_facture)}</td>
                       <td className="mono">{facture.assure_pseudonyme}</td>
-                      <td className="mono">{facture.prestataire_id}</td>
+                      <td className="mono" title={facture.prestataire_nom ?? undefined}>
+                        {facture.prestataire_nom ?? facture.prestataire_id}
+                      </td>
                       <td className="droite">{montant(facture.montant_total)}</td>
                       <td className="droite">
                         {facture.score_fraude === null
