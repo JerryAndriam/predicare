@@ -8,12 +8,10 @@
 # =============================================================================
 
 http:
-
   # --------------------------------------------------------------------
   # Middlewares
   # --------------------------------------------------------------------
   middlewares:
-
     # Superset sert ses pages a la racine (`/dashboard/...`, `/health`).
     # La passerelle expose le tableau sous `/bi` : sans retrait du prefixe,
     # Superset recoit `/bi/dashboard/...` et repond 404. Les autres routes
@@ -57,7 +55,6 @@ http:
   # Routage
   # --------------------------------------------------------------------
   routers:
-
     # ---- Flux 3 et socle -------------------------------------------------
     predicare-core:
       entryPoints: [web]
@@ -101,19 +98,6 @@ http:
       priority: 200
       middlewares:
         - predicare-headers
-        - predicare-rate-limit
-
-    # ---- Chemins absolus emis par Superset -------------------------------
-    # Superset 6.1 genere `/static`, `/api/v1`, `/login`, `/superset` et
-    # `/embedded` a la racine. Sans ces routes, l'iframe chargee sous `/bi`
-    # demande ses assets et son API a l'application web, qui repond en HTML
-    # ou 404. On les route vers le meme service BI, sans les en-tetes de
-    # l'application (sinon X-Frame-Options: DENY bloque l'iframe).
-    predicare-bi-root:
-      entryPoints: [web]
-      rule: "PathPrefix(`/superset`) || PathPrefix(`/static`) || PathPrefix(`/api/v1`) || PathPrefix(`/login`) || PathPrefix(`/embedded`)"
-      service: predicare-bi
-      priority: 10
 
     # ---- Interface : tout le reste ---------------------------------------
     predicare-web:
@@ -129,14 +113,22 @@ http:
     # Superset est PROXYFIE par la passerelle sous `/bi` plutot que
     # d'etre ouvert sur un autre port. Deux raisons :
     #   1. l'iframe du tableau de bord est alors de MEME ORIGINE que
-    #      l'application, donc la CSP reste `frame-src 'self'` : aucune
-    #     .derogation a accorder a un tiers ;
+    #      l'application : `frame-ancestors 'self'` suffirait, et aucun tiers
+    #      n'a de derogation a obtenir ;
     #   2. l'utilisateur reste sur une seule URL, ce qui est le principe
     #      affiche de la plateforme (« une seule origine »).
     # Le service n'existe que si le profil `bi` est demarre : sinon la
     # passerelle repond 502 et l'ecran affiche son repli.
-    # Aucun `predicare-headers` ici : Superset doit pouvoir etre affiche
-    # dans l'iframe de l'application (X-Frame-Options: SAMEORIGIN).
+    #
+    # CE ROUTEUR N'A VOLONTAIREMENT PAS `predicare-headers` : Superset doit
+    # garder SA politique de securite (X-Frame-Options SAMEORIGIN + CSP a
+    # nonce). La notre l'ecraserait et casserait a la fois l'iframe et ses
+    # scripts. Le tableau reste protege : il est de meme origine, servi
+    # uniquement derriere la passerelle, et Superset exige une authentification.
+    #
+    # Historique, pour ne pas refaire l'erreur : ces deux middlewares etaient
+    # declares en DEFAUT d'entrypoint, donc appliques ici aussi. L'iframe
+    # refusait alors de s'afficher (« localhost n'autorise pas la connexion »).
     predicare-bi:
       entryPoints: [web]
       rule: "PathPrefix(`/bi`)"
@@ -144,6 +136,29 @@ http:
       priority: 10
       middlewares:
         - predicare-bi-strip
+
+    # ---- Fichiers statiques de Superset ---------------------------------
+    # Son bundle webpack porte un `publicPath` FIGE a `/static/assets/` : les
+    # morceaux de code charges a la demande (graphiques, editeur de tableau)
+    # sont donc demandes a la racine, hors de l'espace `/bi`.
+    #
+    # Sans cette route, ces requetes tombaient sur l'application React, qui
+    # repond `index.html` avec un code 200 : le navigateur recevait du HTML la
+    # ou il attendait du JavaScript, et la page Superset restait blanche sans
+    # la moindre erreur visible.
+    #
+    # `/static` n'est utilise par AUCUNE autre brique : l'interface sert ses
+    # fichiers sous `/assets`. La route est donc sans conflit. Elle n'applique
+    # ni `predicare-headers` ni `predicare-rate-limit`, pour la meme raison que
+    # `/bi` : Superset doit garder ses propres en-tetes, et un tableau de bord
+    # envoie beaucoup de requetes d'un coup.
+    #
+    # Priorite 20 : devant le fourre-tout `predicare-web` (priorite 1).
+    predicare-bi-static:
+      entryPoints: [web]
+      rule: "PathPrefix(`/static`)"
+      service: predicare-bi
+      priority: 20
 
   services:
     predicare-core:

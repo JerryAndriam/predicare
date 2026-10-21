@@ -87,6 +87,58 @@ FEATURE_FLAGS = {
 ROW_LIMIT = 10_000
 SAMPLES_ROW_LIMIT = 1000
 
+# ---------------------------------------------------------------------------
+# Prefixe `/bi` : Superset est servi DERRIERE la passerelle, pas a la racine.
+#
+# Deux mecanismes, qui repondent a deux problemes distincts.
+#
+# 1. COTE SERVEUR — `ProxyFix` lit `X-Forwarded-Prefix` (que Traefik pose
+#    automatiquement a cote du middleware `stripPrefix`) et le place dans
+#    `SCRIPT_NAME`. Sans lui, `GET /bi/superset/dashboard/...` repondait
+#    `Location: /login/?next=...`, SANS le prefixe : le navigateur sortait de
+#    l'espace `/bi` et l'iframe echouait sur l'application React.
+#
+# 2. COTE NAVIGATEUR — `FLASK_APP_MUTATOR` publie `application_root = "/bi"`
+#    dans les donnees d'amorcage de l'interface. Sans cela, le routeur React
+#    de Superset compare `window.location.pathname` (`/bi/login/`) a ses
+#    propres routes (`/login/`) : aucune ne correspond, et il affiche la page
+#    d'accueil anonyme au lieu du formulaire de connexion.
+#
+# On passe par le mutateur plutot que par `APPLICATION_ROOT` directement :
+# renseigner `APPLICATION_ROOT` en configuration aurait active le middleware
+# `AppRootMiddleware` de Superset, qui exige que le chemin recu commence par
+# `/bi` — alors que Traefik le retire deja. Les deux se seraient annules.
+#
+# `APPLICATION_ROOT` est donc pose APRES la creation de l'application, quand
+# la decision d'installer ce middleware est deja prise.
+# ---------------------------------------------------------------------------
+ENABLE_PROXY_FIX = True
+PROXY_FIX_CONFIG = {
+    "x_for": 1,
+    "x_proto": 1,
+    "x_host": 1,
+    "x_port": 1,
+    "x_prefix": 1,
+}
+
+
+def _declarer_prefixe_bi(app: "Flask") -> None:  # noqa: F821
+    """Annonce le prefixe `/bi` a l'interface, sans middleware WSGI."""
+    app.config["APPLICATION_ROOT"] = "/bi"
+
+
+FLASK_APP_MUTATOR = _declarer_prefixe_bi
+
+# Le cookie de session doit rester valable quelle que soit l'URL d'acces :
+# Flask deduit son `Path` de `SESSION_COOKIE_PATH`, et a defaut de
+# `APPLICATION_ROOT`. Sans ces deux lignes il serait ecrit `Path=/bi`, donc
+# absent des appels directs au conteneur (`SUPERSET_URL=http://superset:8088`,
+# utilise par `make bi-dashboard`) : l'API repondait alors
+# « The CSRF session token is missing » et l'archive ne pouvait plus etre
+# rejouee. Le prefixe reste gere par `ProxyFix`, pas par le cookie.
+SESSION_COOKIE_PATH = "/"
+REMEMBER_COOKIE_PATH = "/"
+
 LOG_LEVEL = os.environ.get("SUPERSET_LOG_LEVEL", "INFO")
 
 # Repertoire de travail persistant : sans cela, les dashboards crees dans

@@ -48,11 +48,11 @@ export function LoginPage() {
         <section className="login-presentation">
           <span className="marque">
             <span className="marque-point" aria-hidden="true" />
-            PrediCare
+            KolikolyCare
           </span>
           <h1>La bonne facture, au bon moment.</h1>
           <p>
-            PrediCare est la plateforme de tiers payant qui relie les professionnels de
+            KolikolyCare est la plateforme de tiers payant qui relie les professionnels de
             santé, les caisses et les assureurs : chaque facture est vérifiée, notée,
             expliquée, puis décidée par un gestionnaire.
           </p>

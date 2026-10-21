@@ -285,7 +285,7 @@ export function RagAssistant() {
 
   return (
     <Carte
-      titre="Assistant PrediCare"
+      titre="Assistant KolikolyCare"
       actions={
         <button
           type="button"
