@@ -105,7 +105,7 @@ contient le lot de 20 factures F17 (7 alertes) et les rejeux e2e, pas un
 echantillon de production. Le rapport fait donc son travail — il signale que
 la population servie ne ressemble plus a l'historique — et l'effectif
 `observations_courantes: 18` permet de l'interpreter. Le front ne consomme pas
-encore cet endpoint (voir `docs/analyse_front_vs_cdc.md`).
+encore cet endpoint (voir `docs/livrables/04_securite.md`).
 
 ## Points de securite et de robustesse
 
@@ -115,16 +115,8 @@ encore cet endpoint (voir `docs/analyse_front_vs_cdc.md`).
   d'administration s'applique a la facture suivante.
 - Le conteneur execute l'utilisateur `predicare`, pas root.
 
-## Brouillon / TODO
+## Reste à faire
 
-- [x] Persister predictions et explications SHAP dans `ml.prediction`
-  (`router.py` ; le peuplement de l'historique est le job `make noter`)
-- [ ] Agregations SQL d'historique pour la featurisation — **pas un bug** :
-  le modele servi a 32 variables, aucune n'est une agregation. Les ajouter
-  impose un re-entrainement v3 et la requete d'historique qui va avec.
-- [x] Persistance du rapport de derive calcule par le worker
-  (`derive.py`, `ml.rapport_derive`, `GET /api/inference/derive`)
-- [x] Test de robustesse sur 20 factures inedites (Phase 8.1, lot F17)
-- [x] Tests unitaires sur la validation (priorite haute)
-
-Proprietaire : Mirado
+- [ ] Agrégations SQL d'historique pour la featurisation — **ce n'est pas un
+  bug** : le modèle servi a 32 variables, aucune n'est une agrégation. Les
+  ajouter impose un ré-entraînement v3 et la requête d'historique qui va avec.

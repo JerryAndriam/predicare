@@ -63,7 +63,7 @@ fi
 # workflows : on le decompose pour que chacun soit son propre fichier,
 # versionnable et lisible en revue de code.
 if ! docker exec "$CONTENEUR" cat "$SORTIE_CONTENEUR" 2>/dev/null \
-    | python3 "$RACINE/scripts/split-workflows.py" "$CIBLE"; then
+    | python3 "$RACINE/scripts/split_workflows.py" "$CIBLE"; then
     err "Aucun workflow n'a pu etre decompose."
     exit 1
 fi

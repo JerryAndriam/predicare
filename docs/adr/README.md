@@ -37,10 +37,8 @@ Ce que la décision rend facile, difficile, ou impossible.
 | ADR-006 | Base n8n et Superset créées par le job de migration | `docker compose up` fonctionne sur une machine vierge |
 | ADR-007 | Comptes SQL `predicare_ro` et `superset_ro` séparés | Un rôle volé à l'agent n'ouvre pas les tableaux de bord, et l'inverse |
 
-## Brouillon / TODO
+## Reste à faire
 
-- [ ] Rédiger les ADR-001 à ADR-007 au format ci-dessus
-- [ ] ADR sur le choix du seuil de décision et son compromis
-- [ ] ADR sur la réécriture du `.env` : rupture de la connexion base
-
-Propriétaire : Jerry
+- [ ] Rédiger les ADR-001 à ADR-007 au format ci-dessus.
+- [ ] ADR sur le choix du seuil de décision et son compromis.
+- [ ] ADR sur la réécriture du `.env` : rupture de la connexion base.

@@ -311,6 +311,14 @@ bi-graphiques: ## Verifie que chaque graphique rend une requete reussie
 readme: ## Verifie que le README documente exactement les commandes de make help
 	@python3 scripts/check_readme_commandes.py
 
+.PHONY: figures
+figures: ## Genere les figures de la presentation (modele, ROI, conformite)
+	@uv run python scripts/figures_ml.py --sortie $(or $(SORTIE),docs/livrables/figures)
+
+.PHONY: captures
+captures: ## Capture les ecrans de la presentation (N8N_MDP=... et N8N_EMAIL=... pour le compte n8n)
+	@cd apps/web && N8N_MDP="$(N8N_MDP)" N8N_EMAIL="$(N8N_EMAIL)" node scripts/captures.mjs
+
 # =============================================================================
 # EXPLOITATION
 # =============================================================================

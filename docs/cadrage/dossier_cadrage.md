@@ -41,7 +41,7 @@ leur exploitation.
 | Économie de coût de contrôle sur le jeu de test |             **22 656 000 MGA** | `reports/modele_v2.md`                         |
 | Fidélité / citation / exactitude du RAG         |        **30/30, 20/20, 26/26** | `reports/eval_rag_2026-10-19_5.json`           |
 | Coût LLM par requête RAG                        | **0,00064 USD** (~0,00059 EUR) | `apps/api-rag/README.md`, moyenne 30 questions |
-| Tests automatisés                               |     **693 passés, 18 ignorés** | `make test`, 21/10/2026                        |
+| Tests automatisés                               |     **784 passés, 18 ignorés** | `make test`, 21/10/2026                        |
 
 **La décision de cadrage**
 
@@ -55,17 +55,20 @@ production.
 **Les trois écarts à traiter avant production**
 
 1. **Politique de conservation et droits des personnes** : les durées sont
-   désormais codées (3/10/5 ans) et les droits d'export, rectification,
-   opposition et effacement sont implémentés. La purge reste manuelle, le droit
-   à la limitation manque, et les sauvegardes ne sont pas purgées immédiatement.
+   désormais codées (3/10/5 ans), appliquées par une purge planifiée, et les
+   droits d'export, rectification, opposition et effacement sont implémentés.
+   Le droit à la limitation manque, et les sauvegardes ne sont pas purgées
+   immédiatement.
 2. **Durcissement de l'exploitation** : les sauvegardes sont chiffrées lorsque
    la clé est fournie, la rotation des clés est outillée, la connexion est auditée, le périmètre
    prestataire est filtré et un test d'intrusion existe. TLS reste à activer en
-   production, MFA et alertes Grafana restent à ajouter, et l'état Dependabot
-   doit être vérifié sur GitHub.
-3. **Dossier AI Act formel** : registre des risques, documentation Annexe IV,
-   évaluation de conformité, marquage CE et enregistrement ne sont pas encore
-   produits. La présente note est la trame, pas la certification.
+   production, MFA reste à ajouter, les règles d'alerte Prometheus et les
+   tableaux de bord Grafana sont désormais versionnés dans le dépôt, et l'état
+   Dependabot doit être vérifié sur GitHub.
+3. **Dossier AI Act formel** : le registre des risques est produit
+   (`docs/cadrage/registre_risques.md`), la documentation Annexe IV, l'évaluation
+   de conformité, le marquage CE et l'enregistrement ne le sont pas encore. La
+   présente note est la trame, pas la certification.
 
 **Ce que le dossier ne prétend pas**
 
@@ -88,7 +91,7 @@ sur un volume annuel explicitement signalé.
 
 | Élément                               | Nature                     | Source                                                                      |
 | ------------------------------------- | -------------------------- | --------------------------------------------------------------------------- |
-| Mémoire de la pile                    | Mesuré                     | `make up` ~4,5 Go ; `make up-all` ~6,5 Go (`README.md`)                     |
+| Mémoire de la pile                    | Mesuré                     | `make up` ~2 Go en usage, ~5,8 Go de limites ; `make up-all` ~8,9 Go de limites (`docker stats`, `docker-compose.yml`) |
 | Base de données                       | Mesuré                     | 110 Mo, 84 608 factures, 5 528 prédictions (`psql`)                         |
 | Sauvegarde compressée                 | Mesuré                     | 12 659 763 octets pour une base de 110 Mo (`pg_dump`)                       |
 | Tokens RAG                            | Mesuré                     | 111 742 tokens pour 30 questions (`eval_rag_2026-10-19_5.json`)             |
@@ -99,10 +102,11 @@ sur un volume annuel explicitement signalé.
 
 ## 1.2 Coût d'infrastructure
 
-La pile complète tient dans **6,5 Go** de mémoire ; le socle `make up` tourne
-dans **4,5 Go**. Une machine de démonstration 8 Go / 4 vCPU / 80 Go suffit donc
-pour la démo, avec une marge étroite si l'on ajoute les overlays. Le scénario
-de base retient ce dimensionnement.
+En usage réel, la pile complète consomme environ **2 Go** de mémoire ; le socle
+`make up` tourne dans environ **0,8 Go**. Les limites déclarées dans les
+fichiers Compose sont plus larges (5,8 Go pour le noyau, 8,9 Go pour la pile
+complète). Une machine de démonstration 8 Go / 4 vCPU / 80 Go suffit donc pour
+la démo. Le scénario de base retient ce dimensionnement.
 
 | Poste                                                 |            Base |          Stress | Commentaire                                     |
 | ----------------------------------------------------- | --------------: | --------------: | ----------------------------------------------- |
@@ -183,10 +187,12 @@ démonstration pèse **12,66 Mo** ; 14 sauvegardes représentent **177 Mo**.
 | Volume conservé                    |     ~177 Mo |
 | Coût de stockage                   | < 0,12 €/an |
 
-La procédure de restauration est documentée (`db/backup/README.md`, cible
+La procédure de restauration est documentée (`db/backup/pg_restore.sh`, cible
 `make restore`). Elle n'a pas été rejouée dans ce dossier : le test de
-restauration complet reste une action de recette avant production. La
-sauvegarde n'est pas chiffrée aujourd'hui : c'est un écart identifié en 5.8.
+restauration complet reste une action de recette avant production. L'archive
+est chiffrée lorsque la clé est présente (AES-256-CBC, PBKDF2 200 000
+itérations) ; sans clé, elle reste en clair — un choix d'exploitation qui
+doit être assumé explicitement, pas un défaut silencieux.
 
 ## 1.5 TCO consolidé
 
@@ -227,6 +233,15 @@ Le coût métier est la somme des contrôles inutiles et des fraudes manquées :
 
 - faux positif : 3 000 MGA (coût d'un contrôle) ;
 - faux négatif : 30 000 MGA (fraude non détectée).
+
+Le choix du modèle est justifié par une comparaison à trois bases de décision,
+produite sur le même découpage temporel et les mêmes variables
+(`reports/baselines_v2.md`) : les règles déterministes seules atteignent un
+rappel de 0,6595, la régression logistique 0,8747, le modèle à arbres 0,8838 et
+l'union « règles + modèle » 0,9260. Le modèle retenu est celui qui minimise le
+coût métier. Cette comparaison porte sur un modèle ré-entraîné pour
+l'occasion, pas sur l'artefact de production : elle compare des approches, elle
+ne remplace pas la matrice de confusion ci-dessous.
 
 | Scénario        | Calcul                     |               Coût |
 | --------------- | -------------------------- | -----------------: |
@@ -337,8 +352,11 @@ production. Le dossier fournit la matière pour les établir.
 | Audit et décisions          | Gestionnaires, administrateurs | Acteur, rôle, action, décision            | Traçabilité, conformité   | Obligation légale (art. 6.1.c)                           | 5 ans (proposition)             |
 | Sauvegardes                 | Tous                           | Copie de la base                          | Continuité                | Intérêt légitime                                         | 14 jours                        |
 
-La colonne « conservation » est une **proposition** : elle n'est pas encore
-appliquée par le code. C'est l'écart principal de la partie RGPD.
+La colonne « conservation » n'est plus une proposition : les durées sont
+codées (`predicare_core_api.rgpd.conservation`) et appliquées par une purge
+planifiée, journalisée. L'écart principal de la partie RGPD est désormais
+ailleurs : droit à la limitation, sort des sauvegardes, désignation du DPO,
+AIPD et contrats de sous-traitance.
 
 ## 2.3 Bases légales
 
@@ -381,23 +399,29 @@ et doit être testée avant production.
 
 La purge des **données métier** est implémentée dans
 `predicare_core_api.rgpd.purge`, avec les durées **3 ans** pour les prédictions,
-**10 ans** pour les factures et **5 ans** pour le journal d'audit. Elle reste
-**manuelle** : `make purge` affiche l'aperçu, `make purge ARGS=--appliquer`
-exécute. Aucun ordonnanceur ne la lance aujourd'hui. Les sessions Redis expirent
-(TTL 1 h) et les sauvegardes sont rotationnées à 14 jours.
+**10 ans** pour les factures et **5 ans** pour le journal d'audit. Elle est
+**planifiée** : `api-core` lance un premier passage différé, puis un toutes les
+**24 h**, et chaque exécution réelle laisse une ligne `audit.journal`
+d'action `purge_planifiee` avec le nombre de lignes supprimées par table. La
+purge est idempotente : un second passage ne trouve plus rien à supprimer.
+Elle reste aussi déclenchable à la main — `make purge` affiche l'aperçu,
+`make purge ARGS=--appliquer` exécute — et la boucle de fond se coupe avec
+`PURGE_PLANIFIEE=0`. Les sessions Redis expirent (TTL 1 h) et les
+sauvegardes sont rotationnées à 14 jours.
 
-| Donnée              | Aujourd'hui                     | Proposition        |
-| ------------------- | ------------------------------- | ------------------ |
-| Identités chiffrées | Durée du contrat + prescription | À valider          |
-| Factures            | 10 ans, purge manuelle          | Planifier la purge |
-| Prédictions         | 3 ans, purge manuelle           | Planifier la purge |
-| Décisions et audit  | 5 ans, purge manuelle           | Planifier la purge |
-| Sessions RAG        | Redis, TTL 1 h                  | 1 h                |
-| Logs applicatifs    | Selon le volume Docker          | 30 jours           |
-| Sauvegardes         | 14 jours                        | 14 jours           |
+| Donnée              | Aujourd'hui                        | Proposition        |
+| ------------------- | ---------------------------------- | ------------------ |
+| Identités chiffrées | Durée du contrat + prescription    | À valider          |
+| Factures            | 10 ans, purge planifiée + manuelle | Garder la trace    |
+| Prédictions         | 3 ans, purge planifiée + manuelle  | Garder la trace    |
+| Décisions et audit  | 5 ans, purge planifiée + manuelle  | Garder la trace    |
+| Sessions RAG        | Redis, TTL 1 h                     | 1 h                |
+| Logs applicatifs    | Selon le volume Docker              | 30 jours           |
+| Sauvegardes         | 14 jours                           | 14 jours           |
 
-**Action** : planifier la purge, ajouter un test qui vérifie qu'une donnée
-expirée n'est plus servie, et documenter le sort des sauvegardes.
+**Action** : la purge est planifiée et testée (`tests/test_purge_planifiee.py`,
+`tests/test_seed_validation.py`) ; reste à documenter le sort des sauvegardes
+et à fixer la durée de conservation des journaux applicatifs.
 
 ## 2.6 Droits des personnes
 
@@ -444,7 +468,7 @@ est donc requise avant production.
 | Accès indu du professionnel            | Moyenne | RBAC et filtre prestataire côté serveur (`_verifier_references`, 21/10/2026) | **Faible**      |
 | Sauvegarde non chiffrée                | Moyenne | Volume dédié, accès restreint                                                | Moyen           |
 
-L'accès indu du professionnel (G7 de `docs/analyse_front_vs_cdc.md`) a été
+L'accès indu du professionnel (écart G7 du dossier de cadrage) a été
 **corrigé le 21/10/2026**. Le contrôle serveur vit dans `_verifier_references`
 (`apps/api-core/src/predicare_core_api/billing/router.py`) : pour le rôle
 `PROFESSIONNEL_SANTE`, il compare le `prestataire_id` de la facture à
@@ -499,17 +523,17 @@ transparence pourrait être défendu. Le dossier retient la lecture prudente.
 
 | Obligation                            | Article | Preuve disponible                                                                                   | Écart                                               |
 | ------------------------------------- | ------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Système de gestion des risques        | 9       | Rapports modèle et équité, dérive, tests                                                            | Registre des risques formel à créer                 |
+| Système de gestion des risques        | 9       | Registre des risques (`docs/cadrage/registre_risques.md`), rapports modèle et équité, dérive, tests | Trame Annexe IV et revue périodique à planifier     |
 | Gouvernance des données               | 10      | 84 608 factures chargées, 0 manquante, 0 doublon exact, empreinte SHA-256                           | Data sheet Annexe IV à formaliser                   |
 | Documentation technique               | 11      | Ce dossier, `README`, ADR, model card, évals                                                        | Trame Annexe IV à produire                          |
 | Journalisation                        | 12      | `audit.journal`, `audit.decision_gestionnaire`, connexion, `ml.modele_version`, `ml.rapport_derive` | Couverture des actions admin à vérifier             |
-| Transparence                          | 13      | SHAP, seuil, version, sources RAG                                                                   | Mention « assistant IA » à ajouter dans l'interface |
+| Transparence                          | 13      | SHAP, seuil, version, sources RAG, mention « assistant IA » affichée                               | Explication vulgarisée du score pour l'assuré        |
 | Supervision humaine                   | 14      | Route `POST /alertes/decision`, commentaire, audit                                                  | Procédure d'escalade à écrire                       |
-| Exactitude, robustesse, cybersécurité | 15      | ROC-AUC 0,95, rappel 87,02 %, 693 tests, RBAC, SQL lecture seule                                    | Test d'intrusion, TLS, sauvegardes chiffrées        |
+| Exactitude, robustesse, cybersécurité | 15      | ROC-AUC 0,95, rappel 87,02 %, 784 tests, comparaison aux baselines, RBAC, SQL lecture seule       | Test d'intrusion externe, TLS                       |
 | Système de management de la qualité   | 17      | CI, revue, tests, versionnement, ADR                                                                | QMS formel à documenter                             |
 | Évaluation de conformité              | 43      | Auto-évaluation interne possible (annexe VI)                                                        | Non réalisée                                        |
 | Marquage CE et enregistrement         | 48, 49  | —                                                                                                   | À faire avant mise sur le marché                    |
-| Surveillance après commercialisation  | 72      | Worker de dérive, Prometheus, Grafana                                                               | Dashboards et plan de surveillance à écrire         |
+| Surveillance après commercialisation  | 72      | Worker de dérive, règles Prometheus, 2 tableaux de bord Grafana versionnés                        | Plan de surveillance écrit et PSI en métrique        |
 | Incidents graves                      | 73      | Logs, audit, sauvegardes                                                                            | Procédure de notification à écrire                  |
 
 ## 3.4 Supervision humaine et transparence
@@ -528,9 +552,10 @@ Le score ne rejette jamais automatiquement une facture. Le seuil est
 modifiable à chaud, mais le changement est tracé (`audit.parametre`).
 
 **Transparence** : l'interface affiche le score, le seuil, la version du modèle
-et les contributions SHAP. Il manque une mention explicite « réponse générée
-par un assistant IA » sur l'écran RAG, et une explication vulgarisée du score
-pour l'assuré. Ce sont des actions de production.
+et les contributions SHAP. La mention « Réponse générée par un assistant IA —
+vérifiez les sources citées » est désormais affichée sur l'écran de l'assistant.
+Il reste une explication vulgarisée du score pour l'assuré : c'est une action
+de production.
 
 ## 3.5 LLM et GPAI
 
@@ -552,7 +577,7 @@ du système d'IA haut risque, pas des GPAI.
 | Étape | Livrable                                     | Responsable    | Échéance                 |
 | ----- | -------------------------------------------- | -------------- | ------------------------ |
 | 1     | Avis juridique sur le classement             | Juriste / DPO  | Avant production         |
-| 2     | Registre des risques (art. 9)                | Mirado + Jerry | Avant production         |
+| 2     | Registre des risques (art. 9) — **produit le 21/10/2026**, `docs/cadrage/registre_risques.md` | Mirado + Jerry | Revue périodique à planifier |
 | 3     | Documentation Annexe IV                      | Mirado         | Avant production         |
 | 4     | QMS et procédures                            | Jerry          | Avant production         |
 | 5     | AIPD et registre RGPD                        | DPO            | Avant production         |
@@ -764,14 +789,14 @@ et la liste blanche de requêtes, pas par le rôle.
 | Modèles          | version, artefact, empreinte, métriques, statut | `ml.modele_version`                |
 | Dérive           | PSI, variables, effectifs, alerte, date         | `ml.rapport_derive`                |
 | Métriques        | latence, erreurs, tokens, coût, cache           | Prometheus                         |
-| Tableaux de bord | Grafana, Superset (13 datasets)                 | `docker-compose.observability.yml` |
+| Tableaux de bord | Grafana (vues service et modèle), Superset (13 datasets, 12 tuiles) | `docker-compose.observability.yml`, `ops/grafana/provisioning/` |
 | Workflows        | exécutions n8n, erreurs                         | n8n `execution_entity`             |
 
 ## 5.7 Preuves de test
 
 | Suite                            |                                        Résultat | Commande                           |
 | -------------------------------- | ----------------------------------------------: | ---------------------------------- |
-| Tests unitaires et d'intégration |                      **693 passés, 18 ignorés** | `make test`                        |
+| Tests unitaires et d'intégration |                      **784 passés, 18 ignorés** | `make test`                        |
 | Attaques RAG                     | 97 tests, 100 % des attaques déclarées bloquées | `pytest tests/test_rag_attacks.py` |
 | Garde-fous                       |                                        78 tests | `pytest tests/test_guardrails.py`  |
 | SQL                              |                                        57 tests | `pytest tests/test_sql_tool.py`    |
@@ -787,15 +812,15 @@ sont rejoués sur la plateforme de démonstration.
 | Écart                                  | Risque                     | Action                                                                                  | Priorité |
 | -------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------- | -------- |
 | TLS non terminé                        | Interception, vol de jeton | Terminer TLS sur Traefik, rediriger HTTP                                                | P0       |
-| Sauvegardes non chiffrées              | Fuite d'un volume          | Chiffrer avec `age`, clé séparée                                                        | P0       |
+| Sauvegardes en clair si la clé est absente | Fuite d'un volume      | Fournir `BACKUP_CLE_FILE` — le chiffrement AES-256-CBC est déjà implémenté — et conserver la clé séparément | P0       |
 | Professionnel voit toutes les factures | Divulgation                | **Traitée** le 21/10/2026 : filtre serveur `_verifier_references` (`billing/router.py`) | Traitée  |
-| Connexions non journalisées            | Répudiation                | Écrire un événement `auth.login`                                                        | P1       |
+| Connexions non journalisées            | Répudiation                | **Traitée** le 21/10/2026 : la connexion est journalisée (`audit.journal`, action `connexion`) | Traitée |
 | 2 alertes Dependabot                   | Vulnérabilité connue       | Mettre à jour les dépendances                                                           | P1       |
-| Pas de test d'intrusion                | Faux sentiment de sécurité | Prestation ou test interne                                                              | P1       |
-| Rotation de clé                        | Compromission durable      | Procédure + job                                                                         | P2       |
+| Pas de test d'intrusion externe        | Faux sentiment de sécurité | `scripts/test-intrusion.sh` couvre les surfaces connues ; reste la prestation externe  | P1       |
+| Rotation de clé                        | Compromission durable      | `scripts/rotater-cles.sh` est livré (simulation par défaut) ; reste la procédure de production et son test | P2 |
 | Pas de MFA                             | Vol de mot de passe        | TOTP pour admin/gestionnaire                                                            | P2       |
+| Pas de RLS PostgreSQL                  | Fuite si l'isolation API est contournée | Activer RLS si d'autres applications accèdent à la base      | P2       |
 | Quota par utilisateur                  | Abus du LLM                | Quota Redis par sujet                                                                   | P2       |
-| Test d'intrusion externe               | Faux sentiment de sécurité | Prestation externe                                                                      | P2       |
 | Rotation de la clé de sauvegarde       | Compromission durable      | Procédure + test                                                                        | P2       |
 
 # 6. Cache sémantique et FinOps
@@ -882,7 +907,9 @@ Le cache est donc un accélérateur, pas une promesse.
 | Coût RAG                      | `apps/api-rag/README.md`, `/api/rag/question`    | 2026-10-20 |
 | Cache                         | `GET /api/rag/cache/stats`                       | 2026-10-20 |
 | Dérive                        | `GET /api/inference/derive`, `ml.rapport_derive` | 2026-10-20 |
-| Tests                         | `make test` : 693 passés, 18 ignorés             | 2026-10-21 |
+| Tests                         | `make test` : 784 passés, 18 ignorés             | 2026-10-21 |
+| Comparaison aux baselines     | `reports/baselines_v2.md`                        | 2026-10-21 |
+| Registre des risques (art. 9) | `docs/cadrage/registre_risques.md`               | 2026-10-21 |
 | Lint                          | `make lint` : OK                                 | 2026-10-20 |
 | n8n                           | `make e2e-n8n` : 13/13                           | 2026-10-20 |
 | Base                          | 110 Mo, 84 608 factures, 5 528 prédictions       | 2026-10-20 |

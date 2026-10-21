@@ -77,4 +77,14 @@ données. L'étiquette ne correspond donc à aucun signal observable, et ce
 rappel ne s'améliorera pas en réentraînant. La détection des doublons de
 soumission relève d'une **règle déterministe** à la réception, pas du modèle.
 
+## Les notebooks d'exploration
+
+`notebooks/` contient deux carnets de reconnaissance et d'exploration
+(descouverte des données, distribution des labels, variables discriminantes).
+Un notebook ne fait **jamais** partie de la chaîne de production : ce qui
+sert à l'entraînement ou à l'inférence vit dans ce package, importable,
+testable et exécutable dans Docker. Le CDC est explicite sur ce point : le
+résultat attendu est « une plateforme exploitable, et non une collection de
+notebooks ou de scripts ».
+
 ## Propriétaire : Mirado

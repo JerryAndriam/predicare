@@ -1,40 +1,53 @@
-# Livrables PrediCare
+# Livrables
 
-**Analyse TCO/ROI, conformité RGPD, EU AI Act et équité, sécurité, guide d'exploitation et d'utilisation**
+**Analyse des coûts, conformité RGPD, EU AI Act et équité, sécurité, guide d'exploitation et d'utilisation**
 
 | | |
 | --- | --- |
-| Version | 1.0 |
+| Version | 1.1 |
 | Date | 21 octobre 2026 |
 | Statut | Version de travail, revue métier et juridique à compléter |
-| Périmètre | Plateforme PrediCare : API coeur, scoring de fraude, assistant RAG, interface web, BI Superset, exploitation |
+| Périmètre | La plateforme de démonstration : API cœur, détection de fraude, assistant documentaire (RAG), interface web, BI, exploitation |
 | Public | Jury, direction, DPO, RSSI, équipe d'exploitation, équipe produit |
 | Nature | Documentation produit et dossier de preuves ; ce n'est ni une certification, ni un avis juridique |
 
-## 1. Objet du dossier
+## 1. Objet et périmètre du dossier
 
-Ce dossier rassemble cinq documents autonomes qui expliquent les choix économiques, juridiques, techniques et opérationnels de PrediCare. Chaque document peut être lu seul. L'index sert à trois choses : retrouver rapidement une preuve, éviter les chiffres contradictoires entre documents, et donner à chaque public un parcours de lecture adapté.
+Il rassemble cinq documents qui répondent à cinq questions : **combien ça
+coûte**, **sommes-nous conformes sur les données**, **quelles obligations
+l'IA Act nous impose**, **la plateforme est-elle sécurisée**, **comment
+l'exploiter et l'utiliser au quotidien**.
 
-Le dossier de cadrage historique reste la synthèse exécutive. Les présents livrables en sont la version détaillée et actualisée. En cas de divergence sur un fait technique, le code, les tests et les scripts du dépôt font foi. En cas de divergence sur un chiffre métier, la table de référence ci-dessous fait foi jusqu'à nouvel audit.
+Chaque document se lit seul : le document 03 peut être transmis à un juriste sans le document 01.
+L'index sert à trois choses : retrouver vite une preuve, éviter que deux
+documents ne se contredisent sur un chiffre, et proposer à chaque lecteur un
+parcours de lecture adapté à son métier.
 
-## 2. Les cinq documents
+Le dossier de cadrage reste la synthèse exécutive ; les présents livrables en
+sont la version détaillée et à jour. **En cas de désaccord sur un fait
+technique, le code, les tests et les scripts font foi. En cas de désaccord sur
+un chiffre métier, le tableau de référence du § 4 fait foi** jusqu'au prochain
+audit.
+
+## 2. Documents du dossier
 
 | Document | Objet | Public principal | Volume indicatif |
 | --- | --- | --- | ---: |
-| [`01_analyse_tco_roi.md`](01_analyse_tco_roi.md) | TCO, ROI, coût des tokens, sauvegarde, tableau FinOps et leviers d'optimisation | Direction, finance, jury | 15–17 pages |
-| [`02_conformite_rgpd.md`](02_conformite_rgpd.md) | Registre des traitements, bases légales, droits, conservation, AIPD, sous-traitants | DPO, juriste, direction | 15–17 pages |
-| [`03_ai_act_equite.md`](03_ai_act_equite.md) | Classement AI Act, grille des obligations, audit d'équité et plan de surveillance | Jury, conformité, data science | 17–20 pages |
-| [`04_securite.md`](04_securite.md) | Modèle de menace, contrôles, preuves, risques résiduels et feuille de route | RSSI, exploitation, jury | 17–20 pages |
-| [`05_guide_exploitation_utilisateur.md`](05_guide_exploitation_utilisateur.md) | Installation, configuration, runbooks, incidents, prise en main par rôle | Exploitation, support, utilisateurs | 18–20 pages |
+| [`01_analyse_tco_roi.md`](01_analyse_tco_roi.md) | Coût total, retour sur investissement, coût des tokens, tableau FinOps | Direction, finance, jury | 17–19 pages |
+| [`02_conformite_rgpd.md`](02_conformite_rgpd.md) | Registre des traitements, bases légales, droits des personnes, conservation, AIPD, sous-traitants | DPO, juriste, direction | 17–19 pages |
+| [`03_ai_act_equite.md`](03_ai_act_equite.md) | Classement AI Act, grille des obligations, audit d'équité, plan de surveillance | Jury, conformité, data science | 19–22 pages |
+| [`04_securite.md`](04_securite.md) | Modèle de menace, contrôles, preuves, risques résiduels, feuille de route | RSSI, exploitation, jury | 19–22 pages |
+| [`05_guide_exploitation_utilisateur.md`](05_guide_exploitation_utilisateur.md) | Installation, configuration, runbooks, incidents, puis le guide d'utilisation par rôle | Exploitation, support, utilisateurs | 30–34 pages |
 
-Les volumes sont indicatifs : ils correspondent à une mise en page A4 sobre, hors annexes exceptionnellement longues.
+Les volumes sont indicatifs : ils correspondent à une mise en page A4 sobre,
+hors annexes exceptionnellement longues.
 
-## 3. Parcours de lecture
+## 3. Parcours de lecture par public
 
-| Lecteur | Parcours recommandé | Question à laquelle le dossier répond |
+| Lecteur | Parcours recommandé | La question à laquelle il répond |
 | --- | --- | --- |
 | Jury | Index → 01 → 03 → 04 → 05 | Le projet est-il utile, mesuré, conforme et démontrable ? |
-| Direction | Index → 01 (résumé et ROI) → 02 (risques) → 03 (classement) | Combien coûte la plateforme, que rapporte-t-elle, que risque-t-on ? |
+| Direction | Index → 01 (résumé et ROI) → 02 (risques) → 03 (classement) | Combien ça coûte, que rapporte la plateforme, que risque-t-on ? |
 | DPO / juriste | 02 → 03 (partie AI Act) → 04 (sécurité) | Quelles données, quelles bases légales, quels droits, quels sous-traitants ? |
 | RSSI | 04 → 05 (runbooks) → 02 (violations) | Quels contrôles sont réellement en place, et quels écarts restent ouverts ? |
 | Exploitation | 05 → 04 (sauvegarde, TLS, rotation) → 01 (coûts) | Comment installer, superviser, sauvegarder, restaurer et dépanner ? |
@@ -42,9 +55,10 @@ Les volumes sont indicatifs : ils correspondent à une mise en page A4 sobre, ho
 
 ## 4. Chiffres de référence
 
-Tous les documents doivent utiliser ces valeurs, sauf mention explicite d'une autre convention. La date de constat est le 21 octobre 2026.
+Tous les documents doivent reprendre ces valeurs, sauf mention explicite
+d'une autre convention. La date de constat est le 21 octobre 2026.
 
-### 4.1 Modèle de fraude
+### 4.1 Modèle de détection de fraude
 
 | Indicateur | Valeur | Source |
 | --- | ---: | --- |
@@ -62,7 +76,7 @@ Tous les documents doivent utiliser ces valeurs, sauf mention explicite d'une au
 | Faux négatifs | 114 | `reports/modele_v2.md` |
 | Vrais négatifs | 8 692 | `reports/modele_v2.md` |
 
-### 4.2 Coûts et ROI
+### 4.2 Coûts et retour sur investissement
 
 | Indicateur | Valeur | Statut |
 | --- | ---: | --- |
@@ -82,9 +96,35 @@ Tous les documents doivent utiliser ces valeurs, sauf mention explicite d'une au
 | Ratio économie/TCO annuel | 354,0× | Extrapolation |
 | Ratio économie/TCO prudent | 89,8× | Extrapolation |
 
-Le terme « ROI » est souvent employé dans le dossier pour désigner le ratio `économie / TCO`. Ce n'est pas un ROI net. Le document 01 définit les trois notions séparément : ratio de couverture, gain net et ROI net. Il présente aussi la différence entre le coût des erreurs et le coût complet d'un contrôle exhaustif.
+**Deux conventions coexistent, et il faut savoir laquelle on cite.** La
+première ne compte que le coût des erreurs ; la seconde compare deux
+organisations complètes du contrôle. Le dossier de cadrage et le document 01
+n'emploient pas la même, donc leurs chiffres ne se superposent pas :
 
-### 4.3 Assistant RAG et FinOps
+| | Convention historique | Convention recommandée |
+| --- | ---: | ---: |
+| Ce qui sert de référence | 9 208 non-fraudes contrôlées | 10 086 factures contrôlées |
+| Coût du modèle | 4 968 000 MGA | 7 260 000 MGA |
+| Économie | 22 656 000 MGA | 22 998 000 MGA |
+| Ratio économie/TCO | 41,58× | 42,21× |
+| Gain net | 22 111 150 MGA | 22 453 150 MGA |
+| ROI net | 40,58× | 41,21× |
+| Volume annuel retenu | 84 608 factures (dont 15 de démonstration) | 84 593 factures (jeu de données) |
+| Économie annuelle projetée | 190,05 M MGA | 192,89 M MGA |
+| Ratio annuel | 348,8× | 354,0× |
+| Scénario prudent (50 % de l'économie, TCO stress) | 95,03 M MGA, 88,5× | 96,44 M MGA, 89,8× |
+
+Le document 01 présente les deux et recommande la seconde : elle compte la
+revue des 764 alertes, donc elle décrit une organisation de contrôle
+réaliste. Un chiffre de l'une n'est jamais comparable à un chiffre de
+l'autre.
+
+> **Le terme « ROI » est souvent employé pour désigner le ratio
+> `économie / TCO`. Ce n'est pas un ROI net.** Le document 01 sépare les trois
+> notions — ratio de couverture, gain net, ROI net — et explique la
+> différence.
+
+### 4.3 Assistant documentaire et FinOps
 
 | Indicateur | Valeur | Source |
 | --- | ---: | --- |
@@ -100,63 +140,75 @@ Le terme « ROI » est souvent employé dans le dossier pour désigner le ratio 
 ### 4.4 Conformité et sécurité
 
 | Indicateur | Valeur | Source |
-| --- | --- | --- |
+| --- | ---: | --- |
 | Conservation des prédictions | 3 ans | `rgpd/conservation.py` |
 | Conservation des factures | 10 ans | `rgpd/conservation.py` |
 | Conservation du journal d'audit | 5 ans | `rgpd/conservation.py` |
+| Purge des données hors délai | Planifiée toutes les 24 h, tracée, désactivable par `PURGE_PLANIFIEE=0` | `apps/api-core/.../rgpd/purge.py` |
 | Rétention des sauvegardes | 14 jours | `db/backup/pg_dump.sh` |
 | Chiffrement des sauvegardes | AES-256-CBC, PBKDF2 200 000 itérations, clé fichier (si fournie) | `db/backup/pg_dump.sh` |
-| Tests automatisés | 696 passés, 18 ignorés | `make check`, 21/10/2026 |
+| Tests automatisés | 784 passés, 18 ignorés | `make test`, 21/10/2026 |
 | Attaques RAG déclarées bloquées | 97 tests, 100 % des attaques déclarées | dossier de cadrage, à recouper |
 | Garde-fous | 78 tests | dossier de cadrage, à recouper |
 | SQL | 57 tests | dossier de cadrage, à recouper |
 | RBAC | 22 tests | dossier de cadrage, à recouper |
 | Chaîne n8n | 13/13 vérifications | dossier de cadrage, à recouper |
+| Règles d'alerte Prometheus | 9 alertes versionnées | `ops/prometheus/rules/predicare.yml` |
+| Vues Grafana provisionnées | 2 (service, modèle) | `ops/grafana/provisioning/dashboards/` |
+| Registre des risques AI Act | 11 risques, art. 9 à 73 | `docs/cadrage/registre_risques.md` |
+| Comparaison aux bases de décision | 3 baselines, même découpage | `reports/baselines_v2.md` |
 
-## 5. Conventions de rédaction
+## 5. Conventions de lecture
 
 ### 5.1 Statut d'une affirmation
 
+Chaque chiffre porte une étiquette. Elle dit d'où il vient.
+
 | Statut | Signification |
 | --- | --- |
-| **Mesuré** | Résultat produit par une commande, un test ou un rapport daté. |
-| **Calculé** | Résultat dérivé de mesures par une formule explicite. |
-| **Estimé** | Résultat fondé sur une hypothèse de coût, de volume ou de prix. |
+| **Mesuré** | Sortie réelle d'une commande, d'un test ou d'un rapport daté. |
+| **Calculé** | Dérivé de mesures par une formule écrite. |
+| **Estimé** | Fondé sur une hypothèse de coût, de volume ou de prix. |
 | **Hypothèse** | Valeur posée par le métier, à valider avant production. |
 | **Écart** | Fonction absente, partielle ou non prouvée. |
 
-### 5.2 Vocabulaire de conformité
+### 5.2 Vocabulaire de la conformité
 
-Les documents distinguent systématiquement :
+Cinq mots reviennent partout. Les employer avec le même sens, c'est ce qui
+permet de dire sans ambiguïté ce qui est fait et ce qui reste à faire.
 
-- **conforme par conception** : les mesures sont présentes dans l'architecture et les tests ;
-- **partiel** : une partie de l'obligation est couverte, une autre reste à faire ;
-- **écart ouvert** : l'obligation n'est pas couverte ou n'est pas prouvée ;
-- **non applicable** : l'obligation ne concerne pas le périmètre, avec justification ;
-- **non certifié** : l'évaluation formelle, le marquage ou l'homologation ne sont pas prononcés.
+- **conforme par conception** : la mesure existe dans l'architecture et dans
+  les tests ; elle n'a pas été certifiée par un tiers ;
+- **partiel** : une partie de l'obligation est couverte, une autre reste à
+  faire ;
+- **écart ouvert** : l'obligation n'est pas couverte, ou pas prouvée ;
+- **non applicable** : l'obligation ne concerne pas le périmètre, avec
+  justification ;
+- **non certifié** : l'évaluation formelle, le marquage ou l'homologation ne
+  sont pas prononcés.
 
-Aucun document ne doit écrire « conforme », « certifié » ou « homologué » sans preuve formelle.
+Aucun document n'écrit « conforme », « certifié » ou « homologué » sans preuve
+formelle.
 
 ### 5.3 Unités et dates
 
-- Montants en **ariary (MGA)** pour le métier, en **euro (EUR)** pour l'infrastructure, en **dollar (USD)** pour les tokens.
-- Conversion de référence : **1 EUR = 5 000 MGA**. Elle doit être actualisée le jour d'une présentation officielle.
-- Dates techniques au format `2026-10-21` dans les tableaux, dates en toutes lettres dans les paragraphes.
+- Les montants métier sont en **ariary (MGA)**, ceux de l'infrastructure en
+  **euro (EUR)**, ceux des tokens en **dollar (USD)**.
+- Conversion de référence : **1 EUR = 5 000 MGA**. Elle doit être actualisée
+  le jour d'une présentation officielle.
+- Les dates des tableaux sont au format `2026-10-21` ; dans les paragraphes,
+  elles s'écrivent en toutes lettres.
 - Les prix d'hébergement sont des hypothèses datées, pas des devis.
 
-### 5.4 Preuves
+### 5.4 Preuves attendues
 
-Chaque affirmation importante doit renvoyer à une preuve :
+Toute affirmation importante renvoie à une preuve : un fichier du dépôt avec
+son chemin, une commande et sa sortie, un rapport daté, un test nommé, ou une
+décision datée et attribuée. Les documents peuvent citer des documents
+historiques, à condition d'en indiquer la date et de vérifier ce qui a changé
+depuis.
 
-- un fichier du dépôt, avec chemin et section ;
-- une commande et sa sortie ;
-- un rapport daté ;
-- un test nommé ;
-- une décision explicite, datée et attribuée.
-
-Les documents peuvent citer les documents historiques, mais ils doivent indiquer leur date et vérifier les faits qui ont changé depuis.
-
-## 6. Matrice de correspondance avec le cahier des charges
+## 6. Matrice de correspondance avec les exigences
 
 | Exigence | Document principal | Sections |
 | --- | --- | --- |
@@ -167,36 +219,44 @@ Les documents peuvent citer les documents historiques, mais ils doivent indiquer
 | EU AI Act : classement | 03 | Fiche système, classification |
 | EU AI Act : obligations haut risque | 03 | Grille articles 9 à 15, 17, 43, 48, 49, 72, 73 |
 | Audit d'équité | 03 | Méthode, résultats, limites, mitigations |
-| Sécurité | 04 | STRIDE, RBAC, chiffrement, réseau, RAG |
+| Sécurité | 04 | STRIDE, RBAC, chiffrement, réseau, assistant documentaire |
 | Sauvegarde et restauration | 04 et 05 | Chiffrement, runbook, RPO/RTO |
-| Supervision | 04 et 05 | Métriques, logs, dérive, dashboards |
+| Supervision | 04 et 05 | Métriques, logs, dérive, tableaux de bord |
 | Exploitation | 05 | Installation, configuration, incidents |
 | Guide utilisateur | 05 | Parcours par rôle, FAQ, glossaire |
 
-## 7. Sources de vérité
+## 7. Sources de vérité par sujet
 
 | Sujet | Source principale | Complément |
 | --- | --- | --- |
 | Modèle et métriques | `reports/modele_v2.md` | `reports/strategies_v1.md` |
-| Équité | `reports/equite_v2.md` | `reports/equite_v1.md` |
+| Comparaison aux bases de décision | `reports/baselines_v2.md` | `reports/baselines_v2.json` |
+| Équité | `reports/equite_v2.md` | `reports/qualite_donnees_phase1_4.md` |
 | Coûts et ROI | `docs/cadrage/dossier_cadrage.md` | `reports/modele_v2.md`, `apps/api-rag/README.md` |
 | RGPD | `apps/api-core/src/predicare_core_api/rgpd/` | `docs/cadrage/dossier_cadrage.md` |
 | Sécurité | `packages/predicare-core/src/predicare/rbac.py`, `audit.py`, `crypto.py` | `scripts/test-intrusion.sh`, `docs/cadrage/dossier_cadrage.md` |
-| Exploitation | `docs/exploitation/` | `.env.example`, `Makefile`, `db/backup/` |
-| Utilisateur | `docs/utilisateur/guide-utilisateur.md` | interface web et tests Playwright |
-| BI | `ops/superset/` | `docs/exploitation/README.md` |
+| AI Act et risques | `docs/cadrage/registre_risques.md` | `docs/livrables/03_ai_act_equite.md` |
+| Exploitation | `docs/livrables/05_guide_exploitation_utilisateur.md` | `.env.example`, `Makefile`, `db/backup/pg_dump.sh` |
+| Utilisateur | `docs/livrables/05_guide_exploitation_utilisateur.md` | interface web et tests Playwright |
+| BI | `ops/superset/` | `ops/superset/creer_tableau_bord.md` |
+| Supervision | `ops/prometheus/rules/predicare.yml` | `ops/grafana/provisioning/` |
 | Tests | `make check` | rapports datés |
 
 ## 8. Avertissements
 
-- Les données du modèle sont **synthétiques**. Les performances et le ROI ne sont pas une mesure de production.
-- Le classement AI Act « haut risque » est une **lecture prudente**. Il doit être confirmé par un avis juridique avant mise sur le marché.
-- Le rôle RGPD de PrediCare dépend du contrat de déploiement. Selon le cas, PrediCare est sous-traitant ou responsable de traitement.
+- Les données du modèle sont **synthétiques**. Les performances et le ROI ne
+  sont pas une mesure de production.
+- Le classement AI Act « haut risque » est une **lecture prudente**. Il doit
+  être confirmé par un avis juridique avant mise sur le marché.
+- Le rôle RGPD de l'éditeur de la plateforme dépend du contrat de
+  déploiement : selon le cas, il est sous-traitant ou responsable de
+  traitement.
 - Les prix d'infrastructure sont des **hypothèses**, pas des devis.
-- Le PDF `docs/cadrage/dossier_cadrage.pdf` reste daté du 20 octobre 2026. Le Markdown est la source à jour ; le PDF doit être régénéré après validation.
+- Le PDF `docs/cadrage/dossier_cadrage.pdf` reste daté du 20 octobre 2026. Le
+  Markdown est la source à jour ; le PDF doit être régénéré après validation.
 - Aucun secret réel ne doit être copié dans ces documents.
 
-## 9. Maintenance
+## 9. Maintenance du dossier
 
 | Événement | Document à mettre à jour | Vérification |
 | --- | --- | --- |
@@ -205,11 +265,13 @@ Les documents peuvent citer les documents historiques, mais ils doivent indiquer
 | Nouvelle obligation ou nouveau pays | 02, 03 | avis DPO/juriste |
 | Nouvelle mesure de sécurité | 04, 05 | test, script, revue |
 | Nouveau service ou nouvelle commande | 05 | `make help`, README |
-| Nouvelle version de l'interface | 05 | `docs/utilisateur/guide-utilisateur.md` |
-| Nouvelle campagne de tests | index, 04 | `make check`, rapport daté |
+| Nouvelle version de l'interface | 05 | tests Playwright du parcours |
+| Nouvelle campagne de tests | index, 04 | `make test`, rapport daté |
+| Nouveau risque identifié | 03, `docs/cadrage/registre_risques.md` | revue du registre |
 
-## 10. Changelog
+## 10. Historique des versions
 
 | Version | Date | Changement |
 | --- | --- | --- |
 | 1.0 | 2026-10-21 | Création des cinq livrables, index, chiffres de référence et conventions. |
+| 1.1 | 2026-10-21 | Guide utilisateur fusionné dans le document 05 ; purge planifiée, règles d'alerte Prometheus, vues Grafana, registre des risques AI Act, comparaison aux bases de décision et import PDF ajoutés ; nombre de tests revenu à 784 ; tableau de correspondance des deux conventions de ROI. |

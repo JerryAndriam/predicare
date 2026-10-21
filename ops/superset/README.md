@@ -84,14 +84,6 @@ docker compose -f docker-compose.yml -f docker-compose.bi.yml \
   run --rm superset-dashboard
 ```
 
-## Brouillon / TODO
+## Reste à faire
 
-- [x] Image, configuration, compte administrateur, datasets enregistres
-- [x] Creer les tableaux de bord a partir des datasets (volumes, detection,
-      montants economises, delai, faux positifs)
-- [x] Publier le tableau en lecture seule dans l'application, sans seconde connexion
-- [ ] Documenter chaque indicateur dans le dashboard (definition, source,
-      frequence de mise a jour) — les donnees sont dans `register_datasets.py`
-- [ ] Alertes Superset sur depassement de seuil
-
-Proprietaire : Jerry
+- [ ] Alertes Superset sur dépassement de seuil.

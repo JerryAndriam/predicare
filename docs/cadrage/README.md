@@ -10,6 +10,14 @@ daté du 20/10/2026 tant qu'il n'est pas régénéré.
 > corrections du 21 octobre. La source Markdown, elle, est à jour : elle
 > contient le poste GPU du TCO, la distinction des deux ROI, le filtre
 > prestataire corrigé et les chiffres remis en cohérence.
+>
+> **Corrections du 21 octobre 2026, après la version 1.1.** La purge RGPD est
+> désormais planifiée et journalisée, les règles d'alerte Prometheus et les
+> deux vues Grafana sont versionnées, la mention « assistant IA » est
+> affichée dans l'assistant, le registre des risques AI Act est produit
+> (`registre_risques.md`), et le nombre de tests est revenu à **784 passés,
+> 18 ignorés**. Ces points sont corrigés dans la source Markdown ; le PDF
+> reste à régénérer.
 
 ## Livrable
 
@@ -19,9 +27,12 @@ daté du 20/10/2026 tant qu'il n'est pas régénéré.
 | `dossier_cadrage.pdf` | PDF remis au jury, 26 pages (version du 20/10/2026)   |
 | `dossier.css`         | Mise en page A4 (couverture, tableaux, sauts de page) |
 | `export_pdf.js`       | Régénération locale du PDF via Playwright             |
+| `registre_risques.md` | Registre des risques AI Act (art. 9), version 1.0      |
 
 Le dossier couvre les six parties exigées, plus une synthèse et quatre annexes
-(index des preuves, hypothèses, glossaire, checklist jury).
+(index des preuves, hypothèses, glossaire, checklist jury). Le registre des
+risques exigé par l'article 9 de l'AI Act est un document séparé :
+`registre_risques.md`.
 
 ## Contenu exigé par le CDC
 
@@ -47,7 +58,7 @@ Le dossier couvre les six parties exigées, plus une synthèse et quatre annexes
 | Fidélité / citation / exactitude RAG                  |           30/30, 20/20, 26/26 | `reports/eval_rag_2026-10-19_5.json` |
 | Coût LLM par requête                                  |                   0,00064 USD | `apps/api-rag/README.md`             |
 | Datasets BI                                           |                            13 | `ops/superset/register_datasets.py`  |
-| Tests                                                 |        693 passés, 18 ignorés | `make test`, 21/10/2026              |
+| Tests                                                 |        784 passés, 18 ignorés | `make test`, 21/10/2026              |
 
 ## Note sur le FinOps
 
@@ -103,7 +114,7 @@ avant remise et vérifier ce total.
 - Le taux de conversion 1 EUR = 5 000 MGA doit être actualisé le jour J.
 - Le classement AI Act « haut risque » est une lecture prudente, à confirmer
   par un avis juridique.
-- Le dossier nomme les écarts (conservation, TLS, sauvegardes chiffrées) au
-  lieu de les masquer.
+- Le dossier nomme les écarts (droit à la limitation, TLS, MFA, RLS, test
+  d'intrusion externe) au lieu de les masquer.
 
 Propriétaire : Mirado et Jerry

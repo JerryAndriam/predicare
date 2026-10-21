@@ -11,7 +11,7 @@ connexions, les parametres et l'etat actif. Les champs internes de n8n
 (`id`, `versionId`, `owner`, `shared`, `triggerCount`...) changent a chaque
 execution et produiraient un diff enorme, ou pire, un faux conflit.
 
-Usage : split-workflows.py <repertoire-cible>   (JSON lu sur stdin)
+Usage : split_workflows.py <repertoire-cible>   (JSON lu sur stdin)
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def separer(donnees: object, cible: Path) -> list[str]:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("Usage : split-workflows.py <repertoire-cible>", file=sys.stderr)
+        print("Usage : split_workflows.py <repertoire-cible>", file=sys.stderr)
         return 1
 
     cible = Path(sys.argv[1])

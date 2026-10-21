@@ -142,12 +142,8 @@ automatiquement lisible par les deux : sans lui, un simple
 `GRANT SELECT ON ALL TABLES` n'aurait couvert que les tables existantes a
 l'instant ou il s'execute.
 
-## Brouillon / TODO
+## Reste à faire
 
-- [x] Verification de derive du schema (`make db-status`, branche dans `make wait`)
-- [x] Test manuel du `downgrade` de 0003 sur base jetable
-- [ ] Index supplementaires mesures sur les requetes lentes
-- [ ] Politique de purge du journal d'audit (Phase 9.3)
-- [ ] Vue materialisee pour les indicateurs du tableau de bord
-
-Proprietaire : Cherica
+- [ ] Index supplémentaires, mesurés sur les requêtes lentes.
+- [ ] Vérifier que la purge planifiée couvre bien le journal d'audit (5 ans).
+- [ ] Vue matérialisée pour les indicateurs du tableau de bord.
