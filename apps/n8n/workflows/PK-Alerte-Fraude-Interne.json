@@ -48,7 +48,7 @@
             {
               "id": "score-fraude-eleve",
               "leftValue": "={{ $json.body.score_fraude }}",
-              "rightValue": "={{ Number($env.SEUIL_NOTIFICATION_SLACK) }}",
+              "rightValue": "={{ Number($json.body.seuil_notification ?? $env.SEUIL_NOTIFICATION_SLACK) }}",
               "operator": {
                 "type": "number",
                 "operation": "gte"
@@ -67,7 +67,7 @@
         160,
         0
       ],
-      "notes": "Le score vient de la charge utile du webhook (`$json.body`) et non de l'output d'un noeud precedent : n8n place le corps recu sous `body` et y ajoute ses propres cles a la racine. SEUIL DE NOTIFICATION (0,8), exige par le CDC : une alerte Slack est une interruption humaine, reservee aux cas tres nets. Le SEUIL DE DETECTION reste regi par l'API."
+      "notes": "Le score vient de la charge utile du webhook (`$json.body`) et non de l'output d'un noeud precedent : n8n place le corps recu sous `body` et y ajoute ses propres cles a la racine. SEUIL DE NOTIFICATION : api-core l'envoie dans `body.seuil_notification` (source unique, eventuellement reglee dans `audit.parametre`) ; `SEUIL_NOTIFICATION_SLACK` n'est qu'un repli pour un appel direct sans ce champ. Le CDC exige 0,8 : une alerte Slack est une interruption humaine, reservee aux cas tres nets. Le SEUIL DE DETECTION reste regi par l'API."
     },
     {
       "parameters": {
@@ -85,7 +85,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ text: '🚨 *Alerte fraude — ' + $json.body.facture_id + '*\\nScore *' + $json.body.score_fraude + '* (seuil de notification ' + $env.SEUIL_NOTIFICATION_SLACK + ')\\n\\n' + $json.body.rapport_shap + '\\n\\n_Modèle ' + $json.body.model_version + ' · seuil de détection ' + $json.body.seuil_applique + '_' }) }}",
+        "body": "={{ JSON.stringify({ text: '🚨 *Alerte fraude — ' + $json.body.facture_id + '*\\nScore *' + $json.body.score_fraude + '* (seuil de notification ' + ($json.body.seuil_notification ?? $env.SEUIL_NOTIFICATION_SLACK) + ')\\n\\n' + $json.body.rapport_shap + '\\n\\n_Modèle ' + $json.body.model_version + ' · seuil de détection ' + $json.body.seuil_applique + '_' }) }}",
         "options": {}
       },
       "id": "b2000000-0000-4000-8000-000000000007",
