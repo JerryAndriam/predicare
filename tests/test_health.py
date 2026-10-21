@@ -179,3 +179,24 @@ def test_tracer_de_correlation_repris_de_l_entree(application: tuple) -> None:
         reponse = client.get("/health", headers={"X-Request-Id": "test-1234"})
 
     assert reponse.headers.get("X-Request-Id") == "test-1234"
+
+
+# --------------------------------------------------------------- sondes RAG
+
+
+def test_sonde_llm_rejette_les_gabarits() -> None:
+    """Un gabarit est *truthy* : `/health` ne doit pas annoncer `ok` pour autant.
+
+    `bool("CHANGER_MOI_LLM")` vaut True. Sans la regle `est_configure`, la
+    sonde RAG annoncait un assistant sain alors qu'il tourne en mode degrade.
+    """
+    from predicare_rag_api.main import _llm_configure
+
+    for gabarit in (None, "", "   ", "CHANGER_MOI_LLM", "changeme", "xxx", "<votre-cle>"):
+        assert _llm_configure(gabarit) is False, gabarit
+
+
+def test_sonde_llm_accepte_une_vraie_cle() -> None:
+    from predicare_rag_api.main import _llm_configure
+
+    assert _llm_configure("sk-proj-abcdef123456") is True

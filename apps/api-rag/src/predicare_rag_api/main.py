@@ -25,7 +25,7 @@ from predicare.http import (
 from predicare.logging_config import configure_logging, get_logger
 from predicare.metrics import publish_build
 from predicare.rbac import ensure_permission
-from predicare.secrets import appliquer_secrets
+from predicare.secrets import appliquer_secrets, est_configure
 from predicare_rag_api import SERVICE_NAME, __version__
 from predicare_rag_api.agent import RagAgent
 from predicare_rag_api.guardrails import sanitize_question
@@ -40,6 +40,29 @@ from predicare_rag_api.session import (
 from predicare_rag_api.sql_tool import InsuredHistoryTool
 
 logger = get_logger(SERVICE_NAME)
+
+
+def _llm_configure(valeur: str | None) -> bool:
+    """Vrai si la cle LLM est une vraie valeur, pas un gabarit.
+
+    `bool("CHANGER_MOI_LLM")` vaut True : sans cette regle, `/health`
+    annonce `ok` alors que l'assistant tourne en mode degrade. La regle de
+    reference est `predicare.secrets.est_configure` (valeur vide,
+    `CHANGER_MOI*`, `changeme`, `not-configured`, `votre-cle`). On y ajoute
+    deux gabarits rencontres dans les `.env` distribues : `<...>` et un
+    remplissage de `x`.
+
+    La fonction ne leve jamais : une sonde de sante qui echoue ferait
+    tomber `/health` au lieu de le rendre `degraded`.
+    """
+    if not est_configure(valeur):
+        return False
+    propre = (valeur or "").strip()
+    if propre.startswith("<") and propre.endswith(">"):
+        return False
+    # `xxx`, `XXX`, `x-x-x` : un remplissage, jamais une cle.
+    return not all(caractere in "xX-_ " for caractere in propre)
+
 
 router = APIRouter(prefix="/rag", tags=["assistant"])
 
@@ -429,7 +452,7 @@ def create_app() -> FastAPI:
         SERVICE_NAME,
         __version__,
         probes={
-            "llm_configure": lambda: bool(settings.llm_api_key),
+            "llm_configure": lambda: _llm_configure(settings.llm_api_key),
             "compte_sql_lecture_seule": lambda: bool(settings.db_ro_url),
         },
         # Le compte SQL en lecture seule est non negociable : sans lui,

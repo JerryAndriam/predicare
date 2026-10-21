@@ -13,7 +13,13 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage
 
-from predicare_rag_api.agent import MAX_APPELS_SQL, _sql_attempt_allowed, _usage
+from predicare_rag_api.agent import (
+    CONSIGNE_SYNTHESE,
+    MAX_APPELS_SQL,
+    _sql_attempt_allowed,
+    _usage,
+)
+from predicare_rag_api.guardrails import SYSTEM_PROMPT
 from predicare_rag_api.sql_tool import TEMPLATES_REQUETES, InsuredHistoryTool
 
 URL_FACTICE = "postgresql+psycopg://predicare_ro:x@localhost:5432/predicare"
@@ -46,6 +52,35 @@ def test_description_contient_les_templates(outil: InsuredHistoryTool) -> None:
 def test_description_exige_le_parametre_assure_id(outil: InsuredHistoryTool) -> None:
     assert ":assure_id" in outil.description
     assert "jamais" in outil.description.lower()
+
+
+def test_description_consigne_l_agregation(outil: InsuredHistoryTool) -> None:
+    """Une question de montant doit produire un agregat, pas une enumeration."""
+    description = outil.description.lower()
+
+    for agregat in ("sum(", "count(", "avg(", "min(", "max("):
+        assert agregat in description, agregat
+    assert "5 lignes" in description
+
+
+def test_prompt_consigne_la_synthese() -> None:
+    """Le prompt demande un total, et borne les lignes brutes a cinq."""
+    consigne = CONSIGNE_SYNTHESE.lower()
+
+    for agregat in ("sum(", "count(", "avg(", "min(", "max("):
+        assert agregat in consigne, agregat
+    assert "5 lignes" in consigne
+
+
+def test_prompt_ne_relache_aucun_garde_fou() -> None:
+    """La consigne de synthese s'ajoute au prompt : elle ne le remplace pas."""
+    prompt = f"{SYSTEM_PROMPT}\n{CONSIGNE_SYNTHESE}".lower()
+
+    assert "regle absolue" in prompt
+    assert "regle de citation" in prompt
+    assert "donnees non fiables" in prompt
+    assert "tu ne dois jamais" in prompt
+    assert "autre assure" in prompt
 
 
 # --------------------------------------------------------------- cout en tokens
