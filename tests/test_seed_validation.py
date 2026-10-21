@@ -297,3 +297,90 @@ def test_controles_individuels_disponibles() -> None:
 @pytest.mark.parametrize("nom", sorted(COLONNES_ATTENDUES))
 def test_chaque_fichier_attendu_a_des_colonnes_requises(nom: str) -> None:
     assert COLONNES_ATTENDUES[nom], f"{nom} n'exige aucune colonne : le controle serait vide"
+
+
+# ------------------------------------------------- indexation RAG automatique
+
+
+def _ingest_rag_interdit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Module factice : si l'indexation l'appelle, le test echoue."""
+    import sys
+    import types
+
+    module = types.ModuleType("predicare_seed.ingest_rag")
+
+    def appliquer(*_args: object, **_kwargs: object) -> dict[str, int]:
+        pytest.fail("l'index RAG ne doit pas etre reconstruit")
+
+    module.appliquer = appliquer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "predicare_seed.ingest_rag", module)
+
+
+def test_indexation_rag_desactivable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`SEED_RAG_AUTO=0` n'interroge meme pas la table vectorielle."""
+    from predicare_seed import load_initial_data
+
+    monkeypatch.setenv("SEED_RAG_AUTO", "0")
+    monkeypatch.setattr(
+        load_initial_data,
+        "_nombre_documents_indexes",
+        lambda: pytest.fail("la table ne doit pas etre lue quand l'indexation est desactivee"),
+    )
+    _ingest_rag_interdit(monkeypatch)
+
+    load_initial_data.indexer_rag_si_vide()
+
+
+def test_indexation_rag_ignoree_si_table_deja_peuplee(monkeypatch: pytest.MonkeyPatch) -> None:
+    """470 documents deja presents : le second passage ne reindexe rien."""
+    from predicare_seed import load_initial_data
+
+    monkeypatch.setenv("SEED_RAG_AUTO", "1")
+    monkeypatch.setattr(load_initial_data, "_nombre_documents_indexes", lambda: 470)
+    _ingest_rag_interdit(monkeypatch)
+
+    load_initial_data.indexer_rag_si_vide()
+
+
+def test_indexation_rag_construit_quand_table_vide(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Table vide : `ingest_rag.appliquer` recoit le corpus et les 470 segments."""
+    import sys
+    import types
+
+    from predicare_seed import load_initial_data
+
+    appels: dict[str, object] = {}
+
+    def appliquer(corpus: object) -> dict[str, int]:
+        appels["corpus"] = corpus
+        return {"segments": 470, "ignores": 0, "force": False}
+
+    module = types.ModuleType("predicare_seed.ingest_rag")
+    module.appliquer = appliquer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "predicare_seed.ingest_rag", module)
+
+    monkeypatch.setenv("SEED_RAG_AUTO", "1")
+    monkeypatch.setattr(load_initial_data, "_nombre_documents_indexes", lambda: 0)
+    monkeypatch.setattr(load_initial_data, "_corpus_rag", lambda: tmp_path)
+    monkeypatch.setattr(load_initial_data, "_embedding_disponible", lambda: True)
+
+    load_initial_data.indexer_rag_si_vide()
+
+    assert appels["corpus"] == tmp_path
+
+
+def test_indexation_rag_ne_bloque_pas_sans_cle_embedding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Sans cle, le seed reussit et l'index reste vide."""
+    from predicare_seed import load_initial_data
+
+    monkeypatch.setenv("SEED_RAG_AUTO", "1")
+    monkeypatch.setattr(load_initial_data, "_nombre_documents_indexes", lambda: 0)
+    monkeypatch.setattr(load_initial_data, "_corpus_rag", lambda: tmp_path)
+    monkeypatch.setattr(load_initial_data, "_embedding_disponible", lambda: False)
+    _ingest_rag_interdit(monkeypatch)
+
+    load_initial_data.indexer_rag_si_vide()

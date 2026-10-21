@@ -53,6 +53,95 @@ DATA_RAW_DIR = Path(os.environ.get("DATA_RAW_DIR", "/data/raw"))
 #: Dossier du rapport de qualite (le volume des donnees est monte en lecture seule).
 RAPPORT_DIR = Path(os.environ.get("RAPPORT_DIR", "/tmp"))
 
+#: Indexation automatique de l'index RAG apres le chargement. Sur une machine
+#: vierge, `make up` doit laisser un assistant utilisable : sans ce passage,
+#: `make seed-rag` resterait une etape manuelle oubliee et l'assistant
+#: demarrerait avec zero document.
+#:
+#: `SEED_RAG_AUTO=0` desactive l'indexation automatique (utile pour ne
+#: recharger que les donnees, ou pour indexer un corpus avec `make seed-rag`).
+#: La variable est lue a l'execution, pas a l'import, pour rester testable.
+SEED_RAG_AUTO_ENV = "SEED_RAG_AUTO"
+
+
+def _rag_auto_active() -> bool:
+    """Indexation activee par defaut ; `SEED_RAG_AUTO=0` la desactive."""
+    valeur = os.environ.get(SEED_RAG_AUTO_ENV, "1").strip().lower()
+    return valeur not in {"0", "false", "non", "no", "off"}
+
+
+def _corpus_rag() -> Path:
+    return Path(os.environ.get("RAG_CORPUS_DIR", "/data/rag_corpus"))
+
+
+def _nombre_documents_indexes() -> int:
+    with session_scope() as session:
+        return int(
+            session.execute(text("SELECT count(*) FROM core.document_vectorise")).scalar() or 0
+        )
+
+
+def _embedding_disponible() -> bool:
+    """Vrai si un calcul d'embedding est possible sans dependre d'une cle.
+
+    `EMBEDDING_MODE=empreinte` est un choix explicite de calcul local : il ne
+    demande aucune cle. En mode `auto` ou `semantic`, l'indexation semantique
+    exige une vraie cle (pas le gabarit `CHANGER_MOI_LLM`).
+    """
+    from predicare.secrets import est_configure
+
+    settings = get_settings()
+    mode = (getattr(settings, "embedding_mode", "auto") or "auto").strip().lower()
+    if mode == "empreinte":
+        return True
+    return est_configure(getattr(settings, "embedding_api_key", ""))
+
+
+def _rag_non_construit(raison: str) -> None:
+    logger.info("index RAG non construit : %s", raison)
+
+
+def indexer_rag_si_vide() -> None:
+    """Indexe le corpus une seule fois, sans jamais faire echouer le seed.
+
+    L'index est construit si et seulement si `core.document_vectorise` est
+    vide : un `make up` sur une base deja peuplee ne reindexe donc jamais les
+    470 segments existants. Toute erreur est journalisee en avertissement et
+    laisse le chargement des donnees reussi : l'index RAG est un confort de
+    demonstration, pas une condition d'integrite metier.
+    """
+    if not _rag_auto_active():
+        _rag_non_construit(f"{SEED_RAG_AUTO_ENV}=0 (indexation automatique desactivee)")
+        return
+
+    try:
+        existants = _nombre_documents_indexes()
+        if existants:
+            logger.info("index.rag.deja_present", documents=existants)
+            return
+
+        corpus = _corpus_rag()
+        if not corpus.exists():
+            _rag_non_construit(f"corpus absent ({corpus})")
+            return
+
+        if not _embedding_disponible():
+            _rag_non_construit("cle d'embedding absente")
+            return
+
+        # Import tardif : le chargement des CSV reste utilisable meme si les
+        # dependances RAG (pypdf, langchain) manquent a l'image d'un poste.
+        from predicare_seed.ingest_rag import appliquer
+
+        resultat = appliquer(corpus)
+        logger.info(
+            "index.rag.construit",
+            documents=int(resultat.get("segments", 0)),
+            ignores=int(resultat.get("ignores", 0)),
+        )
+    except Exception as exc:
+        logger.warning("index.rag.echec", erreur=str(exc), message="chargement conserve")
+
 
 def _relire_brut(dossier: Path) -> dict[str, pd.DataFrame]:
     """Relit les CSV sans interpretation, pour la porte d'integrite.
@@ -669,6 +758,10 @@ def main() -> int:
         resultat = charger_tout(session, donnees)
 
     logger.info("chargement.termine", **resultat)
+
+    # Une seule commande sur une machine vierge : les donnees ET l'assistant.
+    # Le second passage ne reindexe rien (table deja peuplee).
+    indexer_rag_si_vide()
     return 0
 
 

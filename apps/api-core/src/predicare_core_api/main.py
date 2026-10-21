@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +27,62 @@ from predicare_core_api.audit.router import router as audit_router
 from predicare_core_api.billing.router import router as billing_router
 from predicare_core_api.decisions.router import router as decisions_router
 from predicare_core_api.identity.router import router as identity_router
+from predicare_core_api.rgpd import purge as purge_rgpd
 from predicare_core_api.rgpd.router import router as rgpd_router
+
+#: Delai avant le premier passage de la purge planifiee. Assez long pour ne
+#: jamais peser sur un demarrage ni sur une demonstration ; le job tourne
+#: ensuite toutes les 24 h. Reglable pour les tests et l'exploitation.
+PURGE_DELAI_INITIAL_DEFAUT_S = 60.0
+PURGE_INTERVALLE_DEFAUT_S = 24 * 60 * 60.0
+
+
+def _secondes(nom: str, defaut: float) -> float:
+    """Lit une duree en secondes, en ignorant une valeur illisible."""
+    valeur = os.getenv(nom)
+    if valeur is None:
+        return defaut
+    try:
+        return max(0.0, float(valeur))
+    except ValueError:
+        return defaut
+
+
+def purge_planifiee_activee() -> bool:
+    """`PURGE_PLANIFIEE=0` desactive la boucle ; tout le reste l'active."""
+    valeur = os.getenv("PURGE_PLANIFIEE", "1").strip().lower()
+    return valeur not in {"0", "false", "non", "no", "off"}
+
+
+async def boucle_purge(logger) -> None:
+    """Tache de fond : un premier passage differe, puis un toutes les 24 h.
+
+    La purge est synchrone (SQLAlchemy) : elle part dans un thread pour ne
+    pas bloquer la boucle d'evenements. Une erreur n'arrete pas le service :
+    on la journalise et on reessaie au tour suivant.
+    """
+    await asyncio.sleep(_secondes("PURGE_DELAI_INITIAL_SECONDS", PURGE_DELAI_INITIAL_DEFAUT_S))
+    while True:
+        try:
+            resume = await asyncio.to_thread(purge_rgpd.executer_purge_planifiee)
+            logger.info("purge.planifiee.execution", **resume)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - base indisponible
+            logger.warning("purge.planifiee.erreur", erreur=str(exc))
+        await asyncio.sleep(_secondes("PURGE_INTERVALLE_SECONDS", PURGE_INTERVALLE_DEFAUT_S))
+
+
+def demarrer_purge_planifiee(logger) -> asyncio.Task[None] | None:
+    """Demarre la tache si elle est active, sinon rend `None`.
+
+    Rend la tache pour que le `lifespan` puisse l'annuler proprement a
+    l'arret ; c'est aussi le point d'entree teste sans lancer l'application.
+    """
+    if not purge_planifiee_activee():
+        logger.info("purge.planifiee.desactivee")
+        return None
+    return asyncio.create_task(boucle_purge(logger), name="purge-planifiee")
 
 
 def create_app() -> FastAPI:
@@ -37,6 +93,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         publish_build(SERVICE_NAME, __version__)
+        tache_purge = demarrer_purge_planifiee(logger)
         # Les secrets ecrits en base PRIMENT sur l'environnement : c'est ce
         # qui permet de corriger un canal depuis l'ecran d'administration
         # sans redemarrer la plateforme entiere. Le secret de la cle
@@ -56,6 +113,10 @@ def create_app() -> FastAPI:
             secrets_manquants=settings.missing_secrets(),
         )
         yield
+        if tache_purge is not None:
+            tache_purge.cancel()
+            with suppress(asyncio.CancelledError):
+                await tache_purge
         db.dispose_engine()
         logger.info("service.arret")
 
