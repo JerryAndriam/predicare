@@ -37,11 +37,11 @@ leur exploitation.
 | Indicateur | Valeur mesurée | Source |
 | --- | ---: | --- |
 | ROC-AUC du modèle de fraude (v2, seuil 0,2876) | **0,9500** | `reports/modele_v2.md` |
-| Rappel au seuil retenu | **87,0 %** | `reports/modele_v2.md` |
+| Rappel au seuil retenu | **87,02 %** | `reports/modele_v2.md` |
 | Économie de coût de contrôle sur le jeu de test | **22 656 000 MGA** | `reports/modele_v2.md` |
 | Fidélité / citation / exactitude du RAG | **30/30, 20/20, 26/26** | `reports/eval_rag_2026-10-19_5.json` |
 | Coût LLM par requête RAG | **0,00064 USD** (~0,00059 EUR) | `apps/api-rag/README.md`, moyenne 30 questions |
-| Tests automatisés | **659 passés, 18 ignorés** | `make test`, 20/10/2026 |
+| Tests automatisés | **693 passés, 18 ignorés** | `make test`, 21/10/2026 |
 
 **La décision de cadrage**
 
@@ -66,9 +66,10 @@ production.
 
 **Ce que le dossier ne prétend pas**
 
-Le modèle n'est pas un détecteur de fraude universel : il est entraîné sur une
-population synthétique de 84 593 factures et mesure un rappel de 87,0 %, sous
-l'objectif de 90 %. Les économies sont des **coûts de contrôle évités** par
+Le modèle n'est pas un détecteur de fraude universel : il est entraîné sur un
+jeu synthétique de 84 593 factures ; la base en contient 84 608 avec les
+15 factures de démonstration. Il mesure un rappel de 87,02 %, sous l'objectif
+de 90 %. Les économies sont des **coûts de contrôle évités** par
 rapport à un scénario « tout contrôler », pas de la fraude recouvrée. Le RAG
 répond sur les contrats et l'historique de l'assuré, pas sur l'ensemble du
 droit de la santé.
@@ -111,6 +112,36 @@ La machine de démonstration de l'équipe coûte **0 €** : le scénario ci-des
 est le coût de l'hébergement si la plateforme est sortie du poste de
 développement. Il inclut l'OS, le reverse proxy et les volumes, pas les postes
 de travail des utilisateurs.
+
+**Base vectorielle : une seule instance.** Les vecteurs du RAG (470 segments,
+`vector(1536)`, index HNSW) vivent dans l'instance PostgreSQL qui porte déjà
+les données métier et l'audit (`docker-compose.yml`, service `db`). Le coût
+marginal est **nul** : une base vectorielle managée dédiée ajouterait un
+abonnement, un second jeu de sauvegardes et un second modèle de droits, pour
+un corpus de quelques dizaines de mégaoctets. Une instance dédiée ne se
+justifierait qu'au-delà de plusieurs millions de vecteurs, ou si le volume de
+recherche devait être mis à l'échelle indépendamment du reste de la
+plateforme.
+
+**Scénario d'internalisation du RAG sur GPU (hypothèse, hors total).** Le TCO
+ci-dessus suppose le RAG servi par API. Si l'équipe internalisait le modèle,
+un GPU managé de classe NVIDIA L4 ou A10G coûterait environ **0,35 €/h**, soit
+**256 €/an** (0,35 × 730 h). Ce montant est une **hypothèse de tarif public
+datée, pas une dépense engagée** : il n'est inclus dans aucun des trois
+scénarios du tableau 1.5.
+
+Le point d'équilibre se calcule contre le coût API mesuré. À 0,00064 USD par
+question, soit environ 0,00059 EUR, 256 €/an correspondent à environ
+**434 000 questions par an** (près de 36 000 par mois). Les scénarios retenus
+— 1 000 et 10 000 questions par mois, soit 12 000 et 120 000 par an — restent
+donc **sous ce seuil** : le GPU ne se justifie pas aux volumes de la
+démonstration. Il ne le deviendrait qu'à partir d'environ 36 000 questions par
+mois, et à condition de mesurer la qualité du modèle local, ce qui n'a pas été
+fait.
+
+<!-- source: docker-compose.yml:82-84 (instance pgvector unique) ;
+     db/seeds/README.md:274 (470 segments) ; 0,35 €/h = hypothèse de tarif
+     public, absente du dépôt ; coût API : apps/api-rag/README.md. -->
 
 ## 1.3 Coût des tokens
 
@@ -173,6 +204,10 @@ les tokens représentent 6,5 % du TCO ; à 10 000 questions, 33 %. Le cache
 sémantique (partie 6) est donc un levier réel, mais il ne compensera jamais
 une infrastructure mal dimensionnée.
 
+Le scénario GPU de la section 1.2 (256 €/an si le RAG était internalisé) reste
+**hors de ces totaux** : c'est une hypothèse de comparaison, pas une dépense
+engagée.
+
 ## 1.6 ROI
 
 Le modèle v2, au seuil 0,2876, produit la matrice de confusion suivante sur le
@@ -198,19 +233,41 @@ Le coût métier est la somme des contrôles inutiles et des fraudes manquées :
 
 L'économie est un **coût de contrôle évité**, pas une fraude recouvrée. Elle
 mesure ce que la plateforme fait gagner par rapport à un contrôle exhaustif,
-à qualité de détection égale.
+à qualité de détection égale. Le ratio qui en découle est le **ROI coût de
+contrôle évité (mesuré)** : 41,6× sur le jeu de test, 348,8× en projection
+annuelle.
 
-**Projection annuelle.** Le jeu de données contient 84 593 factures ; le
-jeu de test en contient 10 086, soit un facteur 8,387. À taux de fraude et à
-coût unitaire constants, l'économie annuelle serait de **190,0 millions MGA**
-(22 656 000 × 8,387), soit **2 246 MGA par facture**. C'est une extrapolation,
+**Fraude évitée (hypothèse de recouvrement).** Le CDC demande aussi le rapport
+entre les fraudes évitées et les coûts d'infrastructure. Sur les
+22 656 000 MGA de fraude détectée par le modèle sur le jeu de test, une
+hypothèse de recouvrement de **30 %** donnerait **6 797 000 MGA**, soit
+**6,8 M MGA** récupérés. Ce taux est une **hypothèse de gestion, pas une
+mesure** : il dépend des procédures de recouvrement, de la solvabilité des
+prestataires et du taux de confirmation par le gestionnaire. L'intervalle
+retenu, de 10 % à 50 %, donne **2,27 à 11,33 M MGA**.
+
+| Indicateur | Base (30 %) | Intervalle (10 %–50 %) |
+| --- | ---: | ---: |
+| Fraude évitée | 6,80 M MGA | 2,27–11,33 M MGA |
+| **ROI fraude évitée (hypothèse)** | **12,5×** | 4,2×–20,8× |
+
+Ce ratio ne se confond pas avec le **ROI coût de contrôle évité (mesuré)** :
+le premier suppose un recouvrement effectif, le second compare deux coûts de
+contrôle observés. Les deux sont présentés séparément pour que l'hypothèse
+puisse être discutée sans mettre en cause la mesure.
+
+**Projection annuelle.** Le jeu chargé contient 84 608 factures — 84 593
+factures du jeu de données et 15 factures de démonstration — et le jeu de test
+en contient 10 086, soit un facteur 8,389. À taux de fraude et à coût unitaire
+constants, l'économie annuelle serait de **190,05 millions MGA**
+(22 656 000 × 8,389), soit **2 246 MGA par facture**. C'est une extrapolation,
 pas une mesure de production.
 
 | Scénario | Factures/an | Économie | TCO | ROI net | Ratio |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Jeu de test mesuré | 10 086 | 22,66 M MGA | 0,545 M MGA | 22,11 M MGA | **41,6×** |
-| Annuel à volume constant | 84 593 | 190,02 M MGA | 0,545 M MGA | 189,48 M MGA | **348,8×** |
-| Prudent : 50 % de l'économie, TCO stress | 84 593 | 95,01 M MGA | 1,074 M MGA | 93,94 M MGA | **88,5×** |
+| Annuel à volume constant | 84 608 | 190,05 M MGA | 0,545 M MGA | 189,51 M MGA | **348,8×** |
+| Prudent : 50 % de l'économie, TCO stress | 84 608 | 95,03 M MGA | 1,074 M MGA | 93,95 M MGA | **88,5×** |
 
 Le retour sur coût est immédiat à l'échelle du jeu de test : le TCO annuel
 représente 2,4 % de l'économie mesurée. La prudence reste de mise : le ROI
@@ -225,6 +282,7 @@ décision humaine.
 | Réduire `RAG_TOP_K` | Moins de tokens d'entrée ; à arbitrer avec la fidélité | Réglage |
 | Réduire `SESSION_MAX_TURNS` | Moins d'historique rejoué ; protège la latence | Réglage |
 | Modèle `gpt-4o-mini` | Coût maîtrisé ; pas de modèle plus gros sans mesure | Déjà actif |
+| Internalisation du RAG sur GPU | À écarter sous ~36 000 questions/mois ; point d'équilibre à ~434 000 questions/an | 256 €/an (hypothèse, hors total) |
 | Plafond de débit Traefik | 60 req/min, burst 120 : protège le quota LLM | Déjà actif |
 | Alerte `predicare_llm_cost_usd_total` | Détecte une dérive de consommation | À configurer |
 
@@ -237,11 +295,14 @@ récupérés ou l'historique rejoué a plus d'effet que le choix du modèle.
 - L'extrapolation annuelle suppose un taux de fraude et un coût unitaire
   identiques à ceux du jeu de test.
 - Le modèle n'est pas entraîné sur des factures de production : le rappel de
-  87,0 % est une mesure sur jeu synthétique.
+  87,02 % est une mesure sur jeu synthétique.
 - Le TCO n'inclut ni le temps de développement, ni le temps de supervision
   humaine, ni les coûts de mise en conformité (audit, conseil juridique).
 - Les coûts de tokens sont ceux du RAG ; la détection de fraude n'appelle pas
   de LLM à l'inférence.
+- Le scénario GPU de la section 1.2 est une hypothèse de comparaison : il
+  n'engage aucune dépense et suppose un modèle local de qualité équivalente,
+  non mesurée à ce jour.
 
 # 2. RGPD
 
@@ -369,13 +430,17 @@ est donc requise avant production.
 | Ré-identification | Élevée | Chiffrement, pseudonymisation, cloisonnement | Faible |
 | Fuite vers le LLM | Élevée | Minimisation, pas de noms, DPA à signer | Moyen |
 | Injection de prompt | Moyenne | Filtre, séparation instruction/donnée, SQL lecture seule | Faible |
-| Accès indu du professionnel | Moyenne | RBAC, mais filtre prestataire absent | **Élevé** |
+| Accès indu du professionnel | Moyenne | RBAC et filtre prestataire côté serveur (`_verifier_references`, 21/10/2026) | **Faible** |
 | Sauvegarde non chiffrée | Moyenne | Volume dédié, accès restreint | Moyen |
 
-L'accès indu du professionnel (G7 de `docs/analyse_front_vs_cdc.md`) est le
-risque résiduel le plus visible : un professionnel voit toutes les factures
-pseudonymisées, pas seulement les siennes. La correction est classée P0 dans
-l'analyse front.
+L'accès indu du professionnel (G7 de `docs/analyse_front_vs_cdc.md`) a été
+**corrigé le 21/10/2026**. Le contrôle serveur vit dans `_verifier_references`
+(`apps/api-core/src/predicare_core_api/billing/router.py`) : pour le rôle
+`PROFESSIONNEL_SANTE`, il compare le `prestataire_id` de la facture à
+`_prestataire_du_compte`, avant notation et écriture. Changer le code envoyé
+dans la requête ne suffit donc plus à facturer pour un autre établissement.
+La ligne correspondante du plan de durcissement (5.8) est conservée comme
+traitée, avec renvoi au code.
 
 ## 2.9 Violations et registre
 
@@ -424,12 +489,12 @@ transparence pourrait être défendu. Le dossier retient la lecture prudente.
 | Obligation | Article | Preuve disponible | Écart |
 | --- | --- | --- | --- |
 | Système de gestion des risques | 9 | Rapports modèle et équité, dérive, tests | Registre des risques formel à créer |
-| Gouvernance des données | 10 | 84 593 factures, 0 manquante, 0 doublon exact, empreinte SHA-256 | Data sheet Annexe IV à formaliser |
+| Gouvernance des données | 10 | 84 608 factures chargées, 0 manquante, 0 doublon exact, empreinte SHA-256 | Data sheet Annexe IV à formaliser |
 | Documentation technique | 11 | Ce dossier, `README`, ADR, model card, évals | Trame Annexe IV à produire |
 | Journalisation | 12 | `audit.journal`, `audit.decision_gestionnaire`, `ml.modele_version`, `ml.rapport_derive` | Connexions et actions admin non toutes journalisées |
 | Transparence | 13 | SHAP, seuil, version, sources RAG | Mention « assistant IA » à ajouter dans l'interface |
 | Supervision humaine | 14 | Route `POST /alertes/decision`, commentaire, audit | Procédure d'escalade à écrire |
-| Exactitude, robustesse, cybersécurité | 15 | ROC-AUC 0,95, rappel 87 %, 659 tests, RBAC, SQL lecture seule | Test d'intrusion, TLS, sauvegardes chiffrées |
+| Exactitude, robustesse, cybersécurité | 15 | ROC-AUC 0,95, rappel 87,02 %, 693 tests, RBAC, SQL lecture seule | Test d'intrusion, TLS, sauvegardes chiffrées |
 | Système de management de la qualité | 17 | CI, revue, tests, versionnement, ADR | QMS formel à documenter |
 | Évaluation de conformité | 43 | Auto-évaluation interne possible (annexe VI) | Non réalisée |
 | Marquage CE et enregistrement | 48, 49 | — | À faire avant mise sur le marché |
@@ -562,7 +627,7 @@ portée d'un écart sur 3 000.
 
 ## 4.3 Lecture
 
-**Le rappel global est de 87,0 %, sous l'objectif de 90 %.** L'écart est assumé
+**Le rappel global est de 87,02 %, sous l'objectif de 90 %.** L'écart est assumé
 et documenté : le seuil a été arbitré sur le jeu de validation, pas sur le
 test, pour éviter une fuite de données. Baisser le seuil à 0,20 porterait le
 rappel à 89 %, au prix de près de 1 000 faux positifs supplémentaires.
@@ -618,7 +683,7 @@ surveillance.
 | Répudiation | Nier une décision | `audit.decision_gestionnaire`, `audit.journal`, logs JSON | Connexions non journalisées |
 | Divulgation | Fuite de noms, cache partagé | Chiffrement Fernet, pseudonymes, scope `assure_id` | Sauvegardes non chiffrées |
 | Déni de service | Script sur le RAG | Rate limit Traefik, question limitée à 1 000 caractères, `LIMIT` SQL | Pas de quota par utilisateur |
-| Élévation de privilèges | Admin via API | RBAC 4 rôles, routes admin protégées | Périmètre professionnel trop large |
+| Élévation de privilèges | Admin via API | RBAC 4 rôles, routes admin protégées | Périmètre professionnel contrôlé côté serveur |
 
 ## 5.2 Authentification et habilitations
 
@@ -686,14 +751,14 @@ et la liste blanche de requêtes, pas par le rôle.
 | Modèles | version, artefact, empreinte, métriques, statut | `ml.modele_version` |
 | Dérive | PSI, variables, effectifs, alerte, date | `ml.rapport_derive` |
 | Métriques | latence, erreurs, tokens, coût, cache | Prometheus |
-| Tableaux de bord | Grafana, Superset | `docker-compose.observability.yml` |
+| Tableaux de bord | Grafana, Superset (13 datasets) | `docker-compose.observability.yml` |
 | Workflows | exécutions n8n, erreurs | n8n `execution_entity` |
 
 ## 5.7 Preuves de test
 
 | Suite | Résultat | Commande |
 | --- | ---: | --- |
-| Tests unitaires et d'intégration | **659 passés, 18 ignorés** | `make test` |
+| Tests unitaires et d'intégration | **693 passés, 18 ignorés** | `make test` |
 | Attaques RAG | 97 tests, 100 % des attaques déclarées bloquées | `pytest tests/test_rag_attacks.py` |
 | Garde-fous | 78 tests | `pytest tests/test_guardrails.py` |
 | SQL | 57 tests | `pytest tests/test_sql_tool.py` |
@@ -710,7 +775,7 @@ sont rejoués sur la plateforme de démonstration.
 | --- | --- | --- | --- |
 | TLS non terminé | Interception, vol de jeton | Terminer TLS sur Traefik, rediriger HTTP | P0 |
 | Sauvegardes non chiffrées | Fuite d'un volume | Chiffrer avec `age`, clé séparée | P0 |
-| Professionnel voit toutes les factures | Divulgation | Filtrer par `prestataire_id` | P0 |
+| Professionnel voit toutes les factures | Divulgation | **Traitée** le 21/10/2026 : filtre serveur `_verifier_references` (`billing/router.py`) | Traitée |
 | Connexions non journalisées | Répudiation | Écrire un événement `auth.login` | P1 |
 | 2 alertes Dependabot | Vulnérabilité connue | Mettre à jour les dépendances | P1 |
 | Pas de test d'intrusion | Faux sentiment de sécurité | Prestation ou test interne | P1 |
@@ -802,7 +867,7 @@ Le cache est donc un accélérateur, pas une promesse.
 | Coût RAG | `apps/api-rag/README.md`, `/api/rag/question` | 2026-10-20 |
 | Cache | `GET /api/rag/cache/stats` | 2026-10-20 |
 | Dérive | `GET /api/inference/derive`, `ml.rapport_derive` | 2026-10-20 |
-| Tests | `make test` : 659 passés, 18 ignorés | 2026-10-20 |
+| Tests | `make test` : 693 passés, 18 ignorés | 2026-10-21 |
 | Lint | `make lint` : OK | 2026-10-20 |
 | n8n | `make e2e-n8n` : 13/13 | 2026-10-20 |
 | Base | 110 Mo, 84 608 factures, 5 528 prédictions | 2026-10-20 |
@@ -819,7 +884,7 @@ Le cache est donc un accélérateur, pas une promesse.
 | Coût faux positif | 3 000 MGA | Coût d'un contrôle |
 | Coût faux négatif | 30 000 MGA | Fraude non détectée |
 | Taux de fraude du test | 8,7 % | 878 / 10 086 |
-| Volume annuel | 84 593 factures | Jeu de données |
+| Volume annuel | 84 608 factures | Base chargée (84 593 + 15 de démonstration) |
 
 ### Références externes
 
@@ -847,7 +912,7 @@ Le cache est donc un accélérateur, pas une promesse.
 
 ## D. Checklist pour le jury
 
-1. **Le modèle est-il précis ?** ROC-AUC 0,9500, rappel 87,0 %, précision
+1. **Le modèle est-il précis ?** ROC-AUC 0,9500, rappel 87,02 %, précision
    59,7 % au seuil 0,2876 ; le rappel est sous l'objectif de 90 %, assumé.
 2. **Les alertes sont-elles explicables ?** Oui : SHAP par facture, lisible
    par le gestionnaire, et journalisé.
@@ -859,10 +924,13 @@ Le cache est donc un accélérateur, pas une promesse.
    exactitude ; p95 6,19 s, au-dessus de la cible de 5 s.
 6. **Le RAG résiste-t-il aux attaques ?** 97 tests, 100 % des attaques
    déclarées bloquées ; la barrière finale est le compte SQL en lecture seule.
-7. **Combien ça coûte ?** 109 €/an en base, 391 €/an en stress conservateur ;
-   les tokens sont minoritaires, l'infrastructure domine.
-8. **Combien ça rapporte ?** 22,66 M MGA sur le jeu de test, 190 M MGA/an en
-   projection ; 41,6× à 348,8× le TCO.
+7. **Combien ça coûte ?** 108,97 €/an en base, 214,78 €/an en stress et
+   390,86 €/an en conservateur ; les tokens sont minoritaires en base,
+   l'infrastructure domine. Un scénario GPU à 256 €/an est chiffré hors total.
+8. **Combien ça rapporte ?** 22,66 M MGA de coût de contrôle évité sur le jeu
+   de test, 190,05 M MGA/an en projection, soit un ROI mesuré de 41,6× à
+   348,8×. Sous hypothèse de recouvrement à 30 %, la fraude évitée représente
+   6,8 M MGA et un ROI de 12,5× (4,2×–20,8×).
 9. **Le système est-il équitable ?** Les écarts sont mesurés et publiés ;
    `CABINET_GENERALISTE` et `TRÈS ÉLEVÉ` sont les segments à surveiller ;
    `DOUBLON` relève d'une règle déterministe.
