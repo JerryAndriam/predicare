@@ -116,6 +116,11 @@ def _resoudre_prestataire(session: Any, valeur: str, *, ville: str | None = None
     return valeur
 
 
+def _resoudre_prestataire_parmi(session: Any, valeurs: Any, *, ville: str | None = None) -> str:
+    valeurs = list(valeurs) if valeurs is not None else []
+    return valeurs[0] if valeurs else ""
+
+
 def _resoudre_acte(session: Any, valeur: str) -> str:
     return "ACT-001"
 
@@ -136,6 +141,7 @@ def _faux_module() -> types.ModuleType:
     module.payload_de = _payload_de
     module.resoudre_assure = _resoudre_assure
     module.resoudre_prestataire = _resoudre_prestataire
+    module.resoudre_prestataire_parmi = _resoudre_prestataire_parmi
     module.resoudre_acte = _resoudre_acte
     return module
 

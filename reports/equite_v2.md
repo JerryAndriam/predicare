@@ -62,6 +62,6 @@ Le rappel sur `DOUBLON` est de loin le plus bas de la table. L'investigation mon
 
 Autrement dit, 98 % des cas `DOUBLON` n'ont **aucune duplication reelle dans les donnees metier**. Ce sont des factures ordinaires dont l'identifiant est attribue dans un bloc contigu en fin de plage (FAC-00082846 a FAC-00083754, melange avec `ACTE_FICTIF` qui occupe la plage suivante). L'etiquette ne correspond donc a aucun signal observable dans les variables disponibles.
 
-Consequence operationnelle : ce rappel ne s'ameliorera pas en reentrainant. La detection des doublons de soumission doit passer par une **regle deterministe** sur `numero_facture` a la reception, independamment du modele. C'est d'ailleurs l'une des dix regles d'invalidite deja implementees dans `predicare_seed.qualite_donnees` : elles s'appliquent a la soumission, le modele a l'analyse.
+Consequence operationnelle : ce rappel ne s'ameliorera pas en reentrainant. La detection des doublons de soumission doit passer par une **regle deterministe** sur `numero_facture` a la reception, independamment du modele. Le socle de controle des donnees du projet (`predicare_seed.qualite_donnees`) compte deja dix regles d'invalidite de ce type, appliquees a la soumission : la regle anti-doublon viendra s'y ajouter, le modele restant sur l'analyse.
 
 Les autres familles sont a des rappels de 0,78 a 1,00. Le modele couvre donc les 13 mecanismes observables ; le quatorzieme n'est pas apprenable a partir de ce jeu.

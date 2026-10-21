@@ -293,7 +293,7 @@ coût est immédiat à l'échelle du jeu de test : le TCO annuel représente 2,4
 de l'économie mesurée. La prudence reste de mise : le ROI dépend du taux de
 fraude réel, du coût des contrôles et de la qualité de la décision humaine.
 La convention « contrôle exhaustif », qui compte la revue des 764 vrais
-positifs, est détaillée dans `docs/livrables/01_analyse_tco_roi.md`.
+positifs, est détaillée dans `docs/livrables/Analyse_TCO_ROI.pdf`.
 
 ## 1.7 Leviers FinOps
 

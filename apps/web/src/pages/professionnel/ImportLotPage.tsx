@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { api, apiFormData, messageErreur } from '../../api/client'
 import type { InvoiceInput, Prediction, References } from '../../api/types'
@@ -262,6 +262,8 @@ export function ImportLotPage() {
 
   const [pdfFichiers, setPdfFichiers] = useState<File[]>([])
   const [pdfEnCours, setPdfEnCours] = useState(false)
+  const [pdfGlisse, setPdfGlisse] = useState(false)
+  const inputPdfRef = useRef<HTMLInputElement | null>(null)
 
   const importEnCours = lotEnCours || pdfEnCours
 
@@ -379,9 +381,8 @@ export function ImportLotPage() {
    * Selectionne les PDF a envoyer. Le controle est fait ici, avant l'envoi :
    * un refus immediat evite de faire monter 20 fichiers pour rien.
    */
-  const choisirFichiersPdf = (liste: FileList | null) => {
-    if (liste === null) return
-    const fichiers = Array.from(liste)
+  const validerPdf = (fichiers: File[]) => {
+    if (fichiers.length === 0) return
     setErreur(null)
     setSucces(null)
     setLotResultats([])
@@ -400,7 +401,59 @@ export function ImportLotPage() {
       setErreur(`Un lot est limité à ${LIMITE_PDF} PDF (${fichiers.length} sélectionnés).`)
       return
     }
-    setPdfFichiers(fichiers)
+    // On dedoublonne par nom + taille : un glisser-deposer par erreur ne
+    // doit pas envoyer deux fois le meme fichier.
+    const vus = new Set<string>()
+    const uniques = fichiers.filter((fichier) => {
+      const cle = `${fichier.name}|${fichier.size}|${fichier.lastModified}`
+      if (vus.has(cle)) return false
+      vus.add(cle)
+      return true
+    })
+    setPdfFichiers(uniques)
+  }
+
+  const choisirFichiersPdf = (liste: FileList | null) => {
+    if (liste === null) return
+    validerPdf(Array.from(liste))
+  }
+
+  const ajouterPdf = (liste: FileList | null) => {
+    if (liste === null) return
+    // Ajout incremental : on garde la selection precedente et on complete,
+    // sans depasser la limite.
+    const nouveaux = Array.from(liste)
+    const restants = LIMITE_PDF - pdfFichiers.length
+    if (restants <= 0) {
+      setErreur(`Un lot est limité à ${LIMITE_PDF} PDF.`)
+      return
+    }
+    const aAjouter = nouveaux.slice(0, restants)
+    validerPdf([...pdfFichiers, ...aAjouter])
+  }
+
+  const retirerPdf = (fichier: File) => {
+    setPdfFichiers((precedents) =>
+      precedents.filter(
+        (item) => !(item.name === fichier.name && item.size === fichier.size && item.lastModified === fichier.lastModified),
+      ),
+    )
+  }
+
+  const gererDepotPdf = (evenement: React.DragEvent<HTMLDivElement>) => {
+    evenement.preventDefault()
+    evenement.stopPropagation()
+    setPdfGlisse(false)
+    if (importEnCours) return
+    const fichiers = evenement.dataTransfer.files
+    if (fichiers && fichiers.length > 0) {
+      ajouterPdf(fichiers)
+    }
+  }
+
+  const ouvrirSelecteurPdf = () => {
+    if (importEnCours) return
+    inputPdfRef.current?.click()
   }
 
   /**
@@ -561,31 +614,86 @@ export function ImportLotPage() {
         <div className="formulaire">
           <Champ
             label="Fichiers PDF (une facture par fichier)"
-            aide={`1 à ${LIMITE_PDF} fichiers .pdf, sélection multiple.`}
+            aide={`1 à ${LIMITE_PDF} fichiers .pdf, sélection multiple, dépôt par glisser-déposer.`}
           >
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              disabled={importEnCours}
-              onChange={(event) => {
-                choisirFichiersPdf(event.target.files)
-                // Le champ est remis a zero pour pouvoir re-selectionner le
-                // meme fichier apres une correction, sans rouvrir la page.
-                event.target.value = ''
+            <div
+              className={`zone-depot${pdfGlisse ? ' zone-depot--actif' : ''}${pdfFichiers.length > 0 ? ' zone-depot--plein' : ''}${importEnCours ? ' zone-depot--disabled' : ''}`}
+              role="button"
+              tabIndex={importEnCours ? -1 : 0}
+              aria-label="Zone de dépôt des factures PDF"
+              onDragOver={(evenement) => {
+                evenement.preventDefault()
+                evenement.stopPropagation()
+                if (!importEnCours) setPdfGlisse(true)
               }}
-            />
+              onDragLeave={(evenement) => {
+                evenement.preventDefault()
+                evenement.stopPropagation()
+                setPdfGlisse(false)
+              }}
+              onDrop={gererDepotPdf}
+              onClick={ouvrirSelecteurPdf}
+              onKeyDown={(evenement) => {
+                if (evenement.key === 'Enter' || evenement.key === ' ') {
+                  evenement.preventDefault()
+                  ouvrirSelecteurPdf()
+                }
+              }}
+            >
+              <input
+                ref={inputPdfRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                disabled={importEnCours}
+                className="zone-depot__input"
+                onChange={(event) => {
+                  choisirFichiersPdf(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+              <span className="zone-depot__icone" aria-hidden="true">
+                {pdfFichiers.length > 0 ? '✓' : '⤓'}
+              </span>
+              <span className="zone-depot__titre">
+                {pdfFichiers.length > 0
+                  ? `${pdfFichiers.length} PDF sélectionné(s) sur ${LIMITE_PDF}`
+                  : 'Glissez vos factures PDF ici'}
+              </span>
+              <span className="zone-depot__sous-titre">
+                {pdfFichiers.length > 0
+                  ? 'Cliquez pour en ajouter d’autres, ou déposez-les par-dessus.'
+                  : 'ou cliquez pour parcourir — une facture par fichier, .pdf uniquement.'}
+              </span>
+            </div>
           </Champ>
 
           {pdfFichiers.length > 0 && (
-            <div className="aide" role="status" aria-live="polite">
-              <p>
-                {pdfFichiers.length} PDF sélectionné(s) sur {LIMITE_PDF} :
-              </p>
-              <ul>
+            <div className="zone-depot__liste" role="status" aria-live="polite">
+              <ul className="zone-depot__puces">
                 {pdfFichiers.map((fichier) => (
-                  <li key={`${fichier.name}-${fichier.size}-${fichier.lastModified}`}>
-                    {fichier.name}
+                  <li
+                    key={`${fichier.name}-${fichier.size}-${fichier.lastModified}`}
+                    className="zone-depot__puce"
+                  >
+                    <span className="zone-depot__puce-nom" title={fichier.name}>
+                      {fichier.name}
+                    </span>
+                    <span className="zone-depot__puce-taille">
+                      {(fichier.size / 1024).toFixed(0)} Ko
+                    </span>
+                    <button
+                      type="button"
+                      className="zone-depot__puce-retirer"
+                      onClick={(evenement) => {
+                        evenement.stopPropagation()
+                        retirerPdf(fichier)
+                      }}
+                      disabled={importEnCours}
+                      aria-label={`Retirer ${fichier.name}`}
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
               </ul>

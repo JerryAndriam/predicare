@@ -33,11 +33,11 @@ audit.
 
 | Document | Objet | Public principal | Volume indicatif |
 | --- | --- | --- | ---: |
-| [`01_analyse_tco_roi.md`](01_analyse_tco_roi.md) | Coût total, retour sur investissement, coût des tokens, tableau FinOps | Direction, finance, jury | 17–19 pages |
-| [`02_conformite_rgpd.md`](02_conformite_rgpd.md) | Registre des traitements, bases légales, droits des personnes, conservation, AIPD, sous-traitants | DPO, juriste, direction | 17–19 pages |
-| [`03_ai_act_equite.md`](03_ai_act_equite.md) | Classement AI Act, grille des obligations, audit d'équité, plan de surveillance | Jury, conformité, data science | 19–22 pages |
-| [`04_securite.md`](04_securite.md) | Modèle de menace, contrôles, preuves, risques résiduels, feuille de route | RSSI, exploitation, jury | 19–22 pages |
-| [`05_guide_exploitation_utilisateur.md`](05_guide_exploitation_utilisateur.md) | Installation, configuration, runbooks, incidents, puis le guide d'utilisation par rôle | Exploitation, support, utilisateurs | 30–34 pages |
+| [`Analyse_TCO_ROI.pdf`](Analyse_TCO_ROI.pdf) | Coût total, retour sur investissement, coût des tokens, tableau FinOps | Direction, finance, jury | 17–19 pages |
+| [`Conformite_RGPD.pdf`](Conformite_RGPD.pdf) | Registre des traitements, bases légales, droits des personnes, conservation, AIPD, sous-traitants | DPO, juriste, direction | 17–19 pages |
+| [`EU_AI_Act_Equite.pdf`](EU_AI_Act_Equite.pdf) | Classement AI Act, grille des obligations, audit d'équité, plan de surveillance | Jury, conformité, data science | 19–22 pages |
+| [`Mecanismes_Securite.pdf`](Mecanismes_Securite.pdf) | Modèle de menace, contrôles, preuves, risques résiduels, feuille de route | RSSI, exploitation, jury | 19–22 pages |
+| [`Guide_Exploitation_Utilisateur.pdf`](Guide_Exploitation_Utilisateur.pdf) | Installation, configuration, runbooks, incidents, puis le guide d'utilisation par rôle | Exploitation, support, utilisateurs | 30–34 pages |
 
 Les volumes sont indicatifs : ils correspondent à une mise en page A4 sobre,
 hors annexes exceptionnellement longues.
@@ -235,9 +235,9 @@ depuis.
 | Coûts et ROI | `docs/cadrage/dossier_cadrage.md` | `reports/modele_v2.md`, `apps/api-rag/README.md` |
 | RGPD | `apps/api-core/src/predicare_core_api/rgpd/` | `docs/cadrage/dossier_cadrage.md` |
 | Sécurité | `packages/predicare-core/src/predicare/rbac.py`, `audit.py`, `crypto.py` | `scripts/test-intrusion.sh`, `docs/cadrage/dossier_cadrage.md` |
-| AI Act et risques | `docs/cadrage/registre_risques.md` | `docs/livrables/03_ai_act_equite.md` |
-| Exploitation | `docs/livrables/05_guide_exploitation_utilisateur.md` | `.env.example`, `Makefile`, `db/backup/pg_dump.sh` |
-| Utilisateur | `docs/livrables/05_guide_exploitation_utilisateur.md` | interface web et tests Playwright |
+| AI Act et risques | `docs/cadrage/registre_risques.md` | `docs/livrables/EU_AI_Act_Equite.pdf` |
+| Exploitation | `docs/livrables/Guide_Exploitation_Utilisateur.pdf` | `.env.example`, `Makefile`, `db/backup/pg_dump.sh` |
+| Utilisateur | `docs/livrables/Guide_Exploitation_Utilisateur.pdf` | interface web et tests Playwright |
 | BI | `ops/superset/` | `ops/superset/creer_tableau_bord.md` |
 | Supervision | `ops/prometheus/rules/predicare.yml` | `ops/grafana/provisioning/` |
 | Tests | `make check` | rapports datés |

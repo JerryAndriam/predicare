@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { CircleCheck } from 'lucide-react'
 
 import { messageErreur } from '../api/client'
 import { ACCUEIL } from '../api/types'
@@ -44,62 +43,88 @@ export function LoginPage() {
 
   return (
     <main className="login">
-      <div className="login-contenu">
-        <section className="login-presentation">
-          <span className="marque">
-            <span className="marque-point" aria-hidden="true" />
-            KolikolyCare
-          </span>
+      <section className="login-visuel">
+        <img
+          className="login-visuel-image"
+          src="/brand/kolikolycare-login.jpg"
+          alt="KolikolyCare, système intelligent de détection de fraudes médicales et d’optimisation santé"
+        />
+        <ul className="login-arguments">
+          {ARGUMENTS.map((argument) => (
+            <li className="login-argument" key={argument}>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="m9 12 2 2 4-4" />
+              </svg>
+              {argument}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="login-panneau">
+        <div className="login-contenu">
+          <div className="login-marque">
+            <img
+              className="login-marque-logo"
+              src="/brand/kolikolycare-marque.png"
+              alt=""
+            />
+            <span>KolikolyCare</span>
+          </div>
+
           <h1>La bonne facture, au bon moment.</h1>
-          <p>
+          <p className="login-intro">
             KolikolyCare est la plateforme de tiers payant qui relie les professionnels de
             santé, les caisses et les assureurs : chaque facture est vérifiée, notée,
             expliquée, puis décidée par un gestionnaire.
           </p>
-          <ul className="login-arguments">
-            {ARGUMENTS.map((argument) => (
-              <li className="login-argument" key={argument}>
-                <CircleCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-                {argument}
-              </li>
-            ))}
-          </ul>
-        </section>
 
-        <form className="login-carte" onSubmit={soumettre}>
-          <h2>Connexion</h2>
-          <p className="login-aide">Accédez à votre espace de travail.</p>
+          <form className="login-carte" onSubmit={soumettre}>
+            <h2>Connexion</h2>
+            <p className="login-aide">Accédez à votre espace de travail.</p>
 
-          <Champ label="Adresse e-mail" requis>
-            <input
-              type="email"
-              autoComplete="username"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="prenom@predicare.local"
-            />
-          </Champ>
+            <Champ label="Adresse e-mail" requis>
+              <input
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="prenom@predicare.local"
+              />
+            </Champ>
 
-          <Champ label="Mot de passe" requis>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Champ>
+            <Champ label="Mot de passe" requis>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </Champ>
 
-          <Erreur message={erreur} />
+            <Erreur message={erreur} />
 
-          <button type="submit" className="bouton principal large" disabled={envoi}>
-            {envoi ? 'Connexion…' : 'Se connecter'}
-          </button>
+            <button type="submit" className="bouton principal large" disabled={envoi}>
+              {envoi ? 'Connexion…' : 'Se connecter'}
+            </button>
 
-          <p className="login-pied">Un accès nominatif et personnel.</p>
-        </form>
-      </div>
+            <p className="login-pied">Un accès nominatif et personnel.</p>
+          </form>
+        </div>
+      </section>
     </main>
   )
 }

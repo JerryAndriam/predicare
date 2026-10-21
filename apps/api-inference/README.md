@@ -105,7 +105,7 @@ contient le lot de 20 factures F17 (7 alertes) et les rejeux e2e, pas un
 echantillon de production. Le rapport fait donc son travail — il signale que
 la population servie ne ressemble plus a l'historique — et l'effectif
 `observations_courantes: 18` permet de l'interpreter. Le front ne consomme pas
-encore cet endpoint (voir `docs/livrables/04_securite.md`).
+encore cet endpoint (voir `docs/livrables/Mecanismes_Securite.pdf`).
 
 ## Points de securite et de robustesse
 

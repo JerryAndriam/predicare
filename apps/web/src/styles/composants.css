@@ -344,4 +344,125 @@
   color: var(--secondaire-fonce);
 }
 
+
+/* ---------------------------------------------------------------- zone de depot (glisser-deposer de PDF) */
+
+.zone-depot {
+  align-items: center;
+  background: var(--surface-sous);
+  border: 2px dashed var(--bordure);
+  border-radius: var(--rayon);
+  cursor: pointer;
+  display: grid;
+  gap: var(--espace-1);
+  justify-items: center;
+  min-height: 150px;
+  padding: var(--espace-6) var(--espace-4);
+  position: relative;
+  text-align: center;
+  transition: background var(--duree-rapide) ease, border-color var(--duree-rapide) ease,
+    transform var(--duree-rapide) ease;
+}
+
+.zone-depot:hover {
+  background: var(--primaire-clair);
+  border-color: var(--primaire);
+}
+
+.zone-depot--actif {
+  background: var(--primaire-clair);
+  border-color: var(--primaire);
+  border-style: solid;
+  transform: scale(1.01);
+}
+
+.zone-depot--plein {
+  border-color: var(--succes);
+  border-style: solid;
+}
+
+.zone-depot--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.zone-depot__input {
+  display: none;
+}
+
+.zone-depot__icone {
+  color: var(--primaire);
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.zone-depot__titre {
+  color: var(--encre);
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+}
+
+.zone-depot__sous-titre {
+  color: var(--encre-douce);
+  font-size: var(--police-aide);
+  max-width: 360px;
+}
+
+.zone-depot__liste {
+  margin-top: var(--espace-3);
+}
+
+.zone-depot__puces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espace-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.zone-depot__puce {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon-petit);
+  display: inline-flex;
+  gap: var(--espace-2);
+  max-width: 100%;
+  padding: var(--espace-1) var(--espace-2);
+}
+
+.zone-depot__puce-nom {
+  color: var(--encre);
+  font-size: var(--police-aide);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-depot__puce-taille {
+  color: var(--encre-douce);
+  font-size: var(--police-aide);
+  white-space: nowrap;
+}
+
+.zone-depot__puce-retirer {
+  background: transparent;
+  border: 0;
+  color: var(--encre-douce);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0 0 var(--espace-1);
+}
+
+.zone-depot__puce-retirer:hover {
+  color: var(--danger);
+}
+
+.zone-depot__puce-retirer:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 }

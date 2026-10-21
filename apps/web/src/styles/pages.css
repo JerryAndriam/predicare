@@ -6,80 +6,63 @@
 /* ---------------------------------------------------------------- connexion */
 
 .login {
-  align-items: center;
   background: var(--surface);
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(400px, 0.9fr);
   min-height: 100vh;
-  padding: var(--espace-6) var(--espace-4);
+}
+
+/* Panneau de marque : l'image fournie occupe la gauche de l'ecran. */
+.login-visuel {
+  align-items: center;
+  background: #e8f2f9;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.25rem, 2.5vh, 2rem);
+  justify-content: center;
+  overflow: hidden;
+  padding: clamp(1.5rem, 4vw, 4rem);
   position: relative;
 }
 
-/* Un voile bleu a 4 % : la page respire sans etre un aplat de couleur. */
-.login::before {
-  background: radial-gradient(circle at 50% 0%, var(--primaire-clair) 0%, transparent 62%);
+/* Fond flou derive de la meme image : le visuel se fond dans le panneau,
+   sans couture et sans ressource externe (CSP). */
+.login-visuel::before {
+  background: url('/brand/kolikolycare-login.jpg') center / cover no-repeat;
   content: '';
-  inset: 0;
-  pointer-events: none;
+  filter: blur(30px) saturate(1.08);
+  inset: -48px;
+  opacity: 0.55;
   position: absolute;
 }
 
-.login-contenu {
-  display: grid;
-  gap: var(--espace-6);
-  grid-template-columns: minmax(0, 1fr) 400px;
-  margin: 0 auto;
-  max-width: 940px;
+.login-visuel > * {
   position: relative;
+  z-index: 1;
+}
+
+.login-visuel-image {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  display: block;
+  height: auto;
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  max-width: 760px;
   width: 100%;
 }
 
-.login-presentation {
-  align-self: center;
-}
-
-.login-presentation .marque {
-  align-items: center;
-  color: var(--encre);
-  display: inline-flex;
-  font-size: 1.5rem;
-  font-weight: var(--poids-titre);
-  gap: var(--espace-2);
-  letter-spacing: -0.01em;
-  text-decoration: none;
-}
-
-.login-presentation .marque-point {
-  background: var(--primaire);
-  border-radius: var(--rayon-sm);
-  display: block;
-  height: 1.35rem;
-  width: 1.35rem;
-}
-
-.login-presentation h1 {
-  font-size: 2.375rem;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  margin: var(--espace-5) 0 var(--espace-3);
-  max-width: 15ch;
-}
-
-.login-presentation p {
-  color: var(--encre-douce);
-  font-size: 1.0625rem;
-  line-height: 1.65;
-  margin: 0;
-  max-width: 44ch;
-}
-
 .login-arguments {
+  backdrop-filter: blur(10px);
+  background: rgb(255 255 255 / 0.58);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  border-radius: var(--rayon);
   display: flex;
   flex-direction: column;
   gap: var(--espace-2);
   list-style: none;
-  margin: var(--espace-5) 0 0;
-  padding: 0;
+  margin: 0;
+  max-width: 560px;
+  padding: var(--espace-4) var(--espace-5);
+  width: 100%;
 }
 
 .login-argument {
@@ -94,6 +77,57 @@
   color: var(--secondaire);
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+/* Panneau de connexion. */
+.login-panneau {
+  align-items: center;
+  background: var(--surface);
+  display: flex;
+  justify-content: center;
+  padding: clamp(2rem, 5vw, 4rem);
+}
+
+.login-contenu {
+  max-width: 420px;
+  width: 100%;
+}
+
+.login-marque {
+  align-items: center;
+  display: flex;
+  gap: var(--espace-2);
+  margin-bottom: var(--espace-5);
+}
+
+.login-marque-logo {
+  border-radius: 9px;
+  height: 38px;
+  object-fit: cover;
+  width: 38px;
+}
+
+.login-marque span {
+  color: var(--encre);
+  font-family: var(--police-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.login-contenu h1 {
+  font-size: clamp(1.7rem, 2.3vw, 2.05rem);
+  letter-spacing: -0.025em;
+  line-height: 1.14;
+  margin: 0 0 var(--espace-3);
+  max-width: 18ch;
+}
+
+.login-intro {
+  color: var(--encre-douce);
+  font-size: 1rem;
+  line-height: 1.62;
+  margin: 0 0 var(--espace-5);
 }
 
 .login-carte {
@@ -126,24 +160,74 @@
   text-align: center;
 }
 
+/* Ecrans peu hauts : la carte de connexion doit rester visible sans
+   defilement, sans toucher au confort des grands ecrans. */
+@media (max-height: 760px) and (min-width: 901px) {
+  .login-panneau {
+    padding: 1.5rem clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .login-marque {
+    margin-bottom: var(--espace-3);
+  }
+
+  .login-contenu h1 {
+    font-size: 1.65rem;
+    margin-bottom: var(--espace-2);
+  }
+
+  .login-intro {
+    font-size: 0.92rem;
+    line-height: 1.5;
+    margin-bottom: var(--espace-3);
+  }
+
+  .login-carte {
+    gap: var(--espace-3);
+    padding: var(--espace-5) var(--espace-4);
+  }
+}
+
 @media (max-width: 900px) {
-  .login-contenu {
+  .login {
     grid-template-columns: minmax(0, 1fr);
-    max-width: 460px;
   }
 
-  .login-presentation {
-    text-align: center;
+  .login-visuel {
+    gap: 0;
+    min-height: 0;
+    padding: 0;
   }
 
-  .login-presentation h1,
-  .login-presentation p {
-    margin-left: auto;
-    margin-right: auto;
+  .login-visuel::before {
+    display: none;
+  }
+
+  .login-visuel-image {
+    -webkit-mask-image: none;
+    height: 215px;
+    mask-image: none;
+    max-width: none;
+    object-fit: cover;
+    object-position: 22% center;
+    width: 100%;
   }
 
   .login-arguments {
     display: none;
+  }
+
+  .login-panneau {
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  .login-marque {
+    margin-bottom: var(--espace-4);
+  }
+
+  .login-contenu h1 {
+    font-size: 1.8rem;
+    max-width: none;
   }
 }
 

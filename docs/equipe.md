@@ -57,10 +57,10 @@ Cette section ne remplace pas le tableau ci-dessus : elle liste les **artefacts 
 | **Mirado** | Rapports modèle et stratégies de déséquilibre `reports/modele_v2.md`, `reports/strategies_v1.md` | commits `BradAkemi` et `jerry` |
 | **Mirado** | Audit d'équité | `reports/equite_v2.md` | commits `BradAkemi` et `jerry` |
 | **Mirado** | Workflows n8n (alerte de fraude, bascule de modèle) | `apps/n8n/workflows/PK-Alerte-Fraude.json`, `apps/n8n/workflows/PK-Bascule-Modele.json` | commits `BradAkemi` (et `jerry` sur le premier) |
-| **Cherica** | Guide utilisateur | `docs/livrables/05_guide_exploitation_utilisateur.md` (partie B, fusionnée avec le guide d'origine) | commit `Cherica` |
+| **Cherica** | Guide utilisateur | `docs/livrables/Guide_Exploitation_Utilisateur.pdf` (partie B, fusionnée avec le guide d'origine) | commit `Cherica` |
 | **Cherica** | Migrations de base | `db/migrations/` | commits `Cherica`, `jerry` et `BradAkemi` |
 | **Cherica** | Workflow n8n interne | `apps/n8n/workflows/PK-Alerte-Fraude-Interne.json` | commits `Cherica` et `jerry` |
-| **Jerry** | Guide d'exploitation et d'utilisation | `docs/livrables/05_guide_exploitation_utilisateur.md`, `ops/superset/creer_tableau_bord.md` | commits `jerry` (et `BradAkemi` sur le guide) |
+| **Jerry** | Guide d'exploitation et d'utilisation | `docs/livrables/Guide_Exploitation_Utilisateur.pdf`, `ops/superset/creer_tableau_bord.md` | commits `jerry` (et `BradAkemi` sur le guide) |
 | **Jerry** | CI et décisions d'architecture | `.github/workflows/ci.yml`, `docs/adr/README.md` | commits `jerry` |
 | **Jerry** | Migrations de base et audit d'équité | `db/migrations/`, `reports/equite_v2.md` | commits `jerry`, `Cherica` et `BradAkemi` (migrations) ; `jerry` et `BradAkemi` (équité) |
 

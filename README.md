@@ -5,13 +5,13 @@ pilotage décisionnel — dans une seule application déployée en une commande,
 pour quatre rôles : assuré, professionnel de santé, gestionnaire,
 administrateur.
 
-| | |
-| --- | --- |
-| Version | 1.1 |
-| Date | 21 octobre 2026 |
+|           |                                                                                                                                   |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Version   | 1.1                                                                                                                               |
+| Date      | 21 octobre 2026                                                                                                                   |
 | Périmètre | Plateforme de démonstration : API cœur, détection de fraude, assistant documentaire, interface web, BI, supervision, exploitation |
-| Public | Équipe, jury, personnes en charge de l'exploitation ou de la conformité |
-| Statut | Version de travail ; revue métier et juridique à compléter |
+| Public    | Équipe, jury, personnes en charge de l'exploitation ou de la conformité                                                           |
+| Statut    | Version de travail ; revue métier et juridique à compléter                                                                        |
 
 > **Ce document est le point d'entrée de la plateforme.** Il explique ce que le
 > système fait, comment le démarrer, comment l'exploiter au quotidien et où
@@ -26,20 +26,20 @@ La plateforme est un outil de **tiers payant santé**. Elle reçoit des factures
 les note avec un modèle de détection de fraude, présente les alertes aux
 gestionnaires et répond aux questions des assurés sur leurs garanties.
 
-| Flux | Ce qu'il produit | Service |
-| --- | --- | --- |
-| **1 — Détection de fraude** | Un score par facture et son explication, variable par variable | `api-inference` |
-| **2 — Assistant documentaire** | Une réponse sourcée à une question d'assuré | `api-rag` |
-| **3 — Pilotage décisionnel** | La file d'alertes, les décisions, l'administration | `api-core` |
+| Flux                           | Ce qu'il produit                                               | Service         |
+| ------------------------------ | -------------------------------------------------------------- | --------------- |
+| **1 — Détection de fraude**    | Un score par facture et son explication, variable par variable | `api-inference` |
+| **2 — Assistant documentaire** | Une réponse sourcée à une question d'assuré                    | `api-rag`       |
+| **3 — Pilotage décisionnel**   | La file d'alertes, les décisions, l'administration             | `api-core`      |
 
 Quatre rôles partagent la même interface, avec des périmètres distincts :
 
-| Rôle | Ce qu'il fait | Ce qu'il ne voit pas |
-| --- | --- | --- |
-| **Assuré** | Consulter ses remboursements, poser une question sur son contrat | Les dossiers des autres assurés |
-| **Professionnel de santé** | Déposer factures et ordonnances, suivre ses dossiers | La file d'alertes des autres praticiens |
-| **Gestionnaire** | Traiter les alertes, décider, motiver | L'administration |
-| **Administrateur** | Comptes, seuil, modèle, RGPD, supervision | — |
+| Rôle                       | Ce qu'il fait                                                    | Ce qu'il ne voit pas                    |
+| -------------------------- | ---------------------------------------------------------------- | --------------------------------------- |
+| **Assuré**                 | Consulter ses remboursements, poser une question sur son contrat | Les dossiers des autres assurés         |
+| **Professionnel de santé** | Déposer factures et ordonnances, suivre ses dossiers             | La file d'alertes des autres praticiens |
+| **Gestionnaire**           | Traiter les alertes, décider, motiver                            | L'administration                        |
+| **Administrateur**         | Comptes, seuil, modèle, RGPD, supervision                        | —                                       |
 
 Le point important : **le score ne décide jamais seul**. Il priorise une file
 de contrôle ; un gestionnaire lit l'explication et décide. La décision, son
@@ -47,18 +47,18 @@ auteur, son horodatage et son motif sont écrits dans un journal d'audit.
 
 Les chiffres clés du modèle, tous vérifiés le 21 octobre 2026 :
 
-| Indicateur | Valeur |
-| --- | ---: |
-| Seuil d'alerte en service | **0,2876** |
-| ROC-AUC | 0,9500 |
-| PR-AUC | 0,8913 |
-| Rappel | 0,8702 |
-| Précision | 0,5969 |
-| Variables explicatives | 32 |
-| Factures de test / fraudes | 10 086 / 878 |
-| Économie de contrôle de fraude (convention historique) | 22 656 000 MGA |
-| Coût total de possession, scénario de base | 108,97 €/an |
-| Tests automatisés | 784 passés, 18 ignorés |
+| Indicateur                                             |                 Valeur |
+| ------------------------------------------------------ | ---------------------: |
+| Seuil d'alerte en service                              |             **0,2876** |
+| ROC-AUC                                                |                 0,9500 |
+| PR-AUC                                                 |                 0,8913 |
+| Rappel                                                 |                 0,8702 |
+| Précision                                              |                 0,5969 |
+| Variables explicatives                                 |                     32 |
+| Factures de test / fraudes                             |           10 086 / 878 |
+| Économie de contrôle de fraude (convention historique) |         22 656 000 MGA |
+| Coût total de possession, scénario de base             |            108,97 €/an |
+| Tests automatisés                                      | 784 passés, 18 ignorés |
 
 Le détail de ces chiffres et leur source : [`docs/livrables/README.md`](docs/livrables/README.md)
 § 4. Le dossier de cadrage destiné au jury est dans
@@ -75,13 +75,13 @@ Le détail de ces chiffres et leur source : [`docs/livrables/README.md`](docs/li
 
 ### 2.1 Prérequis
 
-| Outil | Requis | Pourquoi |
-| --- | :---: | --- |
-| **Docker** + Compose v2 | oui | Lance tout le reste |
-| **buildx** | oui | BuildKit, requis par les `RUN --mount=type=cache` des Dockerfiles |
-| **make** | oui | Point d'entrée des commandes |
-| **curl** | oui | Sondes de santé pendant le démarrage |
-| bash + coreutils | oui | Déjà présents sur toute machine |
+| Outil                   | Requis | Pourquoi                                                          |
+| ----------------------- | :----: | ----------------------------------------------------------------- |
+| **Docker** + Compose v2 |  oui   | Lance tout le reste                                               |
+| **buildx**              |  oui   | BuildKit, requis par les `RUN --mount=type=cache` des Dockerfiles |
+| **make**                |  oui   | Point d'entrée des commandes                                      |
+| **curl**                |  oui   | Sondes de santé pendant le démarrage                              |
+| bash + coreutils        |  oui   | Déjà présents sur toute machine                                   |
 
 Les secrets sont générés à partir de `/dev/urandom` : ni `openssl` ni
 `python3` ne sont nécessaires pour démarrer la plateforme.
@@ -93,12 +93,12 @@ sudo pacman -S docker-buildx            # Arch
 
 Docker Desktop embarque déjà le plugin. `make doctor` vérifie sa présence.
 
-| Outil | Requis pour | Nécessaire à `make up` |
-| --- | --- | :---: |
-| `uv` | Développement Python (`lint`, `test`, `typecheck`) | non |
-| `python3` | `health`, `smoke`, `n8n-import`, `n8n-export` | non |
-| `git` | Versionnement, hooks | non |
-| `node`, `npm` | — | **jamais** : le build de l'interface se fait dans Docker |
+| Outil         | Requis pour                                        |                  Nécessaire à `make up`                  |
+| ------------- | -------------------------------------------------- | :------------------------------------------------------: |
+| `uv`          | Développement Python (`lint`, `test`, `typecheck`) |                           non                            |
+| `python3`     | `health`, `smoke`, `n8n-import`, `n8n-export`      |                           non                            |
+| `git`         | Versionnement, hooks                               |                           non                            |
+| `node`, `npm` | —                                                  | **jamais** : le build de l'interface se fait dans Docker |
 
 ### 2.2 Première installation
 
@@ -158,11 +158,11 @@ make start    # redémarrage immédiat, aucune reconstruction
 
 ### 2.5 Mémoire
 
-| Jeu de commandes | Limites configurées | Usage observé |
-| --- | ---: | ---: |
-| `make up-light` (noyau seul) | ~3,5 Go | ~0,8 Go |
-| `make up` / `make start` (noyau + BI + supervision + MLflow) | ~5,8 Go | ~2,0 Go |
-| `make up-all` (+ Mailpit et cron de sauvegarde) | ~8,9 Go | ~2,1 Go |
+| Jeu de commandes                                             | Limites configurées | Usage observé |
+| ------------------------------------------------------------ | ------------------: | ------------: |
+| `make up-light` (noyau seul)                                 |             ~3,5 Go |       ~0,8 Go |
+| `make up` / `make start` (noyau + BI + supervision + MLflow) |             ~5,8 Go |       ~2,0 Go |
+| `make up-all` (+ Mailpit et cron de sauvegarde)              |             ~8,9 Go |       ~2,1 Go |
 
 Les limites sont les plafonds déclarés dans les fichiers Compose ; l'usage
 observé vient de `docker stats` sur la pile complète en fonctionnement. **Un
@@ -174,17 +174,17 @@ l'outillage de pilotage devient indisponible.
 
 ## 3. Points d'entrée
 
-| Application | URL | Lancée par |
-| --- | --- | --- |
-| Interface web, les quatre rôles | <http://localhost:8080> | `make up` |
-| Documentation interactive de l'API | <http://localhost:8080/api/core/docs> | `make up` |
-| Automatisation des workflows | <http://localhost:5678> | `make up` |
-| Tableau de bord décisionnel | <http://localhost:8088> | `make up` |
-| Supervision, tableaux de bord | <http://localhost:3001> | `make up` |
-| Métriques et règles d'alerte | <http://localhost:9090> | `make up` |
-| Suivi des entraînements de modèle | <http://localhost:5000> | `make up` |
-| Boîte mail de développement | <http://localhost:8025> | `make up-email` |
-| PostgreSQL et pgvector | **pas de port** — `make shell-db` | `make up` |
+| Application                        | URL                                   | Lancée par      |
+| ---------------------------------- | ------------------------------------- | --------------- |
+| Interface web, les quatre rôles    | <http://localhost:8080>               | `make up`       |
+| Documentation interactive de l'API | <http://localhost:8080/api/core/docs> | `make up`       |
+| Automatisation des workflows       | <http://localhost:5678>               | `make up`       |
+| Tableau de bord décisionnel        | <http://localhost:8088>               | `make up`       |
+| Supervision, tableaux de bord      | <http://localhost:3001>               | `make up`       |
+| Métriques et règles d'alerte       | <http://localhost:9090>               | `make up`       |
+| Suivi des entraînements de modèle  | <http://localhost:5000>               | `make up`       |
+| Boîte mail de développement        | <http://localhost:8025>               | `make up-email` |
+| PostgreSQL et pgvector             | **pas de port** — `make shell-db`     | `make up`       |
 
 `make up` et `make start` démarrent l'ensemble de la plateforme, tableaux de
 bord et supervision compris. `make up-light` garde la version économique pour
@@ -206,19 +206,19 @@ Tout se règle dans le fichier `.env`, créé automatiquement à partir de
 Le seuil d'alerte, les canaux de notification et l'état de la plateforme sont
 aussi modifiables depuis l'écran d'administration, sans redémarrage.
 
-| Groupe | Variables principales | Effet |
-| --- | --- | --- |
-| Base | `POSTGRES_PASSWORD`, `PREDICARE_DB_URL`, `PREDICARE_DB_RO_URL` | Connexion et lecture seule |
-| Sécurité | `APP_SECRET_KEY`, `JWT_SECRET_KEY`, `IDENTITY_ENCRYPTION_KEY` | Pseudonymisation, jetons, identités |
-| Modèle de langage | `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL` | Assistant et vecteurs |
-| Seuil | `FRAUD_THRESHOLD`, `MODEL_VERSION` | Décision de notation |
-| Assistant | `RAG_TOP_K`, `SESSION_MAX_TURNS`, `SEMANTIC_CACHE_THRESHOLD` | Coût, fidélité, cache |
-| Conservation | `PURGE_PLANIFIEE` | Active ou coupe la purge automatique |
-| Indexation | `SEED_RAG_AUTO` | Indexe l'assistant au chargement des données |
-| Tableau de bord | `SUPERSET_SECRET_KEY`, `SUPERSET_PORT`, `VITE_SUPERSET_URL` | BI et lien depuis l'interface |
-| Supervision | `GRAFANA_PASSWORD`, `PROMETHEUS_PORT` | Supervision |
-| Sauvegarde | `BACKUP_RETENTION_DAYS`, `BACKUP_HOUR`, `BACKUP_CLE_FILE` | Rétention et chiffrement |
-| TLS | `PREDICARE_TLS_DOMAIN`, `PREDICARE_TLS_CERTIFICAT`, `PREDICARE_TLS_CLE` | HTTPS |
+| Groupe            | Variables principales                                                   | Effet                                        |
+| ----------------- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| Base              | `POSTGRES_PASSWORD`, `PREDICARE_DB_URL`, `PREDICARE_DB_RO_URL`          | Connexion et lecture seule                   |
+| Sécurité          | `APP_SECRET_KEY`, `JWT_SECRET_KEY`, `IDENTITY_ENCRYPTION_KEY`           | Pseudonymisation, jetons, identités          |
+| Modèle de langage | `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL`                         | Assistant et vecteurs                        |
+| Seuil             | `FRAUD_THRESHOLD`, `MODEL_VERSION`                                      | Décision de notation                         |
+| Assistant         | `RAG_TOP_K`, `SESSION_MAX_TURNS`, `SEMANTIC_CACHE_THRESHOLD`            | Coût, fidélité, cache                        |
+| Conservation      | `PURGE_PLANIFIEE`                                                       | Active ou coupe la purge automatique         |
+| Indexation        | `SEED_RAG_AUTO`                                                         | Indexe l'assistant au chargement des données |
+| Tableau de bord   | `SUPERSET_SECRET_KEY`, `SUPERSET_PORT`, `VITE_SUPERSET_URL`             | BI et lien depuis l'interface                |
+| Supervision       | `GRAFANA_PASSWORD`, `PROMETHEUS_PORT`                                   | Supervision                                  |
+| Sauvegarde        | `BACKUP_RETENTION_DAYS`, `BACKUP_HOUR`, `BACKUP_CLE_FILE`               | Rétention et chiffrement                     |
+| TLS               | `PREDICARE_TLS_DOMAIN`, `PREDICARE_TLS_CERTIFICAT`, `PREDICARE_TLS_CLE` | HTTPS                                        |
 
 Quatre règles structurent cette configuration :
 
@@ -335,17 +335,17 @@ tarifaire** que celle utilisée à l'entraînement : un changement de tarif
 impose un ré-entraînement explicite, plutôt qu'un modèle qui dérive en
 silence.
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make train VERSION=2` | Entraîne le modèle et écrit `models/2/` (artefacts et rapports). |
-| `make evaluate` | Compare les stratégies de déséquilibre et produit l'audit d'équité. |
-| `make noter LIMITE=500` | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic. |
-| `make add-invoices` | Ajoute des factures par la **même porte que le front** (validation, notation, explication, alerte). Accepte le JSON du lot de démonstration, le CSV et le PDF. Une facture déjà présente est **ignorée**, une facture invalide est **rejetée en nommant le champ**. `ARGS=--fichier <chemin>` pour un fichier précis. |
-| `make model-state` | Version active du modèle et seuil courant. |
-| `make model-promote VERSION=2` | Charge la version N en *candidate*, puis bascule — sans redémarrage. |
-| `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage. |
-| `make threshold VALEUR=0.75` | Change le seuil d'alerte à chaud, sans redémarrage. |
-| `make score-historique` | Rejoue le jeu étiqueté (backfill idempotent, statut `historique`). |
+| Commande                        | Ce qu'elle fait                                                                                                                                                                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make train VERSION=2`          | Entraîne le modèle et écrit `models/2/` (artefacts et rapports).                                                                                                                                                                                                                                                      |
+| `make evaluate`                 | Compare les stratégies de déséquilibre et produit l'audit d'équité.                                                                                                                                                                                                                                                   |
+| `make noter LIMITE=500`         | Note en lot l'historique et peuple `ml.prediction`, en process avec le contexte exact (ordonnance, heure de soin). `STATUT=nouvelle` pour alimenter la file, `DRY_RUN=1` pour simuler, `RESCORER=1` pour un diagnostic.                                                                                               |
+| `make add-invoices`             | Ajoute des factures par la **même porte que le front** (validation, notation, explication, alerte). Accepte le JSON du lot de démonstration, le CSV et le PDF. Une facture déjà présente est **ignorée**, une facture invalide est **rejetée en nommant le champ**. `ARGS=--fichier <chemin>` pour un fichier précis. |
+| `make model-state`              | Version active du modèle et seuil courant.                                                                                                                                                                                                                                                                            |
+| `make model-promote VERSION=2`  | Charge la version N en _candidate_, puis bascule — sans redémarrage.                                                                                                                                                                                                                                                  |
+| `make model-rollback VERSION=1` | Revient à la version N, sans redémarrage.                                                                                                                                                                                                                                                                             |
+| `make threshold VALEUR=0.75`    | Change le seuil d'alerte à chaud, sans redémarrage.                                                                                                                                                                                                                                                                   |
+| `make score-historique`         | Rejoue le jeu étiqueté (backfill idempotent, statut `historique`).                                                                                                                                                                                                                                                    |
 
 `make noter` est le seul job qui **écrit en masse** dans `ml.prediction`. Par
 défaut il marque ses prédictions `statut = 'archive'` : ce sont des notations
@@ -371,22 +371,22 @@ bases de décision dans [`reports/baselines_v2.md`](reports/baselines_v2.md).
 
 ## 7. Sauvegarde, restauration et conservation
 
-| Élément | Valeur |
-| --- | --- |
-| Fréquence | Quotidienne, 03 h 00 |
-| Rétention | 14 jours |
-| Format | `pg_dump` compressé, chiffré si clé présente |
-| Chiffrement | AES-256-CBC, PBKDF2 200 000 itérations |
-| RPO | ≤ 24 h |
-| RTO | Non mesuré |
-| Test de restauration en intégration continue | Absent |
+| Élément                                      | Valeur                                       |
+| -------------------------------------------- | -------------------------------------------- |
+| Fréquence                                    | Quotidienne, 03 h 00                         |
+| Rétention                                    | 14 jours                                     |
+| Format                                       | `pg_dump` compressé, chiffré si clé présente |
+| Chiffrement                                  | AES-256-CBC, PBKDF2 200 000 itérations       |
+| RPO                                          | ≤ 24 h                                       |
+| RTO                                          | Non mesuré                                   |
+| Test de restauration en intégration continue | Absent                                       |
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make backup` | Lance une sauvegarde immédiate. |
-| `make backups` | Liste les sauvegardes disponibles. |
-| `make restore` | Restaure la dernière sauvegarde — confirmation demandée. |
-| `make up-backup` | Démarre la planification quotidienne. |
+| Commande         | Ce qu'elle fait                                          |
+| ---------------- | -------------------------------------------------------- |
+| `make backup`    | Lance une sauvegarde immédiate.                          |
+| `make backups`   | Liste les sauvegardes disponibles.                       |
+| `make restore`   | Restaure la dernière sauvegarde — confirmation demandée. |
+| `make up-backup` | Démarre la planification quotidienne.                    |
 
 La restauration n'est **jamais** automatique : une restauration déclenchée par
 une erreur de script écraserait les données du jour. Le script prend une
@@ -406,17 +406,17 @@ coût, cache. **Les règles d'alerte et les tableaux de bord sont versionnés
 dans le dépôt** : neuf règles dans `ops/prometheus/rules/predicare.yml` et deux
 vues Grafana (service et modèle) dans `ops/grafana/provisioning/dashboards/`.
 
-| Alerte | Ce qu'elle surveille |
-| --- | --- |
-| `PredicareApiIndisponible` | Une API ne répond plus pendant une minute |
-| `PredicareApiTauxErreur5xx` | Pic d'erreurs serveur |
-| `PredicareApiLatenceP95` | Latence p95 des API |
-| `PredicareInferenceErreurs` | Erreurs de notation |
-| `PredicareInferenceLatenceP95` | Latence p95 de notation |
+| Alerte                             | Ce qu'elle surveille                         |
+| ---------------------------------- | -------------------------------------------- |
+| `PredicareApiIndisponible`         | Une API ne répond plus pendant une minute    |
+| `PredicareApiTauxErreur5xx`        | Pic d'erreurs serveur                        |
+| `PredicareApiLatenceP95`           | Latence p95 des API                          |
+| `PredicareInferenceErreurs`        | Erreurs de notation                          |
+| `PredicareInferenceLatenceP95`     | Latence p95 de notation                      |
 | `PredicareAucunePredictionRecente` | Plus aucune facture notée depuis deux heures |
-| `PredicareRagLatenceP95` | Latence p95 de l'assistant |
-| `PredicareRagLlmIndisponible` | Fournisseur de modèle injoignable |
-| `PredicarePartScoresEleves` | Part anormalement élevée de scores hauts |
+| `PredicareRagLatenceP95`           | Latence p95 de l'assistant                   |
+| `PredicareRagLlmIndisponible`      | Fournisseur de modèle injoignable            |
+| `PredicarePartScoresEleves`        | Part anormalement élevée de scores hauts     |
 
 Le suivi des entraînements passe par **MLflow** : chaque exécution de
 `make train` est journalisée dans l'expérience `predicare-detection-fraude`,
@@ -424,7 +424,7 @@ avec ses paramètres et ses métriques. La reproductibilité devient une preuve
 consultable, pas une intention.
 
 > **Ce qui n'est pas calculable aujourd'hui.** Le rapport de dérive (PSI,
-> *Population Stability Index*, mesure l'écart entre deux distributions de
+> _Population Stability Index_, mesure l'écart entre deux distributions de
 > score) **ne peut pas être produit sur cette instance** : le worker journalise
 > `derive.donnees_insuffisantes`, faute de population de référence du modèle.
 > La surveillance de la dérive repose donc sur un indicateur de substitution
@@ -451,14 +451,14 @@ d'entre eux restent **vides** tant que le modèle n'a pas tourné et qu'aucune
 décision gestionnaire n'est enregistrée : les vues existent, elles sont vides,
 et le tableau le dit.
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make bi` | Vérifie que les vues de la couche sémantique compilent. |
-| `make bi-dashboard` | Réapplique le tableau de bord archivé dans le dépôt (après une manipulation dans l'interface). |
-| `make bi-export` | Archive l'état du tableau de bord (mise en page, filtres natifs) dans le dépôt. |
-| `make bi-requetes` | Peuple l'historique SQL Lab et les requêtes enregistrées du BI. |
-| `make bi-compte-demo` | Crée le compte de démonstration, en lecture seule. |
-| `make bi-graphiques` | Vérifie que chaque graphique rend une requête réussie et qu'aucune dérive ne s'est installée. |
+| Commande              | Ce qu'elle fait                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `make bi`             | Vérifie que les vues de la couche sémantique compilent.                                        |
+| `make bi-dashboard`   | Réapplique le tableau de bord archivé dans le dépôt (après une manipulation dans l'interface). |
+| `make bi-export`      | Archive l'état du tableau de bord (mise en page, filtres natifs) dans le dépôt.                |
+| `make bi-requetes`    | Peuple l'historique SQL Lab et les requêtes enregistrées du BI.                                |
+| `make bi-compte-demo` | Crée le compte de démonstration, en lecture seule.                                             |
+| `make bi-graphiques`  | Vérifie que chaque graphique rend une requête réussie et qu'aucune dérive ne s'est installée.  |
 
 Détail des indicateurs, de leur source et de leur fréquence :
 [`db/bi/README.md`](db/bi/README.md). La procédure de création des tuiles
@@ -469,12 +469,12 @@ par l'interface est dans
 
 ## 10. Automatisation des workflows
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make n8n-compte` | Affiche le compte propriétaire de ce poste, et la procédure s'il n'existe pas. |
-| `make n8n-export` | Exporte les workflows dans `apps/n8n/workflows/`. |
-| `make n8n-import` | Restaure et réactive les workflows. |
-| `make e2e-n8n` | Envoie une facture au point d'entrée et vérifie Slack, l'e-mail et l'absence de notification fantôme. |
+| Commande          | Ce qu'elle fait                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `make n8n-compte` | Affiche le compte propriétaire de ce poste, et la procédure s'il n'existe pas.                        |
+| `make n8n-export` | Exporte les workflows dans `apps/n8n/workflows/`.                                                     |
+| `make n8n-import` | Restaure et réactive les workflows.                                                                   |
+| `make e2e-n8n`    | Envoie une facture au point d'entrée et vérifie Slack, l'e-mail et l'absence de notification fantôme. |
 
 Trois workflows sont versionnés : l'alerte de fraude interne, l'alerte de
 fraude avec re-notation, et la bascule de modèle. La chaîne d'alerte part du
@@ -497,17 +497,17 @@ vérification.
 
 ### 11.1 Cycle de vie
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make help` | Affiche l'aide. |
-| `make up` | Démarre tout **en reconstruisant** les images. Commande de référence. |
-| `make start` | Démarre **sans reconstruire**, après un `make down`. |
-| `make up-light` | Noyau seul : API, interface, base, workers. |
-| `make down` | Arrêt. **Les données sont conservées.** |
-| `make restart` | Redémarre sans reconstruire. |
-| `make clean` | Arrêt **et** suppression des volumes — confirmation demandée, données perdues. |
-| `make build` | Construit les images sans démarrer. |
-| `make wait` | Attend que tous les services soient sains. |
+| Commande        | Ce qu'elle fait                                                                |
+| --------------- | ------------------------------------------------------------------------------ |
+| `make help`     | Affiche l'aide.                                                                |
+| `make up`       | Démarre tout **en reconstruisant** les images. Commande de référence.          |
+| `make start`    | Démarre **sans reconstruire**, après un `make down`.                           |
+| `make up-light` | Noyau seul : API, interface, base, workers.                                    |
+| `make down`     | Arrêt. **Les données sont conservées.**                                        |
+| `make restart`  | Redémarre sans reconstruire.                                                   |
+| `make clean`    | Arrêt **et** suppression des volumes — confirmation demandée, données perdues. |
+| `make build`    | Construit les images sans démarrer.                                            |
+| `make wait`     | Attend que tous les services soient sains.                                     |
 
 ### 11.2 Services optionnels
 
@@ -515,30 +515,30 @@ vérification.
 commandes servent à démarrer un service **seul**, ou à ajouter ce que le
 défaut exclut volontairement.
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make up-bi` | Démarre le pilotage décisionnel. |
-| `make up-observability` | Démarre Prometheus et Grafana. |
-| `make up-mlops` | Démarre MLflow. |
-| `make up-backup` | Démarre la sauvegarde quotidienne. |
-| `make up-workers` | Démarre les workers d'ingestion et d'indexation. |
-| `make up-email` | Démarre la boîte mail de développement. |
-| `make up-all` | Tout démarrer, bac à sable de messagerie et planification de sauvegarde inclus. |
+| Commande                | Ce qu'elle fait                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `make up-bi`            | Démarre le pilotage décisionnel.                                                |
+| `make up-observability` | Démarre Prometheus et Grafana.                                                  |
+| `make up-mlops`         | Démarre MLflow.                                                                 |
+| `make up-backup`        | Démarre la sauvegarde quotidienne.                                              |
+| `make up-workers`       | Démarre les workers d'ingestion et d'indexation.                                |
+| `make up-email`         | Démarre la boîte mail de développement.                                         |
+| `make up-all`           | Tout démarrer, bac à sable de messagerie et planification de sauvegarde inclus. |
 
 ### 11.3 Données et base de données
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make setup` | Crée le `.env` et génère les secrets manquants. |
-| `make secrets` | Régénère les secrets cryptographiques. |
-| `make migrate` | Applique les migrations en attente. |
-| `make db-status` | Compare la version du schéma en base et celle attendue par le code. |
-| `make reload-data` | Recharge `data/raw/` : purge puis tables, en une transaction. |
-| `make comptes` | Crée les quatre comptes de démonstration. Le mot de passe vient de `DEMO_PASSWORD` ; sinon il est généré au hasard et **affiché une seule fois**. |
-| `make seed-rag` | Indexe le corpus de contrats PDF dans la base vectorielle. |
-| `make shell-db` | Ouvre un client SQL sur la base. `ROLE=predicare_ro` pour un accès lecture seule. |
-| `make db-sql` | Exécute une requête (`Q="SELECT …"`), un fichier (`FILE=…`) ou l'entrée standard. |
-| `make purge` | Purge les données hors durées de conservation (aperçu ; `--appliquer` pour exécuter). |
+| Commande           | Ce qu'elle fait                                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make setup`       | Crée le `.env` et génère les secrets manquants.                                                                                                   |
+| `make secrets`     | Régénère les secrets cryptographiques.                                                                                                            |
+| `make migrate`     | Applique les migrations en attente.                                                                                                               |
+| `make db-status`   | Compare la version du schéma en base et celle attendue par le code.                                                                               |
+| `make reload-data` | Recharge `data/raw/` : purge puis tables, en une transaction.                                                                                     |
+| `make comptes`     | Crée les quatre comptes de démonstration. Le mot de passe vient de `DEMO_PASSWORD` ; sinon il est généré au hasard et **affiché une seule fois**. |
+| `make seed-rag`    | Indexe le corpus de contrats PDF dans la base vectorielle.                                                                                        |
+| `make shell-db`    | Ouvre un client SQL sur la base. `ROLE=predicare_ro` pour un accès lecture seule.                                                                 |
+| `make db-sql`      | Exécute une requête (`Q="SELECT …"`), un fichier (`FILE=…`) ou l'entrée standard.                                                                 |
+| `make purge`       | Purge les données hors durées de conservation (aperçu ; `--appliquer` pour exécuter).                                                             |
 
 `make db-status` est le garde-fou le plus utile du projet : le job de migration
 étant un one-shot, il n'est pas rejoué spontanément. Sans ce contrôle, une
@@ -549,36 +549,36 @@ même requête aboutit en `predicare` et se voit refuser sur le schéma d'audit.
 
 ### 11.4 Qualité et vérification
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make sync` | Installe les dépendances Python (workspace complet). |
-| `make lint` | Vérifie le style et les erreurs statiques. |
-| `make format` | Corrige automatiquement le style. |
-| `make typecheck` | Vérifie les types. |
-| `make test` | Lance la suite de tests. |
-| `make test-cov` | Lance les tests avec le rapport de couverture. |
-| `make check` | Les quatre vérifications de l'intégration continue. |
-| `make readme` | Vérifie que ce README documente exactement les commandes de `make help`. |
-| `make export-requirements` | Exporte les versions pip depuis le verrou, non versionné. |
-| `make web-build` | Compile l'interface : vérification des types puis bundle. |
-| `make web-test` | Lance les parcours de navigation des quatre rôles. |
-| `make figures` | Génère les figures de la présentation (modèle, ROI, conformité) à partir des sources de vérité. `SORTIE=<dossier>` pour choisir la destination. |
-| `make captures` | Capture les écrans de la présentation avec un navigateur réel. `N8N_MDP=<mot de passe> N8N_EMAIL=<adresse>` pour le compte propriétaire d'automatisation. |
+| Commande                   | Ce qu'elle fait                                                                                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make sync`                | Installe les dépendances Python (workspace complet).                                                                                                      |
+| `make lint`                | Vérifie le style et les erreurs statiques.                                                                                                                |
+| `make format`              | Corrige automatiquement le style.                                                                                                                         |
+| `make typecheck`           | Vérifie les types.                                                                                                                                        |
+| `make test`                | Lance la suite de tests.                                                                                                                                  |
+| `make test-cov`            | Lance les tests avec le rapport de couverture.                                                                                                            |
+| `make check`               | Les quatre vérifications de l'intégration continue.                                                                                                       |
+| `make readme`              | Vérifie que ce README documente exactement les commandes de `make help`.                                                                                  |
+| `make export-requirements` | Exporte les versions pip depuis le verrou, non versionné.                                                                                                 |
+| `make web-build`           | Compile l'interface : vérification des types puis bundle.                                                                                                 |
+| `make web-test`            | Lance les parcours de navigation des quatre rôles.                                                                                                        |
+| `make figures`             | Génère les figures de la présentation (modèle, ROI, conformité) à partir des sources de vérité. `SORTIE=<dossier>` pour choisir la destination.           |
+| `make captures`            | Capture les écrans de la présentation avec un navigateur réel. `N8N_MDP=<mot de passe> N8N_EMAIL=<adresse>` pour le compte propriétaire d'automatisation. |
 
 Aucun test ne démarre de conteneur ni ne touche PostgreSQL : l'intégration
 continue doit tourner sur une proposition de modification sans Docker.
 
 ### 11.5 Diagnostic
 
-| Commande | Ce qu'elle fait |
-| --- | --- |
-| `make doctor` | Vérifie que la machine est prête. **À lancer en premier.** |
-| `make ps` | État des conteneurs, tous profils confondus. |
-| `make health` | Sonde la santé et les métriques de chaque service. |
-| `make logs` | Suit les journaux de la plateforme. |
-| `make logs-service S=api-core` | Suit le journal d'un service. |
-| `make smoke` | Parcours de vérification de bout en bout. |
-| `make acces` | Génère la fiche d'identifiants, hors dépôt, mode `600`. |
+| Commande                       | Ce qu'elle fait                                            |
+| ------------------------------ | ---------------------------------------------------------- |
+| `make doctor`                  | Vérifie que la machine est prête. **À lancer en premier.** |
+| `make ps`                      | État des conteneurs, tous profils confondus.               |
+| `make health`                  | Sonde la santé et les métriques de chaque service.         |
+| `make logs`                    | Suit les journaux de la plateforme.                        |
+| `make logs-service S=api-core` | Suit le journal d'un service.                              |
+| `make smoke`                   | Parcours de vérification de bout en bout.                  |
+| `make acces`                   | Génère la fiche d'identifiants, hors dépôt, mode `600`.    |
 
 `make doctor` contrôle les outils de l'hôte, le démon Docker, Compose, buildx,
 la présence et la santé du `.env`, l'absence de marqueur de secret en clair, la
@@ -617,12 +617,12 @@ vie : un flux se remplace ou se redimensionne sans impacter les autres.
    · une seule sauvegarde pour tout
 ```
 
-| Flux | Service | Dossier | Ce qu'il produit |
-| --- | --- | --- | --- |
-| 1 — Détection de fraude | `api-inference` :8002 | `apps/api-inference/` | Score de fraude et contributions d'explication par facture |
-| 2 — Assistant documentaire | `api-rag` :8003 | `apps/api-rag/` | Réponse sourcée à une question d'assuré |
-| 3 — Pilotage | `api-core` :8001 | `apps/api-core/` | File d'alertes, décisions, administration |
-| Transverse | — | `packages/predicare-core/` | Configuration, base, sécurité, métriques |
+| Flux                       | Service               | Dossier                    | Ce qu'il produit                                           |
+| -------------------------- | --------------------- | -------------------------- | ---------------------------------------------------------- |
+| 1 — Détection de fraude    | `api-inference` :8002 | `apps/api-inference/`      | Score de fraude et contributions d'explication par facture |
+| 2 — Assistant documentaire | `api-rag` :8003       | `apps/api-rag/`            | Réponse sourcée à une question d'assuré                    |
+| 3 — Pilotage               | `api-core` :8001      | `apps/api-core/`           | File d'alertes, décisions, administration                  |
+| Transverse                 | —                     | `packages/predicare-core/` | Configuration, base, sécurité, métriques                   |
 
 **Trois plans réseau.** Le réseau `core` est interne : aucun service
 applicatif n'atteint Internet par ce plan. Seul l'assistant sort, pour appeler
@@ -632,23 +632,23 @@ le fournisseur de modèle. La passerelle n'a pas accès au démon Docker.
 
 ## 13. Organisation du dépôt
 
-| Dossier | Propriétaire | Utilité |
-| --- | :---: | --- |
-| `apps/api-core/` | Cherica | **Flux 3 et socle.** Authentification et quatre rôles, factures et ordonnances, file d'alertes, décisions, administration, journal d'audit |
-| `apps/api-inference/` | Mirado | **Flux 1.** Validation stricte d'entrée, featurisation, notation, contributions d'explication, dérive, registre de versions |
-| `apps/api-rag/` | Mirado | **Flux 2.** Agent outillé, garde-fous contre l'injection de prompt, outil SQL en lecture seule, recherche vectorielle, cache sémantique |
-| `apps/web/` | Cherica | Interface unique React et TypeScript, servie par nginx, les quatre parcours de rôle |
-| `apps/ml-training/` | Mirado | Entraînement, choix du seuil, évaluation, audit d'équité. Code de **job**, pas un service |
-| `apps/seed/` | Cherica | Chargement initial des 24 mois au premier démarrage. Idempotent |
-| `apps/n8n/` | Mirado | Workflows d'alerte versionnés |
-| `packages/predicare-core/` | Jerry | Socle transverse : configuration, base, jetons et habilitations, chiffrement, journaux, métriques |
-| `db/migrations/` | Cherica | Schéma versionné. Trois schémas métier plus la couche BI, rôles SQL en lecture seule |
-| `db/seeds/` | Cherica | Référentiels d'actes et données de référence |
-| `db/backup/` | Jerry | Sauvegarde quotidienne et restauration |
-| `ops/` | Jerry | Passerelle, Prometheus, Grafana, BI, planification des sauvegardes |
-| `scripts/` | Jerry | Ce qu'on exécute : amorçage, attente, santé, test de fumée, export et import des workflows, figures |
-| `tests/` | Jerry | 784 tests : validation d'entrée, sécurité de l'assistant, SQL, habilitations, chiffrement, explications, cache, supervision, workflows, dérive, import PDF, purge planifiée |
-| `docs/` | Jerry | Livrables détaillés, dossier de cadrage, guide d'exploitation, plan de pitch, décisions d'architecture |
+| Dossier                    | Propriétaire | Utilité                                                                                                                                                                     |
+| -------------------------- | :----------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api-core/`           |   Cherica    | **Flux 3 et socle.** Authentification et quatre rôles, factures et ordonnances, file d'alertes, décisions, administration, journal d'audit                                  |
+| `apps/api-inference/`      |    Mirado    | **Flux 1.** Validation stricte d'entrée, featurisation, notation, contributions d'explication, dérive, registre de versions                                                 |
+| `apps/api-rag/`            |    Mirado    | **Flux 2.** Agent outillé, garde-fous contre l'injection de prompt, outil SQL en lecture seule, recherche vectorielle, cache sémantique                                     |
+| `apps/web/`                |   Cherica    | Interface unique React et TypeScript, servie par nginx, les quatre parcours de rôle                                                                                         |
+| `apps/ml-training/`        |    Mirado    | Entraînement, choix du seuil, évaluation, audit d'équité. Code de **job**, pas un service                                                                                   |
+| `apps/seed/`               |   Cherica    | Chargement initial des 24 mois au premier démarrage. Idempotent                                                                                                             |
+| `apps/n8n/`                |    Mirado    | Workflows d'alerte versionnés                                                                                                                                               |
+| `packages/predicare-core/` |    Jerry     | Socle transverse : configuration, base, jetons et habilitations, chiffrement, journaux, métriques                                                                           |
+| `db/migrations/`           |   Cherica    | Schéma versionné. Trois schémas métier plus la couche BI, rôles SQL en lecture seule                                                                                        |
+| `db/seeds/`                |   Cherica    | Référentiels d'actes et données de référence                                                                                                                                |
+| `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration                                                                                                                                      |
+| `ops/`                     |    Jerry     | Passerelle, Prometheus, Grafana, BI, planification des sauvegardes                                                                                                          |
+| `scripts/`                 |    Jerry     | Ce qu'on exécute : amorçage, attente, santé, test de fumée, export et import des workflows, figures                                                                         |
+| `tests/`                   |    Jerry     | 784 tests : validation d'entrée, sécurité de l'assistant, SQL, habilitations, chiffrement, explications, cache, supervision, workflows, dérive, import PDF, purge planifiée |
+| `docs/`                    |    Jerry     | Livrables détaillés, dossier de cadrage, guide d'exploitation, plan de pitch, décisions d'architecture                                                                      |
 
 ### 13.1 Dossiers créés à l'exécution
 
@@ -658,16 +658,16 @@ Ces quatre dossiers existent sur la machine mais **ne sont pas versionnés** :
 
 ### 13.2 Fichiers de configuration racine
 
-| Fichier | Rôle |
-| --- | --- |
-| `docker-compose.yml` | Pile principale, lancée par `make up` |
-| `docker-compose.{bi,observability,mlops,ops}.yml` | Profils optionnels |
-| `pyproject.toml` | Workspace Python, style, types, tests |
-| `uv.lock` | Verrou des dépendances Python, versionné |
-| `alembic.ini` | Configuration des migrations |
-| `Makefile` | Toutes les commandes d'exploitation |
-| `.env.example` | Modèle de configuration, versionné |
-| `.github/workflows/ci.yml` | Intégration continue |
+| Fichier                                           | Rôle                                     |
+| ------------------------------------------------- | ---------------------------------------- |
+| `docker-compose.yml`                              | Pile principale, lancée par `make up`    |
+| `docker-compose.{bi,observability,mlops,ops}.yml` | Profils optionnels                       |
+| `pyproject.toml`                                  | Workspace Python, style, types, tests    |
+| `uv.lock`                                         | Verrou des dépendances Python, versionné |
+| `alembic.ini`                                     | Configuration des migrations             |
+| `Makefile`                                        | Toutes les commandes d'exploitation      |
+| `.env.example`                                    | Modèle de configuration, versionné       |
+| `.github/workflows/ci.yml`                        | Intégration continue                     |
 
 ---
 
@@ -716,31 +716,31 @@ règles d'alerte et vues de supervision versionnées.
 
 Ce qui n'est pas en place, et que le dossier assume :
 
-| Écart | Conséquence |
-| --- | --- |
-| TLS non activé par défaut | À activer en production avec un certificat valide |
-| Authentification à deux facteurs absente | À ajouter pour l'administration et la gestion |
-| Pas d'isolation au niveau des lignes de la base | L'isolation est portée par l'API et l'outil SQL |
-| Population de référence du modèle absente | Le rapport de dérive n'est pas calculable |
-| Test de restauration non automatisé | Une sauvegarde jamais restaurée n'est pas une sauvegarde prouvée |
-| Pas de quota par utilisateur pour le modèle | Un usage intensif peut épuiser le quota du fournisseur |
-| Alertes de dépendances non vérifiées en local | L'état des alertes de sécurité reste à confirmer sur la plateforme d'hébergement |
+| Écart                                           | Conséquence                                                                      |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| TLS non activé par défaut                       | À activer en production avec un certificat valide                                |
+| Authentification à deux facteurs absente        | À ajouter pour l'administration et la gestion                                    |
+| Pas d'isolation au niveau des lignes de la base | L'isolation est portée par l'API et l'outil SQL                                  |
+| Population de référence du modèle absente       | Le rapport de dérive n'est pas calculable                                        |
+| Test de restauration non automatisé             | Une sauvegarde jamais restaurée n'est pas une sauvegarde prouvée                 |
+| Pas de quota par utilisateur pour le modèle     | Un usage intensif peut épuiser le quota du fournisseur                           |
+| Alertes de dépendances non vérifiées en local   | L'état des alertes de sécurité reste à confirmer sur la plateforme d'hébergement |
 
 Le détail des contrôles, des preuves et de la feuille de route :
-[`docs/livrables/04_securite.md`](docs/livrables/04_securite.md).
+[`docs/livrables/Mecanismes_Securite.pdf`](docs/livrables/Mecanismes_Securite.pdf).
 
 ---
 
 ## 16. Documentation
 
-| Document | Contenu |
-| --- | --- |
-| [`docs/livrables/`](docs/livrables/README.md) | Les cinq analyses détaillées : coûts et retour sur investissement, conformité RGPD, AI Act et équité, sécurité, guide d'exploitation et d'utilisation |
-| [`docs/cadrage/`](docs/cadrage/README.md) | Le dossier de cadrage destiné au jury, et le registre des risques |
-| [`docs/pitch/`](docs/pitch/README.md) | Le plan de la soutenance et les figures projetées |
-| [`docs/adr/`](docs/adr/README.md) | Les décisions d'architecture et leur justification |
-| [`docs/equipe.md`](docs/equipe.md) | Qui fait quoi, et le suivi du projet |
-| [`ops/superset/creer_tableau_bord.md`](ops/superset/creer_tableau_bord.md) | La procédure de création des tuiles du tableau de bord, par l'interface |
+| Document                                                                   | Contenu                                                                                                                                               |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/livrables/`](docs/livrables/README.md)                              | Les cinq analyses détaillées : coûts et retour sur investissement, conformité RGPD, AI Act et équité, sécurité, guide d'exploitation et d'utilisation |
+| [`docs/cadrage/`](docs/cadrage/README.md)                                  | Le dossier de cadrage destiné au jury, et le registre des risques                                                                                     |
+| [`docs/pitch/`](docs/pitch/README.md)                                      | Le plan de la soutenance et les figures projetées                                                                                                     |
+| [`docs/adr/`](docs/adr/README.md)                                          | Les décisions d'architecture et leur justification                                                                                                    |
+| [`docs/equipe.md`](docs/equipe.md)                                         | Qui fait quoi, et le suivi du projet                                                                                                                  |
+| [`ops/superset/creer_tableau_bord.md`](ops/superset/creer_tableau_bord.md) | La procédure de création des tuiles du tableau de bord, par l'interface                                                                               |
 
 ---
 
