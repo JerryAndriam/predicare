@@ -32,6 +32,11 @@ export interface TokenResponse {
   subject: string;
 }
 
+export interface GuestTokenResponse {
+  token: string;
+  dashboard_uuid: string;
+}
+
 export interface Profile {
   subject: string;
   role: Role;
