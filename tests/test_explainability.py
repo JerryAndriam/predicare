@@ -19,6 +19,8 @@ from predicare_inference_api.explainability import (
     build_shap_report,
     shap_to_contributions,
 )
+from predicare_inference_api.registry import ModelBundle
+from predicare_inference_api.scoring import Scorer
 
 FEATURES = ["montant_total", "actes_du_mois", "doublon_ordonnance", "montant_moyen_ligne"]
 BASE_VALUE = 0.12
@@ -186,3 +188,76 @@ def test_rapport_ne_mentionne_les_noms_techniques() -> None:
 
     for feature in FEATURES:
         assert feature not in rapport, f"{feature} apparait tel quel dans le rapport"
+
+
+# ------------------------------------------------- indisponibilite de SHAP
+
+
+class _EstimateurFactice:
+    """Le minimum qu'un `Scorer` demande : `predict_proba` sur une ligne."""
+
+    def __init__(self, score: float = 0.8) -> None:
+        self._score = score
+
+    def predict_proba(self, _vecteur: np.ndarray) -> np.ndarray:
+        return np.array([[1.0 - self._score, self._score]])
+
+
+class _JournalFactice:
+    """Capture les appels de `logger.warning` sans dependre de structlog."""
+
+    def __init__(self) -> None:
+        self.evenements: list[tuple[str, dict]] = []
+
+    def warning(self, evenement: str, **champs: object) -> None:
+        self.evenements.append((evenement, champs))
+
+
+def _bundle_factice() -> ModelBundle:
+    return ModelBundle(
+        version="test",
+        estimator=_EstimateurFactice(),
+        feature_names=list(FEATURES),
+        threshold=0.5,
+        metrics={},
+    )
+
+
+def test_shap_indisponible_ne_fabrique_pas_de_contributions(monkeypatch) -> None:
+    """Un echec de SHAP ne doit pas produire un vecteur de zeros.
+
+    Un zero est une contribution legitime ; le confondre avec une panne
+    reviendrait a presenter au gestionnaire une « explication » vide comme si
+    le modele n'avait rien vu. Le score reste servi, la liste est vide, et le
+    drapeau dit la verite.
+    """
+    scorer = Scorer(_bundle_factice(), seuil=0.5)
+
+    def _echec(_row: np.ndarray) -> np.ndarray:
+        raise RuntimeError("TreeExplainer indisponible")
+
+    journal = _JournalFactice()
+    monkeypatch.setattr(scorer, "_contributions", _echec)
+    monkeypatch.setattr("predicare_inference_api.scoring.logger", journal)
+
+    notation = scorer.score([0.0] * len(FEATURES))
+
+    assert notation.score == pytest.approx(0.8)
+    assert notation.shap_available is False
+    assert notation.contributions == []
+    assert journal.evenements, "l'echec SHAP doit etre journalise"
+    evenement, champs = journal.evenements[0]
+    assert evenement == "shap.indisponible"
+    assert "TreeExplainer indisponible" in str(champs.get("erreur", ""))
+
+
+def test_shap_disponible_marque_les_contributions_comme_reelles(monkeypatch) -> None:
+    """Symetrique du test precedent : un succes ne doit pas etre marque en panne."""
+    scorer = Scorer(_bundle_factice(), seuil=0.5)
+    valeurs = np.array([0.2, -0.1, 0.05, 0.01])
+    monkeypatch.setattr(scorer, "_contributions", lambda _row: valeurs)
+
+    notation = scorer.score([0.0] * len(FEATURES))
+
+    assert notation.shap_available is True
+    assert len(notation.contributions) == len(FEATURES)

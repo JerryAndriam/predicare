@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Interface PrediCare TPA - les quatre roles sur une seule application",
   "scripts": {
+    "predev": "node scripts/copier-lot.mjs",
     "dev": "vite --host 0.0.0.0",
+    "prebuild": "node scripts/copier-lot.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "tsc --noEmit",

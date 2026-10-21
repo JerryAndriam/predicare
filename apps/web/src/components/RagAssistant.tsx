@@ -303,6 +303,10 @@ export function RagAssistant() {
         le fil de la conversation pendant une heure.
       </p>
 
+      <p className="aide" role="note">
+        <strong>Réponse générée par un assistant IA</strong> — vérifiez les sources citées.
+      </p>
+
       <div
         className="conversation"
         ref={conversationRef}

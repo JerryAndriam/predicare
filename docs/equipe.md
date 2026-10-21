@@ -45,3 +45,26 @@ d'usage d'une plateforme et le suivi d'un projet fait disparaitre les deux.
 - Réunion hebdomadaire courte pour synchroniser les dépendances.
 - Le seuil d'alerte et le format du rapport SHAP touchent les trois membres :
   à décider ensemble.
+
+## Contributions vérifiables
+
+Cette section ne remplace pas le tableau ci-dessus : elle liste les **artefacts réellement présents dans le dépôt** et la trace qui permet de les rattacher à un membre. Elle est vérifiable le 21/10/2026 avec `git log -- <chemin>` (ou `ls` pour les fichiers locaux non versionnés). Les auteurs Git sont repris tels quels : les commits de `BradAkemi`/`AkemiFF` correspondent à la part de Mirado — à confirmer par l'intéressé si son identité Git diffère.
+
+| Membre | Artefact | Chemin | Trace |
+| --- | --- | --- | --- |
+| **Mirado** | Support de soutenance et fiches mémo | `local/SOUTENANCE_MIRADO.md`, `local/FICHE_MEMO_MIRADO.pdf`, `local/FICHE_MEMO_MIRADO_2P.pdf` | fichiers locaux (non versionnés) |
+| **Mirado** | Dossier de cadrage (TCO, ROI, RGPD, AI Act, équité) | `docs/cadrage/dossier_cadrage.md` + `.pdf` | commits `BradAkemi` |
+| **Mirado** | Rapports modèle et stratégies de déséquilibre | `reports/modele_v1.md`, `reports/modele_v2.md`, `reports/strategies_v1.md` | commits `BradAkemi` et `jerry` |
+| **Mirado** | Audit d'équité | `reports/equite_v2.md` | commits `BradAkemi` et `jerry` |
+| **Mirado** | Workflows n8n (alerte de fraude, bascule de modèle) | `apps/n8n/workflows/PK-Alerte-Fraude.json`, `apps/n8n/workflows/PK-Bascule-Modele.json` | commits `BradAkemi` (et `jerry` sur le premier) |
+| **Cherica** | Guide utilisateur | `docs/utilisateur/guide-utilisateur.md` | commit `Cherica` |
+| **Cherica** | Migrations de base | `db/migrations/` | commits `Cherica`, `jerry` et `BradAkemi` |
+| **Cherica** | Workflow n8n interne | `apps/n8n/workflows/PK-Alerte-Fraude-Interne.json` | commits `Cherica` et `jerry` |
+| **Jerry** | Guides d'exploitation | `docs/exploitation/README.md`, `docs/exploitation/demarrage-equipe.md`, `docs/exploitation/creer_tableau_bord_superset.md` | commits `jerry` (et `BradAkemi` sur le README) |
+| **Jerry** | CI et décisions d'architecture | `.github/workflows/ci.yml`, `docs/adr/README.md` | commits `jerry` |
+| **Jerry** | Migrations de base et audit d'équité | `db/migrations/`, `reports/equite_v2.md` | commits `jerry`, `Cherica` et `BradAkemi` (migrations) ; `jerry` et `BradAkemi` (équité) |
+
+Deux précautions de lecture :
+
+- **Le nombre de commits n'est pas une mesure de contribution.** Plusieurs fichiers portent des commits de deux ou trois membres (`README.md`, `db/migrations/`, `reports/equite_v2.md`, les workflows n8n) : c'est le résultat de l'intégration, pas un partage de paternité.
+- **Ce tableau ne couvre que ce qui laisse une trace.** Le code applicatif (auth, rôles, endpoints, BI) est décrit dans le tableau « Qui fait quoi » ci-dessus ; son attribution fine se lit dans `git log --author=<nom>`, pas dans ce document qui reste, par construction, un suivi de projet.

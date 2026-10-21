@@ -1,0 +1,275 @@
+# =============================================================================
+# Regles d'alerte PrediCare
+# -----------------------------------------------------------------------------
+# Toutes les metriques referencees ici sont REELLEMENT exposees par les
+# services sur /metrics (verifie le 2026-10-21) :
+#
+#   predicare_http_requests_total{service,route,method,status}
+#   predicare_http_request_duration_seconds{service,route,method}
+#   predicare_errors_total{service,error_code}
+#   predicare_predictions_total{service,bucket}
+#   predicare_model_inference_seconds{service,model_version}
+#   predicare_llm_tokens_total{service,model,kind}
+#   predicare_llm_call_duration_seconds{service,model,outcome}
+#   predicare_llm_cost_usd_total{service,model}
+#   predicare_semantic_cache_total{service,result}
+#   predicare_build_info{service,version}
+#
+# plus les series standard `up`, `process_*` et `python_*` de
+# prometheus_client.
+#
+# Deux familles ne sont PAS exposees a ce jour, et ne font donc l'objet
+# d'AUCUNE alerte inventee (voir les commentaires dans les groupes concernes) :
+#   - le PSI de derive : calcule par le worker et persiste dans
+#     ml.rapport_derive, lu par GET /api/inference/derive, mais jamais publie
+#     sur /metrics ;
+#   - l'echec de la chaine n8n : journalise (logger.warning
+#     "alerte.notification_echouee"), sans compteur Prometheus.
+# =============================================================================
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Disponibilite et qualite de service des trois API
+  # ---------------------------------------------------------------------------
+  - name: predicare-api
+    interval: 30s
+    rules:
+      - alert: PredicareApiIndisponible
+        expr: up{job=~"predicare-api-(core|inference|rag)"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          composant: api
+        annotations:
+          summary: "API PrediCare indisponible : {{ $labels.job }}"
+          description: >-
+            Prometheus ne joint plus la cible {{ $labels.instance }} du job
+            {{ $labels.job }} depuis plus d'une minute. Les autres services
+            peuvent encore repondre, mais le flux porte par cette API est
+            interrompu.
+          runbook: >-
+            Verifier `docker ps` puis `docker logs predicare-<service>` ;
+            controler /health et /health/ready sur le port du service ;
+            redemarrer le conteneur si le processus est mort.
+
+      - alert: PredicareApiTauxErreur5xx
+        expr: |
+          (
+            sum by (service) (rate(predicare_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum by (service) (rate(predicare_http_requests_total[5m]))
+          ) > 0.01
+          and
+          sum by (service) (rate(predicare_http_requests_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          composant: api
+        annotations:
+          summary: "Plus de 1 % de reponses 5xx sur {{ $labels.service }}"
+          description: >-
+            Sur les 5 dernieres minutes, le taux de reponses HTTP 5xx de
+            {{ $labels.service }} depasse 1 % alors que le service recoit du
+            trafic. Il s'agit d'erreurs serveur, non d'un rejet metier 4xx.
+          runbook: >-
+            Identifier la route fautive dans les logs (champ `route`) ;
+            verifier la disponibilite de la base et des dependances ;
+            consulter predicare_errors_total pour le code applicatif.
+
+      - alert: PredicareApiLatenceP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, service) (
+              rate(predicare_http_request_duration_seconds_bucket{service=~"api-core|api-inference"}[5m])
+            )
+          ) > 2
+          and
+          sum by (service) (rate(predicare_http_request_duration_seconds_count{service=~"api-core|api-inference"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+          composant: api
+        annotations:
+          summary: "Latence P95 superieure a 2 s sur {{ $labels.service }}"
+          description: >-
+            Le 95e percentile des requetes HTTP de {{ $labels.service }}
+            depasse 2 secondes pendant 10 minutes. Le CDC fixe 5 s pour le
+            RAG ; ce seuil plus bas sert d'alerte precoce sur les API.
+          runbook: >-
+            Comparer avec la latence du LLM et de la base ; verifier la charge
+            du conteneur (process_cpu_seconds_total) ; examiner les routes
+            lentes dans le tableau de bord Grafana « PrediCare - Vue service ».
+
+  # ---------------------------------------------------------------------------
+  # Service d'inference et modele de fraude
+  # ---------------------------------------------------------------------------
+  # NOTE : il n'existe AUCUNE metrique exposant « aucun modele actif ».
+  # /health porte `checks.modele_charge` en JSON, mais /metrics ne publie pas
+  # cet etat. L'indisponibilite du service est couverte par `up == 0` ; un
+  # modele absent se traduit par des erreurs applicatives sur /predire, que
+  # l'alerte PredicareInferenceErreurs capte. Une jauge dediee
+  # (predicare_model_active) reste a ajouter cote api-inference ; tant qu'elle
+  # n'existe pas, aucune alerte ne doit la citer.
+  - name: predicare-modele
+    interval: 30s
+    rules:
+      - alert: PredicareInferenceErreurs
+        expr: |
+          sum by (service) (
+            rate(predicare_errors_total{service="api-inference"}[5m])
+          ) > 0
+        for: 5m
+        labels:
+          severity: warning
+          composant: modele
+        annotations:
+          summary: "Erreurs applicatives sur le service d'inference"
+          description: >-
+            Le service api-inference enregistre des erreurs applicatives
+            continues depuis 5 minutes (modele non charge, echec de scoring,
+            base indisponible). Le detail est porte par le label error_code.
+          runbook: >-
+            Lire predicare_errors_total{service="api-inference"} pour le code ;
+            verifier GET /health (checks.modele_charge) et les logs du
+            conteneur ; controler ml.modele_version en base.
+
+      - alert: PredicareInferenceLatenceP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(predicare_model_inference_seconds_bucket{service="api-inference"}[5m])
+            )
+          ) > 1
+          and
+          sum(rate(predicare_model_inference_seconds_count{service="api-inference"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+          composant: modele
+        annotations:
+          summary: "Inference du modele de fraude P95 superieure a 1 s"
+          description: >-
+            Le scoring du modele depasse 1 seconde au 95e percentile. Une
+            inference de gradient boosting doit rester de l'ordre de quelques
+            millisecondes : cette derive signale une saturation ou un modele
+            anormalement lourd.
+          runbook: >-
+            Verifier la version active
+            (predicare_model_inference_seconds_count par model_version) ;
+            controler la memoire du conteneur ; envisager un retour arriere
+            via PUT /api/inference/bascule.
+
+      - alert: PredicareAucunePredictionRecente
+        expr: |
+          (sum(rate(predicare_predictions_total{service="api-inference"}[1h])) or vector(0)) == 0
+          and on()
+          (up{job="predicare-api-inference"} == 1)
+        for: 2h
+        labels:
+          severity: info
+          composant: modele
+        annotations:
+          summary: "Aucune prediction de fraude depuis 2 heures"
+          description: >-
+            Le service d'inference est joignable mais aucune prediction n'a
+            ete emise depuis 2 heures. Sur une plateforme en usage, cela peut
+            signaler une file d'import bloquee ; en demonstration, cela peut
+            simplement signifier une plateforme inactive.
+          runbook: >-
+            Verifier le flux d'import des factures et la file du gestionnaire ;
+            confirmer qu'il ne s'agit pas d'une plage d'inactivite connue.
+
+  # ---------------------------------------------------------------------------
+  # RAG : latence percue et disponibilite du LLM
+  # ---------------------------------------------------------------------------
+  - name: predicare-rag
+    interval: 30s
+    rules:
+      - alert: PredicareRagLatenceP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(predicare_http_request_duration_seconds_bucket{service="api-rag"}[5m])
+            )
+          ) > 5
+          and
+          sum(rate(predicare_http_request_duration_seconds_count{service="api-rag"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+          composant: rag
+        annotations:
+          summary: "Latence P95 du RAG superieure a 5 s"
+          description: >-
+            Le 95e percentile des requetes de l'API RAG depasse la cible de
+            5 secondes fixee par le CDC, alors que le service recoit du
+            trafic. L'experience de l'assistant se degrade.
+          runbook: >-
+            Separer le temps de retrieval du temps LLM
+            (predicare_llm_call_duration_seconds) ; verifier le taux de cache
+            (predicare_semantic_cache_total) ; controler la sante du
+            fournisseur LLM.
+
+      - alert: PredicareRagLlmIndisponible
+        expr: |
+          rate(predicare_errors_total{service="api-rag",error_code="llm_unavailable"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          composant: rag
+        annotations:
+          summary: "Le fournisseur LLM est indisponible pour le RAG"
+          description: >-
+            L'agent RAG enregistre des erreurs `llm_unavailable` depuis
+            5 minutes : les reponses generees ne peuvent plus etre produites,
+            meme si la recherche documentaire continue de fonctionner.
+          runbook: >-
+            Verifier la cle et le quota du fournisseur LLM ; controler la
+            connectivite sortante du conteneur api-rag ; le RAG doit rester
+            degrade mais joignable.
+
+  # ---------------------------------------------------------------------------
+  # Derive du modele
+  # ---------------------------------------------------------------------------
+  # La derive est calculee par le worker (PSI, seuils 0,10 stable / 0,25
+  # forte, ecart de score moyen 0,10) puis PERSISTEE dans ml.rapport_derive.
+  # Elle est relue par GET /api/inference/derive, mais elle n'est PAS publiee
+  # sur /metrics : aucune jauge predicare_drift_* n'existe.
+  #
+  # L'alerte de derive viendra donc de la chaine ml.derive (lecture de
+  # ml.rapport_derive / API) et non de Prometheus. Tant que la metrique n'est
+  # pas exposee, on n'invente pas d'expression : l'unique regle ci-dessous est
+  # un INDICATEUR DE SUBSTITUTION, explicitement documente comme tel.
+  - name: predicare-derive
+    interval: 60s
+    rules:
+      - alert: PredicarePartScoresEleves
+        expr: |
+          (
+            sum(rate(predicare_predictions_total{service="api-inference",bucket=~"0\\.[5-9]-.*"}[1h]))
+            /
+            sum(rate(predicare_predictions_total{service="api-inference"}[1h]))
+          ) > 0.5
+          and
+          sum(rate(predicare_predictions_total{service="api-inference"}[1h])) > 0
+          and
+          sum(increase(predicare_predictions_total{service="api-inference"}[1h])) > 50
+        for: 1h
+        labels:
+          severity: warning
+          composant: derive
+        annotations:
+          summary: "Plus de 50 % des scores de fraude sont superieurs a 0,5"
+          description: >-
+            Indicateur de substitution a la derive : la part des predictions
+            dans les tranches 0,5-1,0 depasse 50 % sur une heure. Ce n'est PAS
+            le PSI du worker ; c'est un signal de glissement de la population
+            servie, a confronter au rapport ml.rapport_derive.
+          runbook: >-
+            Consulter GET /api/inference/derive et la table ml.rapport_derive ;
+            comparer le score moyen courant a la reference ; si le PSI depasse
+            0,10, ouvrir une investigation, au-dela de 0,25 envisager une
+            revision du modele.

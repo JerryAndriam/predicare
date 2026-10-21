@@ -25,6 +25,9 @@ services:
       - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Regles d'alerte : sans ce montage, rule_files pointe vers un dossier
+      # inexistant et /api/v1/rules reste vide.
+      - ./ops/prometheus/rules:/etc/prometheus/rules:ro
       - promdata:/prometheus
     networks:
       - core

@@ -4,6 +4,7 @@ apiVersion: 1
 # donc disponible immediatement, sans configuration manuelle a la main.
 datasources:
   - name: Prometheus
+    uid: predicare-prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090

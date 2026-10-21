@@ -32,6 +32,7 @@ Trois garanties sont posees ici :
 from __future__ import annotations
 
 import sys
+import traceback
 
 #: Nom de la connexion telle qu'elle apparait dans l'interface Superset.
 NOM_CONNEXION = "PrediCare (lecture seule)"
@@ -177,6 +178,43 @@ def synchroniser(table: object, session: object) -> None:
     )
 
 
+def vues_manquantes(uri_bi: str) -> list[str]:
+    """Retourne les vues de `DATASETS` qui n'existent pas dans le schema `bi`.
+
+    Le controle est fait AVANT toute ecriture : sans lui, le script creait la
+    connexion puis les datasets dans l'ordre du dictionnaire, et s'arretait au
+    premier nom absent (`bi.v_top5_prestataires`), laissant un enregistrement
+    partiel. Un dataset manquant se voit mieux qu'un job qui sort en 1 sans
+    dire quelle vue appliquer.
+
+    La requete passe par la connexion BI (`uri_bi`), PAS par la session de
+    Superset. Celle-ci pointe sur la base `superset`, qui ne contient que les
+    metadonnees de l'outil : les vues de `bi` vivent dans la base applicative
+    `predicare`. Interroger la session rendait donc les 13 vues « absentes »
+    a chaque demarrage, et `superset-import` echouait alors que `bi-init`
+    venait de les creer.
+
+    Passer par `uri_bi` verifie en prime que `superset_ro` a bien le droit de
+    lire les vues : une vue presente mais non accordee serait tout aussi
+    inutilisable pour les datasets.
+    """
+    from sqlalchemy import bindparam, create_engine, text
+
+    attendues = [spec["vue"] for spec in DATASETS.values()]
+    requete = text(
+        "SELECT table_name FROM information_schema.views "
+        "WHERE table_schema = 'bi' AND table_name IN :vues"
+    ).bindparams(bindparam("vues", expanding=True))
+
+    moteur = create_engine(uri_bi)
+    try:
+        with moteur.connect() as connexion:
+            presentes = {ligne[0] for ligne in connexion.execute(requete, {"vues": attendues})}
+    finally:
+        moteur.dispose()
+    return [vue for vue in attendues if vue not in presentes]
+
+
 def enregistrer(session: object) -> tuple[list[str], list[str]]:
     """Cree la connexion et enregistre les datasets sur les vues physiques.
 
@@ -277,10 +315,33 @@ def main() -> int:
             return 1
         superset_db.session.info["ro_uri"] = uri_bi
 
+        manquantes = vues_manquantes(uri_bi)
+        if manquantes:
+            print(
+                "Vues BI absentes : enregistrement annule pour ne pas laisser "
+                "un tableau de bord partiel.",
+                file=sys.stderr,
+            )
+            for vue in manquantes:
+                print(f"  - bi.{vue}", file=sys.stderr)
+            print(
+                "Les appliquer avec `bash db/bi/load.sh` (ou `make bi`), puis "
+                "relancer `make up-bi`.",
+                file=sys.stderr,
+            )
+            return 1
+
         try:
             crees, supprimes = enregistrer(superset_db.session)
         except Exception as exc:
-            print(f"ECHEC de l'enregistrement des datasets : {exc}", file=sys.stderr)
+            # `str(exc)` seul ne suffit pas : certaines exceptions de
+            # `fetch_metadata` ne portent que le nom de la table. La classe et
+            # la trace donnent le vrai motif (droits, colonne, connexion).
+            print(
+                f"ECHEC de l'enregistrement des datasets : {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            traceback.print_exc()
             return 1
 
         print(f"Connexion « {NOM_CONNEXION} » en lecture seule.")

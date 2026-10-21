@@ -107,6 +107,11 @@ up: ## Demarre toute la plateforme, tooling de demonstration inclus
 	# revenir, et l'ordre reste garanti avant les API (qui dependent de
 	# `service_completed_successfully`).
 	@$(COMPOSE_STACK) run --rm migrate
+	# Meme raison que pour `migrate` : les vues BI ne sont pas des migrations,
+	# et un one-shot deja sorti n'est pas relance par `up -d`. `run --rm`
+	# garantit que `db/bi/views/*.sql` est applique a chaque demarrage, avant
+	# `superset-import` qui enregistre les datasets.
+	@$(COMPOSE_STACK) run --rm bi-init
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	# Amorçage n8n : installe les workflows absents sans jamais remplacer
@@ -127,6 +132,7 @@ start: ## Demarre SANS reconstruire les images (apres un make down)
 	@scripts/bootstrap.sh
 	@$(COMPOSE_STACK) up -d db redis
 	@$(COMPOSE_STACK) run --rm migrate
+	@$(COMPOSE_STACK) run --rm bi-init
 	@$(COMPOSE_STACK) up -d
 	@$(MAKE) --no-print-directory wait
 	@bash scripts/n8n-import.sh --if-missing
@@ -178,6 +184,9 @@ restart: down start ## Redemarre SANS reconstruire (utilise `make restart up` ap
 .PHONY: up-bi
 up-bi: ## Demarre le pilotage decisionnel (Superset, ~900 Mo)
 	@$(COMPOSE_BI) build superset
+	# Les vues sont appliquees avant les jobs Superset : `superset-import`
+	# echoue si `db/bi/views/*.sql` n'a pas ete joue.
+	@$(COMPOSE_BI) run --rm bi-init
 	@$(COMPOSE_BI) up -d superset superset-init superset-import
 	# `--force-recreate` : un job deja termine n'est pas relance par `up -d`,
 	# et le tableau garderait les graphiques de la veille.

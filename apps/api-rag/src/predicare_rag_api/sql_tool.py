@@ -197,7 +197,16 @@ class InsuredHistoryTool:
         "une facture precise (la derniere, une facture rejetee), selectionne "
         "sa ligne avec ORDER BY date_facture DESC LIMIT 1. "
         "Pour un total, utilise SUM(...) dans la requete : ne calcule jamais "
-        "la somme des lignes retournees."
+        "la somme des lignes retournees. "
+        "Des que la question porte sur un montant total, une moyenne, un "
+        'nombre ou une periode ("combien", "quel est mon reste a charge", '
+        '"j\'ai paye combien en 2025"), produis un AGREGAT : SUM(...), '
+        "COUNT(...), AVG(...), MIN(...), MAX(...), au lieu de retourner les "
+        "lignes une par une. La forme autorisee n'accepte pas GROUP BY : pour "
+        "ventiler un total, utilise un agregat filtre par predicat (par "
+        "exemple AND statut = 'PAYEE', AND date_facture >= '2025-01-01'). "
+        "Ne renvoie jamais plus de 5 lignes brutes : au-dela, agrege et "
+        "resume (total, nombre, periode, statut)."
     )
 
     def __init__(self, ro_url: str, *, max_rows: int = 50) -> None:

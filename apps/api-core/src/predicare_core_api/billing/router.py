@@ -17,12 +17,14 @@ que la facture n'existait pas encore au moment de l'appel d'inference.
 
 from __future__ import annotations
 
+import importlib
+import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
@@ -100,10 +102,25 @@ class SubmitAccepted(BaseModel):
 @router.post("/soumettre", response_model=SubmitAccepted, status_code=202)
 def submit_invoice(payload: dict, request: Request, user: SubmitUser) -> SubmitAccepted:
     """Valide, note via le Flux 1, puis enregistre la facture."""
+    return _traiter_facture(payload, request, user)
+
+
+def _traiter_facture(payload: dict, request: Request, user: TokenPayload) -> SubmitAccepted:
+    """Enchaine validation, references, notation et persistance d'UNE facture.
+
+    Cette fonction est la porte unique, partagee par le depot JSON et par
+    l'import PDF : les deux chemins appliquent donc exactement les memes
+    controles, dans le meme ordre. Elle sert aussi de point d'entree aux tests
+    de l'import, qui n'ont pas besoin d'une base pour verifier l'isolation
+    par fichier.
+    """
     try:
         invoice = InvoiceSubmission.model_validate(payload)
     except ValidationError as exc:
-        raise InvalidInvoiceError(f"Facture invalide - {_field_error(exc)}") from exc
+        raise InvalidInvoiceError(
+            f"Facture invalide - {_field_error(exc)}",
+            details={"champ": _premier_champ(exc)},
+        ) from exc
 
     # L'identifiant metier est la `reference` en base : c'est lui que le
     # service d'inference renvoie, et lui qui rattache la prediction.
@@ -161,6 +178,289 @@ def _field_error(exc: ValidationError) -> str:
         f"{'.'.join(str(partie) for partie in erreur['loc']) or 'racine'} : {erreur['msg']}"
         for erreur in exc.errors()
     )
+
+
+def _premier_champ(exc: ValidationError) -> str:
+    """Premier champ fautif d'une erreur Pydantic, pour le remonter au client."""
+    erreurs = exc.errors()
+    if not erreurs:
+        return "racine"
+    return ".".join(str(partie) for partie in erreurs[0]["loc"]) or "racine"
+
+
+class ImportItem(BaseModel):
+    """Resultat du traitement d'UN fichier dans un import de lot.
+
+    `statut` distingue deux echecs de nature differente : `rejetee` est un
+    refus metier (la facture a ete lue mais n'est pas valide), `echec` une
+    impossibilite de lire le fichier (PDF scanne, illisible, trop gros).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    fichier: str
+    statut: Literal["notee", "rejetee", "echec"]
+    reference: str | None = None
+    score_fraude: float | None = None
+    is_fraud: bool | None = None
+    seuil_applique: float | None = None
+    message: str = ""
+    champ: str | None = None
+
+
+class ImportResult(BaseModel):
+    """Bilan d'un import multipart : le lot est traite fichier par fichier."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: int
+    noted: int
+    rejected: int
+    failed: int
+    items: list[ImportItem]
+
+
+class ImportTropVolumineuxError(PrediCareError):
+    """Plus de fichiers que la limite d'un import (100)."""
+
+    code = "too_many_files"
+    http_status = 413
+
+
+#: Un import reste un appel HTTP unique : 100 fichiers couvrent le lot du
+#: jury (20) avec de la marge, sans laisser une requete occuper un worker
+#: pendant des minutes.
+MAX_FICHIERS_IMPORT = 100
+
+#: Un PDF de facture tient largement sous 10 Mo. La borne protege la memoire
+#: du worker : un fichier plus gros produit un `echec` explicite, pas un 500.
+TAILLE_MAX_PDF = 10 * 1024 * 1024
+
+#: Champs techniques que les erreurs d'extraction nomment dans leur message.
+_CHAMP_DANS_MESSAGE = re.compile(
+    r"assure_pseudonyme|prestataire_id|date_facture|montant_total|lignes\.\d+\.code_acte"
+)
+
+
+@router.post("/import", response_model=ImportResult, status_code=200)
+def import_invoices(
+    request: Request,
+    user: SubmitUser,
+    fichiers: Annotated[list[UploadFile], File(description="Factures PDF")],
+    prestataire_id: Annotated[str | None, Form()] = None,
+) -> ImportResult:
+    """Importe 1..100 factures PDF en UN seul appel HTTP.
+
+    Le jour J, le jury remet 20 PDF. Le rate-limit de la passerelle est de
+    60 requetes par minute et par IP : envoyer 20 POST `/soumettre`
+    sequentiels serait fragile, d'ou ce lot.
+
+    Chaque fichier est traite isolement : une facture illisible ou rejetee
+    produit son item et n'interrompt pas les suivantes. Le lot repond 200
+    des lors qu'il a ete traite, meme si certains fichiers echouent.
+
+    `prestataire_id`, s'il est fourni, PRIME sur celui lu dans le PDF : un
+    administrateur importe un lot heterogene et peut imposer un etablissement.
+    Le controle de perimetre de `_verifier_references` reste applique pour un
+    professionnel de sante.
+    """
+    if not fichiers:
+        raise InvalidInvoiceError("Aucun fichier recu : joignez au moins une facture PDF.")
+    if len(fichiers) > MAX_FICHIERS_IMPORT:
+        raise ImportTropVolumineuxError(
+            f"Un import est limite a {MAX_FICHIERS_IMPORT} fichiers (recu : {len(fichiers)}).",
+            details={"limite": MAX_FICHIERS_IMPORT, "recu": len(fichiers)},
+        )
+
+    pdf_facture = _module_extraction()
+    items = [
+        _importer_un_pdf(
+            pdf_facture,
+            fichier=fichier,
+            request=request,
+            user=user,
+            prestataire_impose=prestataire_id,
+        )
+        for fichier in fichiers
+    ]
+    for item in items:
+        _journaliser_import(user, item)
+
+    noted = sum(1 for item in items if item.statut == "notee")
+    rejected = sum(1 for item in items if item.statut == "rejetee")
+    failed = sum(1 for item in items if item.statut == "echec")
+    return ImportResult(
+        total=len(items),
+        noted=noted,
+        rejected=rejected,
+        failed=failed,
+        items=items,
+    )
+
+
+def _module_extraction() -> Any:
+    """Import tardif du module PDF, partage avec le job de seed.
+
+    L'import est fait au moment de la requete : api-core demarre meme si le
+    module d'extraction n'est pas encore livre. Les tests peuvent le remplacer
+    par un faux module dans `sys.modules`.
+    """
+    return importlib.import_module("predicare.pdf_facture")
+
+
+def _importer_un_pdf(
+    pdf_facture: Any,
+    *,
+    fichier: UploadFile,
+    request: Request,
+    user: TokenPayload,
+    prestataire_impose: str | None,
+) -> ImportItem:
+    """Traite UN PDF et retourne son item, sans jamais lever.
+
+    Une exception de lecture, de resolution ou de notation est traduite en
+    `echec` (fichier inutilisable) ou `rejetee` (facture refusee par la porte
+    metier), avec le champ fautif quand il est connu.
+    """
+    nom = (fichier.filename or "sans-nom.pdf").strip() or "sans-nom.pdf"
+    payload: dict | None = None
+    reference: str | None = None
+
+    try:
+        contenu = fichier.file.read(TAILLE_MAX_PDF + 1)
+        if len(contenu) > TAILLE_MAX_PDF:
+            return _echec(
+                nom,
+                f"Fichier trop volumineux : {len(contenu)} octets "
+                f"(limite {TAILLE_MAX_PDF} octets).",
+            )
+        if not pdf_facture.est_pdf(contenu):
+            return _echec(nom, "Format non reconnu : un fichier PDF est attendu.")
+
+        extraite = pdf_facture.extraire_facture(contenu, nom=nom)
+        reference = str(getattr(extraite, "reference", "") or "") or None
+
+        with session_scope() as session:
+            assure_pseudonyme = pdf_facture.resoudre_assure(session, extraite.assure)
+            prestataire = prestataire_impose or extraite.prestataire
+            prestataire_code = pdf_facture.resoudre_prestataire(session, prestataire)
+            codes_actes = [
+                pdf_facture.resoudre_acte(session, _valeur_acte(ligne)) for ligne in extraite.lignes
+            ]
+
+        payload = pdf_facture.payload_de(
+            extraite,
+            assure_pseudonyme=assure_pseudonyme,
+            prestataire_id=prestataire_code,
+        )
+        reference = str(payload.get("facture_id") or reference or "") or None
+        _appliquer_actes(payload, codes_actes)
+
+        resultat = _traiter_facture(payload, request, user)
+        return ImportItem(
+            fichier=nom,
+            statut="notee",
+            reference=resultat.facture_id,
+            score_fraude=resultat.score_fraude,
+            is_fraud=resultat.is_fraud,
+            seuil_applique=resultat.seuil_applique,
+            message=(f"score {resultat.score_fraude:.4f} / seuil {resultat.seuil_applique:.4f}"),
+        )
+    except pdf_facture.PdfSansTexteError:
+        return _echec(nom, "PDF sans couche texte (scan) : OCR requis.", reference)
+    except pdf_facture.ChampIntrouvableError as exc:
+        # La facture est lisible, mais un champ ou une reference manque :
+        # c'est un rejet metier, pas un fichier illisible.
+        message = str(exc) or "Champ introuvable dans la facture."
+        return ImportItem(
+            fichier=nom,
+            statut="rejetee",
+            reference=reference,
+            message=message,
+            champ=_champ_du_message(message),
+        )
+    except pdf_facture.FactureIllisibleError as exc:
+        return _echec(nom, str(exc) or "Facture illisible.", reference)
+    except PrediCareError as exc:
+        return ImportItem(
+            fichier=nom,
+            statut="rejetee",
+            reference=reference,
+            message=exc.message,
+            champ=_champ_de(exc),
+        )
+    except (OSError, ValueError) as exc:
+        return _echec(nom, f"Fichier illisible : {exc}", reference)
+    except Exception as exc:
+        # Aucun fichier ne doit faire tomber le lot : meme une panne
+        # inattendue reste un item, et les fichiers suivants sont traites.
+        logger.warning("facture.import_echec", fichier=nom, erreur=str(exc))
+        return _echec(nom, f"Traitement impossible : {exc}", reference)
+
+
+def _valeur_acte(ligne: dict) -> str:
+    """Code d'acte brut d'une ligne extraite, quel que soit son libelle."""
+    for cle in ("code_acte", "acte", "code"):
+        valeur = ligne.get(cle)
+        if valeur:
+            return str(valeur)
+    return ""
+
+
+def _appliquer_actes(payload: dict, codes_actes: list[str]) -> None:
+    """Remplace les codes bruts du PDF par les codes resolus en base.
+
+    `payload_de` ne prend pas de session : la resolution des actes est faite
+    ici, puis reinjectee dans les lignes dans le meme ordre.
+    """
+    lignes = payload.get("lignes")
+    if not isinstance(lignes, list):
+        return
+    for ligne, code in zip(lignes, codes_actes, strict=False):
+        if isinstance(ligne, dict):
+            ligne["code_acte"] = code
+
+
+def _champ_du_message(message: str) -> str | None:
+    """Champ technique nomme dans le message d'une erreur d'extraction."""
+    correspondance = _CHAMP_DANS_MESSAGE.search(message)
+    return correspondance.group(0) if correspondance else None
+
+
+def _champ_de(exc: PrediCareError) -> str | None:
+    """Champ fautif porte par une erreur metier, si elle le nomme."""
+    champ = exc.details.get("champ")
+    if isinstance(champ, str) and champ:
+        return champ
+    champs = exc.details.get("champs")
+    if isinstance(champs, list) and champs:
+        return str(champs[0])
+    return None
+
+
+def _echec(nom: str, message: str, reference: str | None = None) -> ImportItem:
+    """Item d'un fichier qui n'a pas pu etre lu ou traite."""
+    return ImportItem(fichier=nom, statut="echec", reference=reference, message=message)
+
+
+def _journaliser_import(user: TokenPayload, item: ImportItem) -> None:
+    """Ecrit UNE ligne d'audit par fichier, sans jamais interrompre le lot.
+
+    Le journal est la piece de tracabilite du lot : le nom du fichier source
+    et le statut permettent de rapprocher un item de la ligne d'audit.
+    """
+    try:
+        with session_scope() as session:
+            journaliser(
+                session,
+                acteur=str(user.subject),
+                role=user.role.value,
+                action="facture_importee",
+                cible=item.reference,
+                details={"fichier": item.fichier, "statut": item.statut},
+            )
+    except Exception as exc:
+        logger.warning("facture.import_audit_impossible", fichier=item.fichier, erreur=str(exc))
 
 
 def _exiger(session: Session, table: str, colonne: str, valeur: str, champ: str) -> int:

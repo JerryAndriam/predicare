@@ -1,0 +1,165 @@
+{
+  "version": "2",
+  "seuil_modele": 0.2876,
+  "seuil_production_disponible": true,
+  "regles_utilisees": [
+    "depasse_tarif_max",
+    "produit_non_remboursable",
+    "ordonnance_absente_requis",
+    "ordonnance_expiree",
+    "incompatibilite_sexe",
+    "incompatibilite_age",
+    "prestataire_radie",
+    "hors_convention",
+    "soin_jour_ferme",
+    "soin_hors_horaire",
+    "prestataire_niveau_tarif_eleve",
+    "hors_periode_contrat"
+  ],
+  "resultats": [
+    {
+      "strategie": "modele XGBoost",
+      "seuil": 0.2876,
+      "origine_seuil": "seuil du modele",
+      "roc_auc": 0.9432,
+      "pr_auc": 0.8641,
+      "rappel": 0.8838,
+      "precision": 0.4161,
+      "f1": 0.5658,
+      "cout_total": 6327000.0,
+      "gain_metier": 21297000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 776,
+        "faux_positifs": 1089,
+        "faux_negatifs": 102,
+        "vrais_negatifs": 8119
+      }
+    },
+    {
+      "strategie": "modele XGBoost",
+      "seuil": 0.8001,
+      "origine_seuil": "cout metier minimal (validation)",
+      "roc_auc": 0.9432,
+      "pr_auc": 0.8641,
+      "rappel": 0.6913,
+      "precision": 0.9967,
+      "f1": 0.8164,
+      "cout_total": 8136000.0,
+      "gain_metier": 19488000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 607,
+        "faux_positifs": 2,
+        "faux_negatifs": 271,
+        "vrais_negatifs": 9206
+      }
+    },
+    {
+      "strategie": "regles deterministes",
+      "seuil": 0.2876,
+      "origine_seuil": "seuil du modele",
+      "roc_auc": 0.703,
+      "pr_auc": 0.2835,
+      "rappel": 0.6595,
+      "precision": 0.1558,
+      "f1": 0.252,
+      "cout_total": 18384000.0,
+      "gain_metier": 9240000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 579,
+        "faux_positifs": 3138,
+        "faux_negatifs": 299,
+        "vrais_negatifs": 6070
+      }
+    },
+    {
+      "strategie": "regles deterministes",
+      "seuil": 3.0,
+      "origine_seuil": "cout metier minimal (validation)",
+      "roc_auc": 0.703,
+      "pr_auc": 0.2835,
+      "rappel": 0.0638,
+      "precision": 1.0,
+      "f1": 0.1199,
+      "cout_total": 24660000.0,
+      "gain_metier": 2964000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 56,
+        "faux_positifs": 0,
+        "faux_negatifs": 822,
+        "vrais_negatifs": 9208
+      }
+    },
+    {
+      "strategie": "regression logistique",
+      "seuil": 0.2876,
+      "origine_seuil": "seuil du modele",
+      "roc_auc": 0.9123,
+      "pr_auc": 0.7891,
+      "rappel": 0.8747,
+      "precision": 0.2386,
+      "f1": 0.3749,
+      "cout_total": 10653000.0,
+      "gain_metier": 16971000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 768,
+        "faux_positifs": 2451,
+        "faux_negatifs": 110,
+        "vrais_negatifs": 6757
+      }
+    },
+    {
+      "strategie": "regression logistique",
+      "seuil": 0.9988,
+      "origine_seuil": "cout metier minimal (validation)",
+      "roc_auc": 0.9123,
+      "pr_auc": 0.7891,
+      "rappel": 0.5182,
+      "precision": 0.9785,
+      "f1": 0.6776,
+      "cout_total": 12720000.0,
+      "gain_metier": 14904000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 455,
+        "faux_positifs": 10,
+        "faux_negatifs": 423,
+        "vrais_negatifs": 9198
+      }
+    },
+    {
+      "strategie": "regles + modele (OU)",
+      "seuil": 0.2876,
+      "origine_seuil": "seuil du modele",
+      "roc_auc": 0.7488,
+      "pr_auc": 0.1604,
+      "rappel": 0.926,
+      "precision": 0.1801,
+      "f1": 0.3015,
+      "cout_total": 13056000.0,
+      "gain_metier": 14568000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 813,
+        "faux_positifs": 3702,
+        "faux_negatifs": 65,
+        "vrais_negatifs": 5506
+      }
+    },
+    {
+      "strategie": "regles + modele (OU)",
+      "seuil": 1.0,
+      "origine_seuil": "cout metier minimal (validation)",
+      "roc_auc": 0.7488,
+      "pr_auc": 0.1604,
+      "rappel": 0.6595,
+      "precision": 0.1558,
+      "f1": 0.252,
+      "cout_total": 18384000.0,
+      "gain_metier": 9240000.0,
+      "matrice_confusion": {
+        "vrais_positifs": 579,
+        "faux_positifs": 3138,
+        "faux_negatifs": 299,
+        "vrais_negatifs": 6070
+      }
+    }
+  ]
+}
