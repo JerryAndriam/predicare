@@ -114,9 +114,81 @@ PROXY_FIX_CONFIG = {
 }
 
 
-def _declarer_prefixe_bi(app: "Flask") -> None:  # noqa: F821
-    """Annonce le prefixe `/bi` a l'interface, sans middleware WSGI."""
+class _PrefixeAccesDirect:
+    """Aligne l'acces direct a Superset sur l'espace `/bi` de la passerelle.
+
+    L'interface React compare `window.location.pathname` a ses propres routes
+    prefixees par `APPLICATION_ROOT` (`/bi`). Deux acces existent pourtant :
+
+    1. PAR LA PASSERELLE, le chemin nominal : Traefik retire `/bi` et pose
+       `X-Forwarded-Prefix`, que `ProxyFix` transforme en `SCRIPT_NAME`. Flask
+       recoit donc `/login/` et sait qu'il vit sous `/bi` : tout concorde.
+
+    2. EN DIRECT sur le port publie (`http://localhost:8088`, affiche par
+       `make up`) : personne ne retire le prefixe. `/bi/login/` n'existe pas
+       dans les routes Flask (404), et `/login/` rend une SPA qui attend
+       `/bi/login/` (404 aussi). C'est exactement la page « Page not found »
+       que l'on obtenait en ouvrant l'URL directe.
+
+    Ce middleware rend le second acces equivalent au premier : il redirige
+    une requete non prefixee vers `/bi/...`, puis retire `/bi` en posant
+    `SCRIPT_NAME`, comme Traefik le ferait. Les requetes deja prefixees par
+    la passerelle (`X-Forwarded-Prefix` ou `SCRIPT_NAME` present) ne sont pas
+    touchees.
+    """
+
+    def __init__(self, application: object, prefixe: str) -> None:
+        self.application = application
+        self.prefixe = prefixe
+
+    def __call__(self, environ: dict, start_response: object) -> list[bytes]:
+        # Derriere la passerelle : chemin deja decoupe par Traefik/ProxyFix.
+        if environ.get("HTTP_X_FORWARDED_PREFIX") or environ.get("SCRIPT_NAME"):
+            return self.application(environ, start_response)  # type: ignore[operator]
+
+        chemin = str(environ.get("PATH_INFO") or "/")
+
+        # Sondes et fichiers statiques : Superset les sert a la racine, et le
+        # bundle webpack les demande sans prefixe (`publicPath` fige).
+        if chemin == "/health" or chemin.startswith("/static/"):
+            return self.application(environ, start_response)  # type: ignore[operator]
+
+        if chemin == self.prefixe or chemin.startswith(f"{self.prefixe}/"):
+            environ["PATH_INFO"] = chemin[len(self.prefixe) :] or "/"
+            environ["SCRIPT_NAME"] = self.prefixe
+            return self.application(environ, start_response)  # type: ignore[operator]
+
+        # Seule la NAVIGATION du navigateur est redirigee. Les appels d'API
+        # internes (`superset-dashboard`, `charger_requetes`, export) visent
+        # `http://superset:8088/api/v1/...` sans prefixe : les rediriger en
+        # 302 transformerait un POST en GET et casserait l'authentification
+        # (constate : login API en 302 au lieu de 200).
+        methode = str(environ.get("REQUEST_METHOD", "GET")).upper()
+        accept = str(environ.get("HTTP_ACCEPT", ""))
+        if methode not in {"GET", "HEAD"} or "text/html" not in accept:
+            return self.application(environ, start_response)  # type: ignore[operator]
+
+        # Acces direct a la racine : on entre dans le meme espace que la
+        # passerelle, plutot que de servir une SPA qui ne peut pas router.
+        cible = f"{self.prefixe}{chemin}"
+        if requete := environ.get("QUERY_STRING"):
+            cible = f"{cible}?{requete}"
+        start_response(  # type: ignore[operator]
+            "302 Found",
+            [
+                ("Location", cible),
+                ("Content-Length", "0"),
+                ("Cache-Control", "no-store"),
+            ],
+        )
+        return [b""]
+
+
+def _declarer_prefixe_bi(app: Flask) -> None:  # noqa: F821
+    """Publie `/bi` a l'interface et aligne l'acces direct sur ce prefixe."""
     app.config["APPLICATION_ROOT"] = "/bi"
+    if not isinstance(app.wsgi_app, _PrefixeAccesDirect):
+        app.wsgi_app = _PrefixeAccesDirect(app.wsgi_app, "/bi")
 
 
 FLASK_APP_MUTATOR = _declarer_prefixe_bi
