@@ -16,10 +16,23 @@
 entryPoints:
   web:
     address: ":80"
-    http:
-      middlewares:
-        - predicare-headers
-        - predicare-rate-limit
+
+# Les middlewares (en-tetes de securite, limitation de debit) ne sont
+# VOLONTAIREMENT plus declares ici comme defaut d'entrypoint : un defaut
+# s'applique a TOUS les routeurs, y compris `/bi`, et rendait le tableau de
+# bord inutilisable pour deux raisons mesurees :
+#
+#   1. `X-Frame-Options: DENY` + `frame-ancestors 'none'` : le navigateur
+#      refusait d'afficher Superset dans l'iframe de `/pilotage`
+#      (« localhost n'autorise pas la connexion »).
+#   2. notre `Content-Security-Policy` remplacait celle de Superset, qui
+#      s'appuie sur un `nonce` par requete : ses scripts inline etaient donc
+#      bloques, et le tableau se serait affiche vide meme sans l'iframe.
+#
+# Chaque routeur applicatif les declare desormais explicitement (voir
+# `ops/traefik/dynamic.yml`) ; `/bi` reste sans ces en-tetes et conserve
+# ceux, plus permissifs mais bornes a la meme origine, que Superset emet
+# lui-meme.
 
 providers:
   file:

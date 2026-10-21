@@ -84,7 +84,7 @@ export function Shell() {
           </span>
           <span className={`flex min-w-0 flex-col ${rail ? 'lg:hidden' : ''}`}>
             <span className="font-display text-[17px] font-bold leading-tight tracking-tight">
-              PrediCare
+              KolikolyCare
             </span>
             <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-white/70">
               TPA santé

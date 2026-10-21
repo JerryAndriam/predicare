@@ -1,3 +1,6 @@
+> **Guide de référence (phase 10)** : [`guide-utilisateur.md`](guide-utilisateur.md) — une section par rôle, écran par écran.
+> Ce fichier-ci conserve les notes détaillées de la phase 10.1 (assistant conversationnel, RAG). En cas de divergence de libellé, l’interface et le guide de référence font foi.
+
 # Guide utilisateur
 
 Phase 10.1 du plan d'action. Une section par rôle, rédigée du point de vue
@@ -115,7 +118,7 @@ réponse.
 
 ### Déposer une facture
 
-Onglet **Déposer une facture**. Le formulaire est pré-rempli avec vos
+Section **Déposer une facture**. Le formulaire est pré-rempli avec vos
 référentiels : votre prestataire est imposé par le serveur, et la liste des
 actes et des dossiers provient de la base.
 
@@ -153,7 +156,7 @@ sèche mais un message qui nomme ce qu'il faut corriger.
 
 ### Déposer plusieurs factures d'un coup
 
-Onglet **Import de lot**. Collez un tableau JSON ou un CSV :
+Section **Import de lot**. Collez un tableau JSON ou un CSV :
 
 ```csv
 assure_pseudonyme,date_facture,code_acte,quantite,montant_unitaire,date_acte
@@ -167,7 +170,7 @@ fraction acceptée.
 
 ### Déposer une ordonnance
 
-Onglet **Ordonnance**. L'ordonnance porte l'acte prescrit, la date, la
+Section **Ordonnance**. L'ordonnance porte l'acte prescrit, la date, la
 quantité, et deux informations qui nourrissent le modèle : le **diagnostic**
 et la **validité en jours**.
 
@@ -178,7 +181,7 @@ situation.
 
 ### Suivre ses dossiers
 
-Onglet **Suivi des dossiers**. Le tableau est paginé et filtrable par
+Section **Suivi des dossiers**. Le tableau est paginé et filtrable par
 statut. La colonne **Statut** donne l'état de la prise en charge :
 
 | Statut | Signification |
@@ -194,7 +197,7 @@ statut. La colonne **Statut** donne l'état de la prise en charge :
 
 ### Lire la file
 
-Onglet **À traiter**. La file est triée par score décroissant : la première
+Page **File d’alertes**. La file est triée par score décroissant : la première
 ligne est la plus suspecte. Les quatre tuiles du haut résument la charge :
 combien de dossiers attendent, quel score maximal, quel montant en jeu, quel
 âge moyen.
@@ -230,18 +233,18 @@ Confirmer une fraude demande une confirmation explicite : la décision
 engage le dossier. Elle est **tracée** dans le journal d'audit, avec votre
 identifiant, l'heure et le motif.
 
-Le statut de la facture change immédiatement, et l'assuré le voit : c'est
-pourquoi une décision se lit dans la colonne **Statut** de l'historique.
+Le statut de la facture change immédiatement, et l’assuré le voit dans
+« Mes remboursements ».
 
 ### Historique
 
-Onglet **Historique** : toutes les décisions, paginées, avec leur motif.
+Section **Historique** : toutes les décisions, paginées, avec leur motif.
 
 ## Parcours administrateur : faire tourner la plateforme
 
 ### Le seuil d'alerte
 
-Onglet **Seuil**. Deux seuils coexistent, et les confondre est la première
+Section **Seuil**. Deux seuils coexistent, et les confondre est la première
 source de malentendu :
 
 | Seuil | Où il se règle | Ce qu'il décide |
@@ -255,7 +258,7 @@ réglage. Le motif du changement est tracé dans le journal.
 
 ### Le modèle
 
-Onglet **Modèle**. Trois opérations, dans cet ordre :
+Section **Modèle**. Trois opérations, dans cet ordre :
 
 1. **Charger une candidate** : elle est préparée à côté de la version
    active, qui continue de répondre.
@@ -276,7 +279,7 @@ Aucune version n'est perdue. Chaque bascule est notifiée et journalisée.
 
 ### Les canaux et les secrets
 
-Onglet **Canaux**. Chaque canal a deux états distincts : **configuré** (il a
+Section **Canaux**. Chaque canal a deux états distincts : **configuré** (il a
 une destination) et **actif** (on l'envoie). Un canal actif mais non
 configuré n'envoie rien.
 
@@ -289,20 +292,21 @@ depuis l'écran.
 ### Le tableau de bord
 
 Menu **Pilotage BI**. Le tableau de bord est servi par la même passerelle
-que l'application : il n'y a pas de seconde connexion à ouvrir. S'il n'est
-pas disponible, l'écran l'explique et propose de le démarrer.
+que l’application. Superset garde son propre compte : au premier accès, le
+formulaire de connexion peut s’afficher dans le cadre. S’il n’est pas
+disponible, l’écran l’explique et propose de le démarrer.
 
 ## Glossaire
 
 | Terme | Définition |
 | --- | --- |
 | **Acte** | une prestation de soins codée (consultation, examen, acte technique) |
-| **Assurance** | le dossier de soins d'une personne, identifié par un pseudonyme |
-| **Taux de fraudulence** | la probabilité qu'une facture soit anormale, entre 0 et 100 % |
+| **Assuré** | le dossier de soins d’une personne, identifié par un pseudonyme |
+| **Note de vigilance** | la probabilité qu’une facture soit anormale, entre 0 et 100 % |
 | **Seuil** | la valeur de score au-delà de laquelle une facture est signalée |
 | **SHAP** | la décomposition du score en facteurs, qui explique la note |
 | **Prescription** | l'ordonnance du médecin ; un acte absent de l'ordonnance est « non prescrit » |
-| **Restant à charge** | la part du soin que le contrat ne rembourse pas |
+| **Reste à charge** | la part du soin que le contrat ne rembourse pas |
 | **Prise en charge** | la part du soin que l'assurance rembourse |
 
 ## FAQ

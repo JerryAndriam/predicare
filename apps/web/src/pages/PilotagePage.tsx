@@ -97,7 +97,7 @@ export function PilotagePage() {
           <iframe
             className="bi-frame"
             src={URL_TABLEAU}
-            title="Tableau de bord décisionnel PrediCare"
+            title="Tableau de bord décisionnel KolikolyCare"
           />
         </Carte>
       )}
