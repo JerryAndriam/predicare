@@ -110,6 +110,14 @@ def test_assure_accede_au_rag_mais_pas_aux_alertes() -> None:
     assert Role.ASSURE not in PERMISSIONS["alerte:lire"]
 
 
+def test_pilotage_ouvert_au_gestionnaire_et_a_l_administrateur() -> None:
+    """Le tableau de bord est partage par les deux roles qui suivent l'activite."""
+    assert PERMISSIONS["pilotage:consulter"] == {
+        Role.GESTIONNAIRE,
+        Role.ADMINISTRATEUR,
+    }
+
+
 def test_professionnel_soumet_mais_ne_decide_pas() -> None:
     assert Role.PROFESSIONNEL_SANTE in PERMISSIONS["facture:soumettre"]
     assert Role.PROFESSIONNEL_SANTE not in PERMISSIONS["alerte:decider"]

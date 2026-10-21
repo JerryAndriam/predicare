@@ -16,10 +16,7 @@
 entryPoints:
   web:
     address: ":80"
-    http:
-      middlewares:
-        - predicare-headers
-        - predicare-rate-limit
+
 
 providers:
   file:

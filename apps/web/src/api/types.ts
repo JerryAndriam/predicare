@@ -370,3 +370,8 @@ export interface InvoiceInput {
   montant_total: number
   lignes: InvoiceLineInput[]
 }
+
+export interface GuestTokenResponse {
+  token: string
+  dashboard_uuid: string
+}

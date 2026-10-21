@@ -69,6 +69,9 @@ PERMISSIONS: dict[str, frozenset[Role]] = {
     "audit:lire": frozenset({Role.GESTIONNAIRE, Role.ADMINISTRATEUR}),
     "rag:interroger": frozenset({Role.ASSURE, Role.GESTIONNAIRE, Role.ADMINISTRATEUR}),
     "metriques:lire": frozenset({Role.ADMINISTRATEUR, Role.GESTIONNAIRE}),
+    # Le pilotage decisionnel est un ecran de lecture partage par les deux
+    # roles qui suivent l'activite. Il ne donne aucun droit d'ecriture.
+    "pilotage:consulter": frozenset({Role.GESTIONNAIRE, Role.ADMINISTRATEUR}),
 }
 
 

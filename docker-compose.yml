@@ -338,6 +338,12 @@ services:
       <<: *env-common
       INFERENCE_API_URL: http://api-inference:8002
       RAG_API_URL: http://api-rag:8003
+      # Pilotage BI optionnel : le compte de service est reserve a l'emission
+      # des guest tokens. Si Superset est arrete, l'endpoint repond 503.
+      SUPERSET_URL: http://superset:8088
+      SUPERSET_BI_USERNAME: ${SUPERSET_BI_SERVICE_USERNAME:-predicare-bi}
+      SUPERSET_BI_PASSWORD: ${SUPERSET_BI_SERVICE_PASSWORD:-}
+      SUPERSET_DASHBOARD_SLUG: ${SUPERSET_DASHBOARD_SLUG:-pilotage-mensuel}
       # Flux 1 : quand une facture du parcours web franchit le seuil de
       # notification, api-core appelle ce webhook n8n, qui notifie Slack
       # puis l'e-mail au gestionnaire. Vide = notification desactivee, le

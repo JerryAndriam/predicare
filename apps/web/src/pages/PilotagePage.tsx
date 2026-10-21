@@ -1,58 +1,97 @@
-import { useEffect, useState } from 'react'
+import { embedDashboard } from '@superset-ui/embedded-sdk'
+import { useEffect, useRef, useState } from 'react'
 
+import { api, messageErreur } from '../api/client'
+import type { GuestTokenResponse } from '../api/types'
 import { EnTetePage } from '../components/blocs'
 import { Carte, Chargement, EtatVide } from '../components/ui'
+
+const URL_SUPERSET = (
+  import.meta.env.VITE_SUPERSET_URL || 'http://localhost:8088'
+).replace(/\/$/, '')
 
 /**
  * Tableau de bord BI, integre a l'application.
  *
- * Le tableau Superset est PROXYFIE par la passerelle sous `/bi` : l'iframe
- * est donc de MEME ORIGINE que l'application, et la politique de securite
- * (CSP) n'a besoin d'aucune derogation pour un tiers.
+ * Le tableau Superset est affiche dans une iframe de MEME ORIGINE : la
+ * passerelle route `/bi` et les chemins absolus de Superset (`/static`,
+ * `/api/v1`, `/embedded`, `/superset`) vers le service BI. Aucune derogation
+ * CSP vers un tiers n'est donc necessaire.
  *
- * Superset ne demarre que si le profil `bi` est actif (`make up-bi`). Le
- * repli n'est donc pas une precaution theorique : sans le service, l'iframe
- * affiche une erreur de la passerelle. On detecte cet echec et on propose
- * le lien direct plutot que de laisser une page blanche.
+ * L'authentification ne demande pas de seconde connexion : api-core demande
+ * un guest token court a Superset avec un compte de service, et le SDK le
+ * renouvelle automatiquement. Le mot de passe Superset ne quitte jamais le
+ * serveur.
  */
-const URL_BI = '/bi'
-// Le tableau lui-meme, pas la page d'accueil de Superset. Le parametre
-// `standalone` masque la navigation de l'outil : le lecteur reste dans la
-// plateforme. Superset sert ses pages sous `/superset/...` ; la passerelle
-// retire le prefixe `/bi` (middleware `stripPrefix`).
-const URL_TABLEAU = `${URL_BI}/superset/dashboard/pilotage-mensuel/?standalone=true`
-// Sonde de disponibilite : l'API de Superset repond en JSON (401 sans
-// session). Une reponse HTML prouverait que c'est l'application web qui a
-// repondu, donc que le service de pilotage est absent.
-const URL_SONDE = `${URL_BI}/api/v1/dashboard/?q=(page:0,page_size=1)`
-
 export function PilotagePage() {
   const [etat, setEtat] = useState<'chargement' | 'ok' | 'indisponible'>('chargement')
+  const [erreur, setErreur] = useState<string | null>(null)
+  const [tentative, setTentative] = useState(0)
+  const conteneur = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // On teste la disponibilite du service AVANT de rendre l'iframe : une
-    // iframe qui recoit la page d'erreur 502 de la passerelle s'affiche
-    // quand meme, et l'utilisateur y verrait une erreur brute au lieu du
-    // repli qui explique comment demarrer le profil `bi`.
-    const controller = new AbortController()
-    const minuteur = setTimeout(() => controller.abort(), 5000)
-    fetch(URL_SONDE, { signal: controller.signal })
-      .then((reponse) => {
-        // La SPA renvoie du HTML pour toute route inconnue : repondre
-        // « ok » sur la seule base du code HTTP donnerait un faux
-        // positif. Seule une reponse non-HTML atteste que le service de
-        // pilotage repond derriere la passerelle.
-        const type = reponse.headers.get('content-type') ?? ''
-        // Sans session, Superset repond 401 en JSON : c'est deja la preuve
-        // que le service repond. Seule une reponse HTML signifie que c'est
-        // l'application web qui a repondu a la place.
-        const json = type.includes('application/json')
-        setEtat(json ? 'ok' : 'indisponible')
-      })
-      .catch(() => setEtat('indisponible'))
-      .finally(() => clearTimeout(minuteur))
-    return () => controller.abort()
-  }, [])
+    let annule = false
+    let tableau: { unmount: () => void } | undefined
+
+    const charger = async () => {
+      setEtat('chargement')
+      setErreur(null)
+      try {
+        const { token, dashboard_uuid } = await api<GuestTokenResponse>(
+          '/api/core/pilotage/guest-token',
+          { method: 'POST' },
+        )
+        if (annule || !conteneur.current) return
+
+        // Le SDK demande le token au moment de monter l'iframe. On reutilise
+        // le token deja obtenu pour le premier affichage, puis on en redemande
+        // un a l'expiration (5 min).
+        let premierJeton: string | null = token
+        tableau = await embedDashboard({
+          id: dashboard_uuid,
+          supersetDomain: window.location.origin,
+          mountPoint: conteneur.current,
+          fetchGuestToken: async () => {
+            if (premierJeton) {
+              const valeur = premierJeton
+              premierJeton = null
+              return valeur
+            }
+            const rafraichi = await api<GuestTokenResponse>(
+              '/api/core/pilotage/guest-token',
+              { method: 'POST' },
+            )
+            return rafraichi.token
+          },
+          dashboardUiConfig: {
+            hideTitle: true,
+            hideTab: true,
+          },
+        })
+
+        if (annule) {
+          tableau.unmount()
+          return
+        }
+        setEtat('ok')
+      } catch (probleme) {
+        if (!annule) {
+          setErreur(messageErreur(probleme))
+          setEtat('indisponible')
+        }
+      }
+    }
+
+    void charger()
+    return () => {
+      annule = true
+      try {
+        tableau?.unmount()
+      } catch {
+        // Le SDK peut deja avoir demonte l'iframe : rien a faire.
+      }
+    }
+  }, [tentative])
 
   return (
     <div className="pile">
@@ -64,40 +103,48 @@ export function PilotagePage() {
             Le tableau de bord Superset est branché en lecture seule sur la base : il
             montre le volume de factures, la fraude détectée, le cycle de décision et les
             meilleurs prestataires. Il est servi par la même passerelle que
-            l’application, sans seconde connexion à ouvrir.
+            l’application, sans seconde connexion à ouvrir. Le menu « … » d’une tuile
+            ouvre sa requête, ses données, son export ou le détail des lignes.
           </>
         }
       />
 
-      {etat === 'chargement' && <Chargement texte="Test du service de pilotage…" />}
+      {etat === 'chargement' && <Chargement texte="Préparation du tableau de bord…" />}
 
       {etat === 'indisponible' && (
         <Carte titre="Tableau de bord indisponible">
           <EtatVide
-            titre="Le service de pilotage n’est pas démarré"
-            texte="Le tableau de bord est un profil optionnel de la plateforme. Lancez « make up-bi » pour le démarrer, puis rechargez cette page."
+            titre="Le tableau de bord n’a pas pu être chargé"
+            texte={`${erreur ?? 'Le tableau de bord est indisponible.'} Lancez « make up-bi » pour démarrer le profil BI, puis rechargez cette page.`}
             action={
-              <a className="bouton principal" href={URL_TABLEAU} target="_blank" rel="noreferrer">
-                Ouvrir le tableau de bord
-              </a>
+              <button
+                className="bouton principal"
+                type="button"
+                onClick={() => {
+                  setEtat('chargement')
+                  setTentative((valeur) => valeur + 1)
+                }}
+              >
+                Réessayer
+              </button>
             }
           />
         </Carte>
       )}
 
-      {etat === 'ok' && (
+      {etat !== 'indisponible' && (
         <Carte
           titre="Tableau de bord"
           actions={
-            <a className="bouton discret" href={URL_TABLEAU} target="_blank" rel="noreferrer">
-              Ouvrir dans un onglet
+            <a className="lien" href={`${URL_SUPERSET}/chart/list/`}>
+              Ouvrir Superset
             </a>
           }
         >
-          <iframe
+          <div
+            ref={conteneur}
             className="bi-frame"
-            src={URL_TABLEAU}
-            title="Tableau de bord décisionnel PrediCare"
+            aria-label="Tableau de bord décisionnel PrediCare"
           />
         </Carte>
       )}

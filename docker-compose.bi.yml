@@ -19,6 +19,13 @@ x-superset-env: &superset-env
   SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-change-me-superset}
   SUPERSET_FERNET_KEY: ${SUPERSET_FERNET_KEY:-change-me-superset-fernet}
   SUPERSET_LOAD_EXAMPLES: ${SUPERSET_LOAD_EXAMPLES:-no}
+  SUPERSET_GUEST_ROLE: ${SUPERSET_GUEST_ROLE:-PrediCare BI (invité)}
+  SUPERSET_GUEST_TOKEN_SECRET: ${SUPERSET_GUEST_TOKEN_SECRET:-}
+  SUPERSET_PUBLIC_URL: ${SUPERSET_PUBLIC_URL:-http://localhost:8080}
+  SUPERSET_EMBED_ALLOWED_DOMAINS: ${SUPERSET_EMBED_ALLOWED_DOMAINS:-http://localhost:8080,http://127.0.0.1:8080}
+  SUPERSET_BI_SERVICE_USERNAME: ${SUPERSET_BI_SERVICE_USERNAME:-predicare-bi}
+  SUPERSET_BI_SERVICE_PASSWORD: ${SUPERSET_BI_SERVICE_PASSWORD:-}
+  SUPERSET_DASHBOARD_SLUG: ${SUPERSET_DASHBOARD_SLUG:-pilotage-mensuel}
   # Connexion BI : lecture seule imposee par la base ET par la session.
   # Connexion BI : c'est cette URI que `register_datasets.py` enregistre dans
   # Superset comme source unique du tableau de bord. Elle est en lecture
@@ -106,7 +113,7 @@ services:
       # Nom du service, pas `localhost` : depuis ce conteneur, localhost est
       # le conteneur du job.
       SUPERSET_URL: http://superset:8088
-    command: ["python", "/app/register_dashboard.py"]
+    command: ["sh", "-c", "python /app/register_dashboard.py && python /app/preparer_embed.py"]
     # L'archive du tableau est versionnee dans le depot : le job la lit pour
     # reappliquer l'etat de reference.
     volumes:

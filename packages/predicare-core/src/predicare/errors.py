@@ -86,6 +86,18 @@ class AssistantUnavailableError(PrediCareError):
     http_status = 503
 
 
+class PilotageUnavailableError(PrediCareError):
+    """Tableau de bord Superset injoignable ou mal configure.
+
+    Le profil BI est optionnel : une panne de Superset ne doit pas faire
+    croire a une erreur interne de la plateforme. Le front affiche un repli
+    actionnable (`make up-bi`).
+    """
+
+    code = "pilotage_indisponible"
+    http_status = 503
+
+
 class DataAccessError(PrediCareError):
     """Acces SQL refuse : le compte est en lecture seule par construction."""
 

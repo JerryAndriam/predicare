@@ -486,6 +486,11 @@ physiques du schéma `bi`, puis crée **douze graphiques** et le tableau de bord
 « Pilotage mensuel ». La connexion BI utilise le rôle `superset_ro`, en lecture
 stricte : l'outil ne peut pas modifier une donnée métier.
 
+Le tableau est également intégré dans `/pilotage` pour les gestionnaires et
+les administrateurs : l'application demande un guest token court à Superset,
+donc **aucune seconde connexion** n'est nécessaire. La route `/bi` reste
+disponible pour ouvrir Superset directement.
+
 Le tableau suit les cinq indicateurs de la Phase 7 — volumes, montants
 économisés, taux de détection, délai de traitement, faux positifs. Deux
 d'entre eux restent **vides** tant que le modèle n'a pas tourné et qu'aucune

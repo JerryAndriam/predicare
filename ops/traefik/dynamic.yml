@@ -64,6 +64,9 @@ http:
       rule: "PathPrefix(`/api/core`)"
       service: predicare-core
       priority: 100
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
 
     # ---- Flux 1 : detection de fraude ------------------------------------
     predicare-inference:
@@ -71,6 +74,9 @@ http:
       rule: "PathPrefix(`/api/inference`)"
       service: predicare-inference
       priority: 100
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
 
     # ---- Flux 2 : assistant agentique ------------------------------------
     predicare-rag:
@@ -78,6 +84,9 @@ http:
       rule: "PathPrefix(`/api/rag`)"
       service: predicare-rag
       priority: 100
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
 
     # ---- Sonde de sante de la passerelle ---------------------------------
     # Priorite 200 pour gagner devant le prefixe general `/api/...`.
@@ -90,6 +99,21 @@ http:
       rule: "Path(`/health`)"
       service: predicare-core
       priority: 200
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
+
+    # ---- Chemins absolus emis par Superset -------------------------------
+    # Superset 6.1 genere `/static`, `/api/v1`, `/login`, `/superset` et
+    # `/embedded` a la racine. Sans ces routes, l'iframe chargee sous `/bi`
+    # demande ses assets et son API a l'application web, qui repond en HTML
+    # ou 404. On les route vers le meme service BI, sans les en-tetes de
+    # l'application (sinon X-Frame-Options: DENY bloque l'iframe).
+    predicare-bi-root:
+      entryPoints: [web]
+      rule: "PathPrefix(`/superset`) || PathPrefix(`/static`) || PathPrefix(`/api/v1`) || PathPrefix(`/login`) || PathPrefix(`/embedded`)"
+      service: predicare-bi
+      priority: 10
 
     # ---- Interface : tout le reste ---------------------------------------
     predicare-web:
@@ -97,6 +121,9 @@ http:
       rule: "PathPrefix(`/`)"
       service: predicare-web
       priority: 1
+      middlewares:
+        - predicare-headers
+        - predicare-rate-limit
 
     # ---- Flux 3 : tableau de bord BI ------------------------------------
     # Superset est PROXYFIE par la passerelle sous `/bi` plutot que
@@ -108,6 +135,8 @@ http:
     #      affiche de la plateforme (« une seule origine »).
     # Le service n'existe que si le profil `bi` est demarre : sinon la
     # passerelle repond 502 et l'ecran affiche son repli.
+    # Aucun `predicare-headers` ici : Superset doit pouvoir etre affiche
+    # dans l'iframe de l'application (X-Frame-Options: SAMEORIGIN).
     predicare-bi:
       entryPoints: [web]
       rule: "PathPrefix(`/bi`)"
