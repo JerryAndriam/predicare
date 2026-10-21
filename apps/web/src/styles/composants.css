@@ -465,4 +465,94 @@
   opacity: 0.5;
 }
 
+
+/* ---------------------------------------------------------------- onglets d'import */
+
+.onglets-import {
+  display: flex;
+  gap: var(--espace-2);
+  margin-bottom: var(--espace-4);
+  border-bottom: 1px solid var(--bordure);
+}
+
+.onglet-import {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--encre-douce);
+  cursor: pointer;
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+  padding: var(--espace-2) var(--espace-3);
+  transition: color var(--duree-rapide) ease, border-color var(--duree-rapide) ease;
+}
+
+.onglet-import:hover {
+  color: var(--primaire);
+}
+
+.onglet-import--actif {
+  border-bottom-color: var(--primaire);
+  color: var(--primaire);
+}
+
+/* ---------------------------------------------------------------- tableau cliquable */
+
+.ligne-cliquable {
+  cursor: pointer;
+}
+
+.ligne-cliquable:hover {
+  background: var(--primaire-clair);
+}
+
+/* ---------------------------------------------------------------- modale */
+
+.modale-fond {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: var(--espace-4);
+  position: fixed;
+  z-index: 1000;
+}
+
+.modale {
+  background: var(--surface);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre-carte);
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  max-width: 640px;
+  width: 100%;
+}
+
+.modale__entete {
+  align-items: center;
+  border-bottom: 1px solid var(--bordure);
+  display: flex;
+  justify-content: space-between;
+  padding: var(--espace-3) var(--espace-4);
+}
+
+.modale__entete h3 {
+  margin: 0;
+}
+
+.modale__corps {
+  overflow-y: auto;
+  padding: var(--espace-4);
+}
+
+.modale__shap {
+  margin-top: var(--espace-4);
+}
+
+.modale__shap h4 {
+  margin-bottom: var(--espace-2);
+}
+
 }

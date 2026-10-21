@@ -97,6 +97,8 @@ class SubmitAccepted(BaseModel):
     is_fraud: bool
     seuil_applique: float
     model_version: str | None = None
+    prediction_id: int | None = None
+    shap: list[ShapContribution] = []
 
 
 @router.post("/soumettre", response_model=SubmitAccepted, status_code=202)
@@ -131,7 +133,7 @@ def _traiter_facture(payload: dict, request: Request, user: TokenPayload) -> Sub
     _enregistrer_facture(invoice, reference)
 
     contributions = [ShapContribution(**contribution) for contribution in resultat.get("shap", [])]
-    persister_prediction(
+    prediction_id = persister_prediction(
         reference=reference,
         model_version=str(resultat.get("model_version", "inconnu")),
         score=float(resultat["score_fraude"]),
@@ -139,6 +141,8 @@ def _traiter_facture(payload: dict, request: Request, user: TokenPayload) -> Sub
         is_fraud=bool(resultat["is_fraud"]),
         contributions=contributions,
     )
+    resultat["prediction_id"] = prediction_id
+    resultat["shap"] = [contribution.model_dump() for contribution in contributions]
 
     logger.info(
         "facture.soumise",
@@ -204,6 +208,8 @@ class ImportItem(BaseModel):
     score_fraude: float | None = None
     is_fraud: bool | None = None
     seuil_applique: float | None = None
+    prediction_id: int | None = None
+    shap: list[ShapContribution] | None = None
     message: str = ""
     champ: str | None = None
 
@@ -371,6 +377,8 @@ def _importer_un_pdf(
             score_fraude=resultat.score_fraude,
             is_fraud=resultat.is_fraud,
             seuil_applique=resultat.seuil_applique,
+            prediction_id=resultat.prediction_id,
+            shap=resultat.shap,
             message=(f"score {resultat.score_fraude:.4f} / seuil {resultat.seuil_applique:.4f}"),
         )
     except pdf_facture.PdfSansTexteError:
