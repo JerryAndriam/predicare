@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 import { ROLE_LABELS } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -9,6 +8,34 @@ import { MenuProfil } from './MenuProfil'
 import { espaceCourant, Sidebar } from './Sidebar'
 
 const CLE_RAIL = 'predicare.sidebar'
+
+type IconProps = { size: number }
+
+function Menu({ size }: IconProps) {
+  return (
+    <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  )
+}
+
+function PanelLeftClose({ size }: IconProps) {
+  return (
+    <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18m4-12 3 3-3 3" />
+    </svg>
+  )
+}
+
+function PanelLeftOpen({ size }: IconProps) {
+  return (
+    <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18m7-12-3 3 3 3" />
+    </svg>
+  )
+}
 
 function initiales(nom: string): string {
   const mots = nom.trim().split(/\s+/).filter(Boolean)
@@ -76,11 +103,12 @@ export function Shell() {
             rail ? 'lg:w-[68px]' : 'lg:w-[260px]',
           ].join(' ')}
         >
-          <span
-            aria-hidden="true"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/90 font-display text-[13px] font-extrabold text-primary"
-          >
-            P
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-white/40">
+            <img
+              src="/brand/kolikolycare-marque.png"
+              alt=""
+              className="h-full w-full object-cover"
+            />
           </span>
           <span className={`flex min-w-0 flex-col ${rail ? 'lg:hidden' : ''}`}>
             <span className="font-display text-[17px] font-bold leading-tight tracking-tight">
