@@ -2,7 +2,7 @@
 title: "PrediCare — Dossier de cadrage stratégique"
 subtitle: "TCO, ROI, RGPD, EU AI Act, équité, sécurité et cache sémantique"
 author: "Équipe PrediCare — Mirado, Jerry, Cherica"
-date: "Version 1.0 — 20 octobre 2026"
+date: "Version 1.1 — 21 octobre 2026"
 lang: fr
 ---
 
@@ -38,10 +38,10 @@ leur exploitation.
 | --- | ---: | --- |
 | ROC-AUC du modèle de fraude (v2, seuil 0,2876) | **0,9500** | `reports/modele_v2.md` |
 | Rappel au seuil retenu | **87,0 %** | `reports/modele_v2.md` |
-| Économie de coût de contrôle sur le jeu de test | **22 656 000 MGA** | `reports/modele_v2.md` |
+| Économie de coût de contrôle sur le jeu de test | **22 656 000 MGA** (convention historique) | `reports/modele_v2.md` |
 | Fidélité / citation / exactitude du RAG | **30/30, 20/20, 26/26** | `reports/eval_rag_2026-10-19_5.json` |
 | Coût LLM par requête RAG | **0,00064 USD** (~0,00059 EUR) | `apps/api-rag/README.md`, moyenne 30 questions |
-| Tests automatisés | **659 passés, 18 ignorés** | `make test`, 20/10/2026 |
+| Tests automatisés | **696 passés, 18 ignorés** | `make check`, 21/10/2026 |
 
 **La décision de cadrage**
 
@@ -54,12 +54,15 @@ production.
 
 **Les trois écarts à traiter avant production**
 
-1. **Politique de conservation et droits des personnes** : les durées de
-   conservation ne sont pas encore formalisées, et l'effacement n'est pas
-   propagé automatiquement aux données pseudonymisées.
-2. **Durcissement de l'exploitation** : TLS de bout en bout, chiffrement des
-   sauvegardes, rotation des clés, journalisation des connexions et test
-   d'intrusion restent à faire. Deux alertes Dependabot modérées sont ouvertes.
+1. **Politique de conservation et droits des personnes** : les durées sont
+   désormais codées (3/10/5 ans) et les droits d'export, rectification,
+   opposition et effacement sont implémentés. La purge reste manuelle, le droit
+   à la limitation manque, et les sauvegardes ne sont pas purgées immédiatement.
+2. **Durcissement de l'exploitation** : les sauvegardes sont chiffrées lorsque
+   la clé est fournie, la rotation des clés est outillée, la connexion est auditée, le périmètre
+   prestataire est filtré et un test d'intrusion existe. TLS reste à activer en
+   production, MFA et alertes Grafana restent à ajouter, et l'état Dependabot
+   doit être vérifié sur GitHub.
 3. **Dossier AI Act formel** : registre des risques, documentation Annexe IV,
    évaluation de conformité, marquage CE et enregistrement ne sont pas encore
    produits. La présente note est la trame, pas la certification.
@@ -204,18 +207,22 @@ mesure ce que la plateforme fait gagner par rapport à un contrôle exhaustif,
 jeu de test en contient 10 086, soit un facteur 8,387. À taux de fraude et à
 coût unitaire constants, l'économie annuelle serait de **190,0 millions MGA**
 (22 656 000 × 8,387), soit **2 246 MGA par facture**. C'est une extrapolation,
-pas une mesure de production.
+pas une mesure de production. La projection ci-dessous conserve la convention
+historique ; la convention recommandée donne **192,89 M MGA** et **354,0×**.
 
-| Scénario | Factures/an | Économie | TCO | ROI net | Ratio |
+| Scénario | Factures/an | Économie | TCO | Gain net | Économie/TCO |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Jeu de test mesuré | 10 086 | 22,66 M MGA | 0,545 M MGA | 22,11 M MGA | **41,6×** |
 | Annuel à volume constant | 84 593 | 190,02 M MGA | 0,545 M MGA | 189,48 M MGA | **348,8×** |
 | Prudent : 50 % de l'économie, TCO stress | 84 593 | 95,01 M MGA | 1,074 M MGA | 93,94 M MGA | **88,5×** |
 
-Le retour sur coût est immédiat à l'échelle du jeu de test : le TCO annuel
-représente 2,4 % de l'économie mesurée. La prudence reste de mise : le ROI
-dépend du taux de fraude réel, du coût des contrôles et de la qualité de la
-décision humaine.
+Le 41,6× est le ratio **économie/TCO**, pas le ROI net. Le ROI net vaut
+`(économie − TCO) / TCO`, soit environ 40,6× sur le jeu de test. Le retour sur
+coût est immédiat à l'échelle du jeu de test : le TCO annuel représente 2,4 %
+de l'économie mesurée. La prudence reste de mise : le ROI dépend du taux de
+fraude réel, du coût des contrôles et de la qualité de la décision humaine.
+La convention « contrôle exhaustif », qui compte la revue des 764 vrais
+positifs, est détaillée dans `docs/livrables/01_analyse_tco_roi.md`.
 
 ## 1.7 Leviers FinOps
 
@@ -305,43 +312,48 @@ un pseudonyme non réversible.
 | Journal d'audit | acteur, rôle, action, cible, détails | `audit.journal` |
 
 La clé d'identité n'est ni en base ni dans le code. Elle est générée par
-`make secrets` et stockée dans `.env`, ignoré par Git. La rotation de clé
-n'est pas automatisée : c'est un écart de production.
+`make secrets` et stockée dans `.env`, ignoré par Git. La rotation est outillée
+par `scripts/rotater-cles.sh` : le script simule par défaut, puis rechiffre les
+identités et les secrets avant de réécrire `.env`. Elle impose un redémarrage
+et doit être testée avant production.
 
 ## 2.5 Durées de conservation
 
-Aucune purge automatique des **données métier** n'est implémentée : les
-factures, prédictions et audits restent en base jusqu'à une action manuelle.
-Les sessions Redis expirent (TTL 1 h) et les sauvegardes sont rotationnées à
-14 jours, mais ce sont les seules purges automatiques.
+La purge des **données métier** est implémentée dans
+`predicare_core_api.rgpd.purge`, avec les durées **3 ans** pour les prédictions,
+**10 ans** pour les factures et **5 ans** pour le journal d'audit. Elle reste
+**manuelle** : `make purge` affiche l'aperçu, `make purge ARGS=--appliquer`
+exécute. Aucun ordonnanceur ne la lance aujourd'hui. Les sessions Redis expirent
+(TTL 1 h) et les sauvegardes sont rotationnées à 14 jours.
 
 | Donnée | Aujourd'hui | Proposition |
 | --- | --- | --- |
-| Identités chiffrées | Indéfini | Durée du contrat + prescription |
-| Factures / prédictions | Indéfini | 3 ans pour les prédictions, 10 ans pour les factures |
-| Décisions et audit | Indéfini | 5 ans |
+| Identités chiffrées | Durée du contrat + prescription | À valider |
+| Factures | 10 ans, purge manuelle | Planifier la purge |
+| Prédictions | 3 ans, purge manuelle | Planifier la purge |
+| Décisions et audit | 5 ans, purge manuelle | Planifier la purge |
 | Sessions RAG | Redis, TTL 1 h | 1 h |
 | Logs applicatifs | Selon le volume Docker | 30 jours |
 | Sauvegardes | 14 jours | 14 jours |
 
-**Action** : écrire une politique de conservation, ajouter des jobs de purge
-et un test qui vérifie qu'une donnée expirée n'est plus servie.
+**Action** : planifier la purge, ajouter un test qui vérifie qu'une donnée
+expirée n'est plus servie, et documenter le sort des sauvegardes.
 
 ## 2.6 Droits des personnes
 
-| Droit | État | Écart |
+| Droit | État | Limite |
 | --- | --- | --- |
-| Accès | Les écrans affichent les données de l'assuré | Pas d'export structuré « copie des données » |
-| Rectification | Les identités sont modifiables en base | Pas d'écran de rectification |
-| Effacement | Suppression manuelle de l'identité en base | Pas de propagation aux factures, prédictions, audits, sauvegardes |
-| Opposition | Non traité | À définir pour la prospection (hors périmètre) |
-| Portabilité | Non traité | À définir |
-| Limitation | Non traité | À définir |
+| Accès | Export JSON, `GET /rgpd/moi/export` | Admin ou assuré connecté |
+| Rectification | `PUT /rgpd/assures/{pseudonyme}/identite` | Admin uniquement |
+| Effacement | `DELETE /rgpd/assures/{pseudonyme}` | Admin uniquement ; sauvegardes différées |
+| Opposition | `POST /rgpd/assures/{pseudonyme}/opposition` | Arrête la fourniture du service, ne supprime pas |
+| Portabilité | Même export JSON | Format non standardisé |
+| Limitation | Non implémenté | Écart à traiter |
 
-L'effacement est le point le plus délicat : supprimer la ligne d'identité rend
-le pseudonyme non ré-identifiable, mais les factures et prédictions restent.
-Une procédure doit décider si l'on conserve les données pseudonymisées pour
-l'audit (obligation légale) ou si on les supprime.
+L'effacement supprime les données métier (identité, factures, lignes,
+ordonnances, prédictions, SHAP, contrats) et anonymise le journal d'audit. Les
+sauvegardes peuvent conserver le dossier jusqu'à 14 jours. La limitation n'est
+pas implémentée : c'est un écart P1 avant production.
 
 ## 2.7 Sous-traitants et transferts
 
@@ -369,13 +381,13 @@ est donc requise avant production.
 | Ré-identification | Élevée | Chiffrement, pseudonymisation, cloisonnement | Faible |
 | Fuite vers le LLM | Élevée | Minimisation, pas de noms, DPA à signer | Moyen |
 | Injection de prompt | Moyenne | Filtre, séparation instruction/donnée, SQL lecture seule | Faible |
-| Accès indu du professionnel | Moyenne | RBAC, mais filtre prestataire absent | **Élevé** |
-| Sauvegarde non chiffrée | Moyenne | Volume dédié, accès restreint | Moyen |
+| Accès indu du professionnel | Moyenne | Filtre `prestataire_id` côté serveur | Faible |
+| Sauvegarde compromise | Moyenne | Chiffrement AES-256, clé fichier | Faible |
+| Perte de clé de sauvegarde | Moyenne | Procédure de conservation à écrire | Moyen |
 
-L'accès indu du professionnel (G7 de `docs/analyse_front_vs_cdc.md`) est le
-risque résiduel le plus visible : un professionnel voit toutes les factures
-pseudonymisées, pas seulement les siennes. La correction est classée P0 dans
-l'analyse front.
+L'accès indu du professionnel (G7 de `docs/analyse_front_vs_cdc.md`) est
+corrigé : la liste et la soumission sont filtrées sur le prestataire du compte.
+L'analyse front reste un instantané historique de l'écart, pas son état actuel.
 
 ## 2.9 Violations et registre
 
@@ -426,14 +438,14 @@ transparence pourrait être défendu. Le dossier retient la lecture prudente.
 | Système de gestion des risques | 9 | Rapports modèle et équité, dérive, tests | Registre des risques formel à créer |
 | Gouvernance des données | 10 | 84 593 factures, 0 manquante, 0 doublon exact, empreinte SHA-256 | Data sheet Annexe IV à formaliser |
 | Documentation technique | 11 | Ce dossier, `README`, ADR, model card, évals | Trame Annexe IV à produire |
-| Journalisation | 12 | `audit.journal`, `audit.decision_gestionnaire`, `ml.modele_version`, `ml.rapport_derive` | Connexions et actions admin non toutes journalisées |
+| Journalisation | 12 | `audit.journal`, `audit.decision_gestionnaire`, connexion, `ml.modele_version`, `ml.rapport_derive` | Couverture des actions admin à vérifier |
 | Transparence | 13 | SHAP, seuil, version, sources RAG | Mention « assistant IA » à ajouter dans l'interface |
 | Supervision humaine | 14 | Route `POST /alertes/decision`, commentaire, audit | Procédure d'escalade à écrire |
-| Exactitude, robustesse, cybersécurité | 15 | ROC-AUC 0,95, rappel 87 %, 659 tests, RBAC, SQL lecture seule | Test d'intrusion, TLS, sauvegardes chiffrées |
+| Exactitude, robustesse, cybersécurité | 15 | ROC-AUC 0,95, rappel 87 %, 696 tests, RBAC, SQL lecture seule, sauvegardes chiffrées | Test d'intrusion externe, TLS production, tests adverses |
 | Système de management de la qualité | 17 | CI, revue, tests, versionnement, ADR | QMS formel à documenter |
 | Évaluation de conformité | 43 | Auto-évaluation interne possible (annexe VI) | Non réalisée |
 | Marquage CE et enregistrement | 48, 49 | — | À faire avant mise sur le marché |
-| Surveillance après commercialisation | 72 | Worker de dérive, Prometheus, Grafana, alertes | Plan de surveillance à écrire |
+| Surveillance après commercialisation | 72 | Worker de dérive, Prometheus, Grafana | Dashboards et plan de surveillance à écrire |
 | Incidents graves | 73 | Logs, audit, sauvegardes | Procédure de notification à écrire |
 
 ## 3.4 Supervision humaine et transparence
@@ -520,7 +532,7 @@ portée d'un écart sur 3 000.
 | --- | ---: | ---: | ---: |
 | ÉLEVÉ | 2 623 | 0,9214 | 0,4741 |
 | RAISONNABLE | 6 593 | 0,8489 | 0,6914 |
-| TRÈS ÉLEVÉ | 870 | 0,7922 | 0,8841 |
+| TRES_ELEVE | 870 | 0,7922 | 0,8841 |
 
 ### Par type de prestataire
 
@@ -573,7 +585,7 @@ rappel à 89 %, au prix de près de 1 000 faux positifs supplémentaires.
   important sur un segment suffisamment peuplé. L'explication la plus probable
   est une activité plus hétérogène (actes courants, volumes élevés), qui dilue
   le signal ; elle reste à confirmer par une analyse des variables SHAP.
-- `TRÈS ÉLEVÉ` : rappel 0,7922 sur 870 factures. La précision est élevée
+- `TRES_ELEVE` : rappel 0,7922 sur 870 factures. La précision est élevée
   (0,8841), donc le modèle est prudent : il alerte peu, mais juste.
 - `30–49` : rappel 0,8465 sur 2 638 factures. L'écart est modéré ; il doit être
   surveillé, pas conclu.
@@ -615,10 +627,10 @@ surveillance.
 | --- | --- | --- | --- |
 | Usurpation | Vol de jeton, force brute | JWT signé, Argon2id, mot de passe 12 caractères, rate limit 60/min | Pas de MFA |
 | Altération | Injection SQL, prompt injection | SQL lecture seule + liste blanche, filtre, séparation instruction/donnée | Filtre non exhaustif |
-| Répudiation | Nier une décision | `audit.decision_gestionnaire`, `audit.journal`, logs JSON | Connexions non journalisées |
-| Divulgation | Fuite de noms, cache partagé | Chiffrement Fernet, pseudonymes, scope `assure_id` | Sauvegardes non chiffrées |
+| Répudiation | Nier une décision | `audit.decision_gestionnaire`, `audit.journal`, connexion, logs JSON | Actions admin à compléter |
+| Divulgation | Fuite de noms, cache partagé | Chiffrement Fernet, pseudonymes, scope `assure_id`, sauvegardes chiffrées | Clé de sauvegarde à protéger |
 | Déni de service | Script sur le RAG | Rate limit Traefik, question limitée à 1 000 caractères, `LIMIT` SQL | Pas de quota par utilisateur |
-| Élévation de privilèges | Admin via API | RBAC 4 rôles, routes admin protégées | Périmètre professionnel trop large |
+| Élévation de privilèges | Admin via API | RBAC 4 rôles, routes admin protégées, filtre prestataire | MFA admin absent |
 
 ## 5.2 Authentification et habilitations
 
@@ -639,13 +651,14 @@ défaut dans les tests RBAC.
 
 - **Au repos** : identités chiffrées avec Fernet ; clé dans `.env`, jamais en
   base ni dans le code. Les factures et prédictions sont pseudonymisées.
-- **En transit** : HTTP local sur le réseau Docker ; TLS non terminé sur la
-  passerelle. En production, terminer TLS sur Traefik (ou un LB) et
-  rediriger HTTP vers HTTPS.
-- **Sauvegardes** : `pg_dump` compressé, non chiffré. Ajouter `age` ou
-  `gpg` avant écriture, et une clé séparée.
+- **En transit** : HTTP local sur le réseau Docker ; TLS est disponible via
+  `scripts/generer-traefik.sh` lorsque `PREDICARE_TLS_DOMAIN` et les certificats
+  sont fournis. En production, activer TLS et rediriger HTTP vers HTTPS.
+- **Sauvegardes** : `pg_dump` compressé et chiffré lorsque la clé est présente
+  (AES-256-CBC, PBKDF2 200 000 itérations, clé fichier). Sans clé, l'archive
+  reste en clair : c'est un choix explicite de l'exploitant.
 - **Secrets** : `.env` ignoré, `make doctor` vérifie les placeholders. Rotation
-  non automatisée.
+  outillée par `scripts/rotater-cles.sh`.
 - **Logs** : JSON, sans noms ; les identifiants de facture et de prédiction
   restent des données pseudonymisées.
 
@@ -674,8 +687,9 @@ et la liste blanche de requêtes, pas par le rôle.
   (CSP, HSTS, nosniff, frame-deny), rate limit, journal d'accès.
 - **Images** : tags explicites dans `docker-compose.yml`, lock Python
   `uv.lock`, CI GitHub Actions.
-- **Dépendances** : deux alertes Dependabot modérées ouvertes au 20/10/2026 ;
-  à traiter avant la soutenance.
+- **Dépendances** : aucun fichier Dependabot n'est versionné dans le dépôt ;
+  l'état des alertes GitHub doit être vérifié et une politique de mise à jour
+  doit être écrite avant production.
 
 ## 5.6 Audit et supervision
 
@@ -686,14 +700,14 @@ et la liste blanche de requêtes, pas par le rôle.
 | Modèles | version, artefact, empreinte, métriques, statut | `ml.modele_version` |
 | Dérive | PSI, variables, effectifs, alerte, date | `ml.rapport_derive` |
 | Métriques | latence, erreurs, tokens, coût, cache | Prometheus |
-| Tableaux de bord | Grafana, Superset | `docker-compose.observability.yml` |
+| Tableaux de bord | Superset ; Grafana a la source Prometheus mais pas encore de dashboards versionnés | `ops/grafana/`, `ops/superset/` |
 | Workflows | exécutions n8n, erreurs | n8n `execution_entity` |
 
 ## 5.7 Preuves de test
 
 | Suite | Résultat | Commande |
 | --- | ---: | --- |
-| Tests unitaires et d'intégration | **659 passés, 18 ignorés** | `make test` |
+| Tests unitaires et d'intégration | **696 passés, 18 ignorés** | `make check`, 21/10/2026 |
 | Attaques RAG | 97 tests, 100 % des attaques déclarées bloquées | `pytest tests/test_rag_attacks.py` |
 | Garde-fous | 78 tests | `pytest tests/test_guardrails.py` |
 | SQL | 57 tests | `pytest tests/test_sql_tool.py` |
@@ -708,15 +722,15 @@ sont rejoués sur la plateforme de démonstration.
 
 | Écart | Risque | Action | Priorité |
 | --- | --- | --- | --- |
-| TLS non terminé | Interception, vol de jeton | Terminer TLS sur Traefik, rediriger HTTP | P0 |
-| Sauvegardes non chiffrées | Fuite d'un volume | Chiffrer avec `age`, clé séparée | P0 |
-| Professionnel voit toutes les factures | Divulgation | Filtrer par `prestataire_id` | P0 |
-| Connexions non journalisées | Répudiation | Écrire un événement `auth.login` | P1 |
-| 2 alertes Dependabot | Vulnérabilité connue | Mettre à jour les dépendances | P1 |
-| Pas de test d'intrusion | Faux sentiment de sécurité | Prestation ou test interne | P1 |
-| Rotation de clé | Compromission durable | Procédure + job | P2 |
-| Pas de MFA | Vol de mot de passe | TOTP pour admin/gestionnaire | P2 |
+| TLS non activé en production | Interception, vol de jeton | Activer TLS sur Traefik, rediriger HTTP | P0 |
+| Pas de MFA | Vol de mot de passe | TOTP pour admin et gestionnaire | P0 |
+| Restauration non testée en CI | Perte de données | Automatiser un test sur base vide | P0 |
+| Dashboards et alertes Grafana absents | Incident non détecté | Versionner dashboards et règles | P1 |
+| État Dependabot non vérifié | Vulnérabilité connue | Activer Dependabot, scanner les images | P1 |
+| Procédure d'incident 72 h non écrite | Notification tardive | Runbook RGPD/AI Act | P1 |
 | Quota par utilisateur | Abus du LLM | Quota Redis par sujet | P2 |
+| Test d'intrusion externe | Faux sentiment de sécurité | Prestation externe | P2 |
+| Rotation de la clé de sauvegarde | Compromission durable | Procédure + test | P2 |
 
 # 6. Cache sémantique et FinOps
 
@@ -802,7 +816,7 @@ Le cache est donc un accélérateur, pas une promesse.
 | Coût RAG | `apps/api-rag/README.md`, `/api/rag/question` | 2026-10-20 |
 | Cache | `GET /api/rag/cache/stats` | 2026-10-20 |
 | Dérive | `GET /api/inference/derive`, `ml.rapport_derive` | 2026-10-20 |
-| Tests | `make test` : 659 passés, 18 ignorés | 2026-10-20 |
+| Tests | `make check` : 696 passés, 18 ignorés | 2026-10-21 |
 | Lint | `make lint` : OK | 2026-10-20 |
 | n8n | `make e2e-n8n` : 13/13 | 2026-10-20 |
 | Base | 110 Mo, 84 608 factures, 5 528 prédictions | 2026-10-20 |
@@ -862,9 +876,10 @@ Le cache est donc un accélérateur, pas une promesse.
 7. **Combien ça coûte ?** 109 €/an en base, 391 €/an en stress conservateur ;
    les tokens sont minoritaires, l'infrastructure domine.
 8. **Combien ça rapporte ?** 22,66 M MGA sur le jeu de test, 190 M MGA/an en
-   projection ; 41,6× à 348,8× le TCO.
+   projection ; ratio économie/TCO de 41,6× à 348,8× (ROI net ~40,6× sur le
+   test). La convention « contrôle exhaustif » donne 42,2×.
 9. **Le système est-il équitable ?** Les écarts sont mesurés et publiés ;
-   `CABINET_GENERALISTE` et `TRÈS ÉLEVÉ` sont les segments à surveiller ;
+   `CABINET_GENERALISTE` et `TRES_ELEVE` sont les segments à surveiller ;
    `DOUBLON` relève d'une règle déterministe.
 10. **Est-il conforme à l'AI Act ?** Conforme par conception sur la supervision
     humaine, l'explicabilité, la journalisation et les tests ; pas certifié :

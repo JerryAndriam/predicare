@@ -149,7 +149,6 @@ export function PilotagePage() {
           <div
             ref={conteneur}
             className="bi-frame"
-            src={URL_TABLEAU}
             title="Tableau de bord décisionnel KolikolyCare"
           />
         </Carte>

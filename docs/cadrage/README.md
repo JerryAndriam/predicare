@@ -1,7 +1,9 @@
 # Dossier de cadrage stratégique
 
 Phase 10.3 du plan d'action. Le dossier PDF remis au jury, qui pèse 20 % sur
-la partie business et 15 % sur la conformité.
+la partie business et 15 % sur la conformité. Les livrables détaillés et à jour
+sont dans [`docs/livrables/`](../livrables/README.md) ; le PDF versionné reste
+daté du 20/10/2026 tant qu'il n'est pas régénéré.
 
 ## Livrable
 
@@ -19,7 +21,7 @@ Le dossier couvre les six parties exigées, plus une synthèse et quatre annexes
 
 | Partie | Ce qu'il faut démontrer | Où le dossier le traite |
 | --- | --- | --- |
-| **TCO et ROI** | Coût total d'infrastructure et de tokens, face aux coûts de contrôle évités | Partie 1 : TCO à 109 €/an en base, ROI de 41,6× à 348,8× |
+| **TCO et ROI** | Coût total d'infrastructure et de tokens, face aux coûts de contrôle évités | Partie 1 : TCO à 109 €/an en base, ratio économie/TCO de 41,6× à 348,8× |
 | **RGPD** | Cartographie, bases légales, pseudonymisation, chiffrement, droits | Partie 2 : cartographie, AIPD, écarts de conservation |
 | **EU AI Act** | Classement, obligations haut risque, mesures de maîtrise | Partie 3 : grille articles 9 à 15, 17, 43, 48, 49, 72, 73 |
 | **Audit d'équité** | Performance par segment : âge, tarif, prestataire, formule, type de fraude | Partie 4 : rappels et précisions par segment |
@@ -35,7 +37,7 @@ Le dossier couvre les six parties exigées, plus une synthèse et quatre annexes
 | Économie sur le jeu de test | 22 656 000 MGA | `reports/modele_v2.md` |
 | Fidélité / citation / exactitude RAG | 30/30, 20/20, 26/26 | `reports/eval_rag_2026-10-19_5.json` |
 | Coût LLM par requête | 0,00064 USD | `apps/api-rag/README.md` |
-| Tests | 659 passés, 18 ignorés | `make test`, 20/10/2026 |
+| Tests | 696 passés, 18 ignorés | `make check`, 21/10/2026 |
 
 ## Note sur le FinOps
 
@@ -74,7 +76,8 @@ Vérification rapide : `pdfinfo dossier_cadrage.pdf` doit annoncer 26 pages, et
 - Le taux de conversion 1 EUR = 5 000 MGA doit être actualisé le jour J.
 - Le classement AI Act « haut risque » est une lecture prudente, à confirmer
   par un avis juridique.
-- Le dossier nomme les écarts (conservation, TLS, sauvegardes chiffrées,
-  périmètre du professionnel) au lieu de les masquer.
+- Le dossier nomme les écarts (purge non planifiée, TLS non actif par défaut,
+  MFA absent, dashboards Grafana absents) au lieu de les masquer.
+- Les chiffres ont été actualisés au 21/10/2026 ; le PDF, lui, date du 20/10.
 
 Propriétaire : Mirado et Jerry

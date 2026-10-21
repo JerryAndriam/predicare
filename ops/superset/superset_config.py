@@ -122,7 +122,7 @@ PROXY_FIX_CONFIG = {
 }
 
 
-def _declarer_prefixe_bi(app: "Flask") -> None:  # noqa: F821
+def _declarer_prefixe_bi(app: Flask) -> None:  # noqa: F821
     """Annonce le prefixe `/bi` a l'interface, sans middleware WSGI."""
     app.config["APPLICATION_ROOT"] = "/bi"
 

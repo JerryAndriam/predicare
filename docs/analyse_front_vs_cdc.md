@@ -20,6 +20,13 @@
 > historique ; les lignes F05, F06 et F08 sont mises à jour. Le plan de test
 > courant est [`plan_de_test_back_front.md`](plan_de_test_back_front.md).
 
+> **Mise à jour du 21/10/2026** : G7 est corrigé — la liste et la soumission
+> des factures sont filtrées sur le `prestataire_id` du compte professionnel.
+> Le lien « Ouvrir Superset » a été ajouté au pilotage. Le compteur de tests
+> cité plus bas (605) est historique ; l'état courant est **696 passés,
+> 18 ignorés**. Les autres constats de cette analyse restent datés du 20/10 et
+> doivent être revérifiés avant d'être présentés comme actuels.
+
 ---
 
 ## 0. Synthèse
@@ -325,7 +332,7 @@ Stack Docker locale : 8 conteneurs démarrés, dont 7 `healthy` (la gateway n'a 
 
 **Recommandation** : journaliser côté serveur la connexion, le changement de seuil, la bascule de modèle, la décision et la gestion des comptes. Afficher le détail et le rôle. C'est peu de code et cela sécurise un point sensible du discours.
 
-### G7 — Le professionnel voit toutes les factures (priorité démo : haute, sécurité)
+### G7 — Le professionnel voyait toutes les factures (corrigé le 21/10/2026)
 
 **Constat** : `GET /api/core/factures` ne filtre que le rôle `assure` (`billing/router.py`, lignes 275-285). Un professionnel, un gestionnaire ou un administrateur reçoit **toutes** les factures. L'écran « Suivi des dossiers » affiche donc les factures de tous les praticiens et de tous les assurés.
 
@@ -336,6 +343,8 @@ Stack Docker locale : 8 conteneurs démarrés, dont 7 `healthy` (la gateway n'a 
 **Conséquence** : contradiction avec le guide utilisateur (« ne voit pas la file des autres praticiens ») et avec l'esprit du RGPD, même si les données sont pseudonymisées. Un jury sécurité posera la question.
 
 **Recommandation** : lier le compte professionnel à un `prestataire_id` (colonne ou table de rattachement), filtrer la requête côté serveur, et restreindre la soumission au prestataire du compte. À défaut, renommer l'écran « Toutes les factures (démo) » et l'assumer explicitement.
+
+**Correction (21/10/2026)** : le compte professionnel porte désormais un `prestataire_id` ; la liste et la soumission sont filtrées côté serveur. Le constat ci-dessus reste la preuve de l'état observé le 20/10, pas l'état courant.
 
 ### G8 — La décision ne remonte pas jusqu'à l'assuré (priorité : haute)
 

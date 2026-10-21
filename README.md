@@ -428,8 +428,8 @@ le fournisseur LLM. La passerelle n'a pas accès à `docker.sock`.
 | `db/backup/`               |    Jerry     | Sauvegarde quotidienne et restauration, scripts                                                                                                                                                 |
 | `ops/`                     |    Jerry     | Passerelle Traefik, Prometheus, Grafana, Superset, planification des sauvegardes                                                                                                                |
 | `scripts/`                 |    Jerry     | Ce qu'on exécute : bootstrap, attente, santé, test de fumée, export/import n8n, fiche d'accès                                                                                                   |
-| `tests/`                   |    Jerry     | pytest : 677 tests, majoritairement sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision, contrat des workflows n8n, dérive. E2E dans `tests/e2e/` |
-| `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage                                                                                                                                |
+| `tests/`                   |    Jerry     | pytest : 696 tests, majoritairement sans base ni conteneur — validation d'entrée, sécurité RAG, SQL, RBAC, chiffrement, SHAP, cache, supervision, contrat des workflows n8n, dérive. E2E dans `tests/e2e/` |
+| `docs/`                    |    Jerry     | ADR, guide d'exploitation, guide utilisateur, dossier de cadrage et livrables détaillés (`docs/livrables/`)                                                                                     |
 
 ### Dossiers créés à l'exécution
 

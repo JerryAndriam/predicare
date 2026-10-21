@@ -1,4 +1,5 @@
 > **Guide de référence (phase 10)** : [`guide-utilisateur.md`](guide-utilisateur.md) — une section par rôle, écran par écran.
+> **Guide consolidé (phase 10.3)** : [`docs/livrables/05_guide_exploitation_utilisateur.md`](../livrables/05_guide_exploitation_utilisateur.md) — parcours, runbooks et FAQ.
 > Ce fichier-ci conserve les notes détaillées de la phase 10.1 (assistant conversationnel, RAG). En cas de divergence de libellé, l’interface et le guide de référence font foi.
 
 # Guide utilisateur

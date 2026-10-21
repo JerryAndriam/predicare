@@ -372,7 +372,7 @@
       "id": "CHART-1",
       "meta": {
         "chartId": 1,
-        "height": 20,
+        "height": 2,
         "sliceName": "Factures traitees",
         "width": 3
       },
@@ -405,7 +405,7 @@
       "id": "CHART-12",
       "meta": {
         "chartId": 12,
-        "height": 20,
+        "height": 2,
         "sliceName": "Montant presente (MGA)",
         "width": 3
       },
@@ -438,7 +438,7 @@
       "id": "CHART-3",
       "meta": {
         "chartId": 3,
-        "height": 20,
+        "height": 2,
         "sliceName": "Taux de fraude observe (%)",
         "width": 3
       },
@@ -471,7 +471,7 @@
       "id": "CHART-13",
       "meta": {
         "chartId": 13,
-        "height": 20,
+        "height": 2,
         "sliceName": "Delai moyen de traitement (jours)",
         "width": 3
       },
@@ -508,8 +508,7 @@
       ],
       "id": "ROW-0",
       "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 20
+        "background": "BACKGROUND_TRANSPARENT"
       },
       "parents": [
         "ROOT_ID",
@@ -522,7 +521,7 @@
       "id": "CHART-14",
       "meta": {
         "chartId": 14,
-        "height": 20,
+        "height": 2,
         "sliceName": "Montants economises confirmes (MGA)",
         "width": 4
       },
@@ -555,7 +554,7 @@
       "id": "CHART-15",
       "meta": {
         "chartId": 15,
-        "height": 20,
+        "height": 2,
         "sliceName": "Taux de detection du modele (%)",
         "width": 4
       },
@@ -588,7 +587,7 @@
       "id": "CHART-17",
       "meta": {
         "chartId": 17,
-        "height": 20,
+        "height": 2,
         "sliceName": "Taux de faux positifs du modele (%)",
         "width": 4
       },
@@ -624,8 +623,7 @@
       ],
       "id": "ROW-1",
       "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 20
+        "background": "BACKGROUND_TRANSPARENT"
       },
       "parents": [
         "ROOT_ID",
@@ -638,7 +636,7 @@
       "id": "CHART-5",
       "meta": {
         "chartId": 5,
-        "height": 30,
+        "height": 6,
         "sliceName": "Montant present par mois (MGA)",
         "width": 6
       },
@@ -671,7 +669,7 @@
       "id": "CHART-6",
       "meta": {
         "chartId": 6,
-        "height": 30,
+        "height": 7,
         "sliceName": "Fraude par mecanisme (24 mois)",
         "width": 6
       },
@@ -706,8 +704,7 @@
       ],
       "id": "ROW-2",
       "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 30
+        "background": "BACKGROUND_TRANSPARENT"
       },
       "parents": [
         "ROOT_ID",
@@ -720,7 +717,7 @@
       "id": "CHART-7",
       "meta": {
         "chartId": 7,
-        "height": 30,
+        "height": 7,
         "sliceName": "Cinq prestataires les plus exposes (MGA)",
         "width": 6
       },
@@ -753,7 +750,7 @@
       "id": "CHART-11",
       "meta": {
         "chartId": 11,
-        "height": 30,
+        "height": 6,
         "sliceName": "Evolution du delai de traitement",
         "width": 6
       },
@@ -788,8 +785,7 @@
       ],
       "id": "ROW-3",
       "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 30
+        "background": "BACKGROUND_TRANSPARENT"
       },
       "parents": [
         "ROOT_ID",
@@ -802,7 +798,7 @@
       "id": "CHART-9",
       "meta": {
         "chartId": 9,
-        "height": 32,
+        "height": 8,
         "sliceName": "Motifs de non-paiement par mois",
         "width": 12
       },
@@ -836,8 +832,7 @@
       ],
       "id": "ROW-4",
       "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 32
+        "background": "BACKGROUND_TRANSPARENT"
       },
       "parents": [
         "ROOT_ID",
