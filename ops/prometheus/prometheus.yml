@@ -42,12 +42,11 @@ scrape_configs:
           flux: "2-rag"
 
   # ------------------------------------------------------------ SANTES
-  - job_name: predicare-health
-    metrics_path: /health
-    # /health n'est pas au format Prometheus : on l'interroge pour l'alerte
-    # de disponibilite plutot que pour la collecte de series.
-    static_configs:
-      - targets: ["api-core:8001", "api-inference:8002", "api-rag:8003"]
+  # Le job `predicare-health` a ete retire : /health renvoie du JSON, que le
+  # scrape Prometheus refuse (unsupported Content-Type). Il produisait trois
+  # cibles artificiellement `down`, ce qui rendait toute alerte `up == 0`
+  # inexploitable. La disponibilite est desormais mesuree sur les jobs
+  # /metrics ci-dessus, qui exposent aussi `up`.
 
   # ------------------------------------------------------- INFRASTRUCTURE
   - job_name: prometheus
