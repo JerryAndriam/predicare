@@ -57,6 +57,7 @@ COPY ops/superset/charger_requetes.py /app/charger_requetes.py
 COPY ops/superset/exporter_dashboard.py /app/exporter_dashboard.py
 COPY ops/superset/dashboard_etat.py /app/dashboard_etat.py
 COPY ops/superset/creer_compte_demo.py /app/creer_compte_demo.py
+COPY ops/superset/preparer_embed.py /app/preparer_embed.py
 COPY ops/superset/init.sh /app/init.sh
 
 # Les vues de la couche semantique voyagent dans l'image : le job BI doit

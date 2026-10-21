@@ -71,3 +71,4 @@ ops/traefik/generere/
 # Artefact de build : copie du lot du jury dans les fichiers statiques.
 # Genere par apps/web/scripts/copier-lot.mjs (predev/prebuild) et par le Dockerfile.
 /apps/web/public/lot-jury.json
+reports/junit.xml

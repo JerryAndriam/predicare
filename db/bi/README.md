@@ -233,7 +233,7 @@ graphique dans l'interface : le frontal renvoie les `adhoc_filters` stockes.
 
 Le modele a change : **les tuiles se creent dans l'interface**, et le depot
 archive ce qu'elle produit. La procedure est dans
-`docs/exploitation/creer_tableau_bord_superset.md`.
+`ops/superset/creer_tableau_bord.md`.
 
 Trois parades, l'une curative et les deux autres preventives :
 
@@ -337,11 +337,9 @@ bash db/bi/load.sh      # ou make reload-data, qui l'enchaîne
 rejoues apres chaque creation : une vue remplacee est recreee avec les
 privileges de son createur, pas avec ceux de l'ancienne.
 
-## Brouillon / TODO
+## Reste à faire
 
-- [ ] Ingerer le `rag_corpus/` dans `core.document_vectorise`
-- [ ] Remplir `ml.prediction` a la premiere execution du modele
-- [ ] Enregistrer des decisions gestionnaire d'interface pour la boucle
-- [ ] Vue de tendance sur douze mois glissants, pour l'usage en reunion
-
-Proprietaire : Jerry
+- [ ] Historique de décisions pour la boucle de décision : les décisions
+  applicatives sont tracées, le volume reste faible sur une pile de
+  démonstration.
+- [ ] Vue de tendance sur douze mois glissants, pour l'usage en réunion.

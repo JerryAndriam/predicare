@@ -130,14 +130,8 @@ La chaîne de bascule de modèle (`POST /webhook/bascule-modele`) se prouve avec
 un payload `version_avant`/`version_apres` ; elle répond 200 puis notifie
 Slack et e-mail. Voir `apps/n8n/README.md`.
 
-## Brouillon / TODO
+## Reste à faire
 
-- [ ] `conftest.py` : fixture de pile démarrée, avec ignor des services absents
-- [x] Lot de 20 factures inédites, dont au moins 5 invalides
-- [x] Parcours complet : facture → alerte → rapport SHAP → décision
-- [x] Parcours assuré : question RAG → réponse sourcée
-- [x] Chaîne n8n : alerte réelle Slack + e-mail, échec journalisé sans fantôme
-- [ ] Vérification de la persistance après `make down` puis `make up`
-- [ ] Vérification de la bascule de modèle puis du retour arrière
-
-Propriétaire : Jerry
+- [ ] `conftest.py` : fixture de pile démarrée, avec ignor des services absents.
+- [ ] Vérification de la persistance après `make down` puis `make up`.
+- [ ] Vérification de la bascule de modèle puis du retour arrière.

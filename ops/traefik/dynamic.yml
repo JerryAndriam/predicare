@@ -8,12 +8,10 @@
 # =============================================================================
 
 http:
-
   # --------------------------------------------------------------------
   # Middlewares
   # --------------------------------------------------------------------
   middlewares:
-
     # Superset sert ses pages a la racine (`/dashboard/...`, `/health`).
     # La passerelle expose le tableau sous `/bi` : sans retrait du prefixe,
     # Superset recoit `/bi/dashboard/...` et repond 404. Les autres routes
@@ -57,7 +55,6 @@ http:
   # Routage
   # --------------------------------------------------------------------
   routers:
-
     # ---- Flux 3 et socle -------------------------------------------------
     predicare-core:
       entryPoints: [web]

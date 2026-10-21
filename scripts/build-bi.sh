@@ -24,7 +24,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.bi.yml)
 IMAGE="predicare-superset:latest"
-SCRIPTS=(register_datasets.py register_dashboard.py charger_requetes.py exporter_dashboard.py creer_compte_demo.py)
+SCRIPTS=(register_datasets.py register_dashboard.py charger_requetes.py exporter_dashboard.py creer_compte_demo.py preparer_embed.py)
 
 if "${COMPOSE[@]}" build "$@" 2>&1; then
     exit 0

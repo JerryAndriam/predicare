@@ -74,6 +74,14 @@ FEATURE_FLAGS = {
     "ENABLE_TEMPLATE_PROCESSING": False,
     # Evite de charger des extensions navigateur pour un usage interne.
     "ALERT_REPORTS": True,
+    # Le tableau est affiche dans l'application via un guest token. Sans ce
+    # drapeau, Superset refuse `/embedded/...` et le SDK ne peut pas monter
+    # l'iframe.
+    "EMBEDDED_SUPERSET": True,
+    # Le menu d'une tuile expose « Drill to detail ». Le drapeau est actif par
+    # defaut en 6.1, mais on le fixe ici pour qu'une montee de version ne le
+    # transforme pas silencieusement en fonction absente.
+    "DRILL_TO_DETAIL": True,
 }
 
 ROW_LIMIT = 10_000
@@ -208,3 +216,18 @@ LOG_LEVEL = os.environ.get("SUPERSET_LOG_LEVEL", "INFO")
 # Repertoire de travail persistant : sans cela, les dashboards crees dans
 # l'interface disparaissent au redemarrage du conteneur.
 DATA_DIR = os.environ.get("SUPERSET_DATA_DIR", "/app/superset_home")
+
+# ---------------------------------------------------------------------------
+# Embedding : le tableau est affiche dans l'application sans seconde session.
+#
+# Le navigateur ne recoit jamais le mot de passe Superset : api-core demande
+# un guest token court (5 min) avec un compte de service, et le SDK le
+# renouvelle. Le role invite est distinct du role de demonstration : il ne
+# voit que le dashboard et les datasets necessaires, jamais SQL Lab.
+# ---------------------------------------------------------------------------
+GUEST_ROLE_NAME = os.environ.get("SUPERSET_GUEST_ROLE", "PrediCare BI (invité)")
+# Pas de valeur par defaut exploitable : le job `preparer_embed.py` refuse un
+# secret vide, et le deploiement doit le generer dans `.env`.
+GUEST_TOKEN_JWT_SECRET = os.environ.get("SUPERSET_GUEST_TOKEN_SECRET", "")
+GUEST_TOKEN_JWT_AUDIENCE = os.environ.get("SUPERSET_PUBLIC_URL", "http://localhost:8080")
+GUEST_TOKEN_JWT_EXP_SECONDS = int(os.environ.get("SUPERSET_GUEST_TOKEN_EXP_SECONDS", "300"))

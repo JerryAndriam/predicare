@@ -159,6 +159,23 @@ maj_si_placeholder() {
     fi
 }
 
+# Variante pour les secrets ajoutes apres la creation du `.env` : elle les
+# ajoute s'ils sont absents, et remplace seulement un placeholder s'ils
+# existent deja. Sans cela, un `.env` existant ne recevrait jamais les
+# nouveaux secrets de l'embedding Superset.
+assurer_secret() {
+    local cle="$1" valeur="$2"
+    if grep -qE "^${cle}=" "$ENV_FILE"; then
+        if grep -qE "^${cle}=CHANGER_MOI" "$ENV_FILE"; then
+            maj_secret "$cle" "$valeur"
+            log "  ${cle} genere"
+        fi
+    else
+        printf '%s=%s\n' "$cle" "$valeur" >> "$ENV_FILE"
+        log "  ${cle} ajoute et genere"
+    fi
+}
+
 generer_secrets() {
     [ -f "$ENV_FILE" ] || return 0
     log "Generation des secrets manquants dans .env"
@@ -177,6 +194,8 @@ generer_secrets() {
     maj_si_placeholder "SUPERSET_ADMIN_PASSWORD"   "$(generer_secret)"
     maj_si_placeholder "SUPERSET_FERNET_KEY"       "$(generer_secret)"
     maj_si_placeholder "SUPERSET_DB_RO_PASSWORD"   "$(generer_secret)"
+    assurer_secret    "SUPERSET_GUEST_TOKEN_SECRET" "$(generer_secret)"
+    assurer_secret    "SUPERSET_BI_SERVICE_PASSWORD" "$(generer_secret)"
     maj_si_placeholder "GRAFANA_ADMIN_PASSWORD"    "$(generer_secret)"
 
     # L'URL de connexion porte le mot de passe base : si elle n'est pas

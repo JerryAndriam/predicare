@@ -357,13 +357,6 @@ DEMO_PASSWORD='...' PREDICARE_E2E=1 uv run --all-packages pytest tests/e2e/test_
 uv run --all-packages pytest tests/test_rag_attacks.py tests/test_guardrails.py tests/test_sql_tool.py -q
 ```
 
-## Brouillon / TODO
+## Reste à faire
 
-- [x] Découpage des contrats PDF en segments avec métadonnées (Phase 5.1)
-- [x] Indexation pgvector et génération des embeddings (script `ingest_rag`)
-- [x] Boucle ReAct complète : outils et trace (Phase 5.4)
-- [x] Injection du contexte de dialogue court (mémoire de session)
-- [x] Jeu de questions de référence pour mesurer la fidélité (`scripts/eval_rag.py`)
-- [x] Tests d'attaque : injection indirecte, SQL hostile, fuite de prompt
-
-Propriétaire : Mirado
+Rien : le périmètre décrit ci-dessus est couvert et testé.

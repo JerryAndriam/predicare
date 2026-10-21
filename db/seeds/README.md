@@ -269,10 +269,8 @@ fournit pas cette colonne, et `numero_police` ne convient pas : deux contrats
 partagent legitimately `POL-2025-3761`. On utilise `contrat_id`, cle externe
 garantie unique, et `numero_police` reste dans sa colonne dediee.
 
-## Brouillon / TODO
+## Reste à faire
 
-- [x] Ingerer le `rag_corpus/` (31 PDF) dans `core.document_vectorise` (470 segments)
-- [ ] Cas d'invalidite d'entrainement (`FACTURE_INVALIDE` n'a aucune occurrence)
-- [ ] Contrat de recette sur effectifs, execute a chaque rechargement
-
-Proprietaire : Cherica
+- [ ] Cas d'invalidité d'entraînement : `FACTURE_INVALIDE` n'a aucune
+  occurrence dans le jeu, la règle n'est donc pas encore exercée.
+- [ ] Contrat de recette sur les effectifs, exécuté à chaque rechargement.

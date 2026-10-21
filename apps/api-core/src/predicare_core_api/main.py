@@ -27,6 +27,7 @@ from predicare_core_api.audit.router import router as audit_router
 from predicare_core_api.billing.router import router as billing_router
 from predicare_core_api.decisions.router import router as decisions_router
 from predicare_core_api.identity.router import router as identity_router
+from predicare_core_api.pilotage.router import router as pilotage_router
 from predicare_core_api.rgpd import purge as purge_rgpd
 from predicare_core_api.rgpd.router import router as rgpd_router
 
@@ -138,6 +139,12 @@ def create_app() -> FastAPI:
     app.state.inference_url = inference_base
     app.state.inference_api_url = f"{inference_base}/api/inference"
     app.state.rag_url = os.getenv("RAG_API_URL", "http://api-rag:8003")
+    # Profil BI optionnel : api-core ne depend pas de Superset au demarrage.
+    # L'endpoint de guest token renvoie 503 si le service est absent.
+    app.state.superset_url = os.getenv("SUPERSET_URL", "http://superset:8088").rstrip("/")
+    app.state.superset_username = os.getenv("SUPERSET_BI_USERNAME", "predicare-bi")
+    app.state.superset_password = os.getenv("SUPERSET_BI_PASSWORD", "")
+    app.state.superset_dashboard_slug = os.getenv("SUPERSET_DASHBOARD_SLUG", "pilotage-mensuel")
 
     app.add_middleware(
         CORSMiddleware,
@@ -164,6 +171,7 @@ def create_app() -> FastAPI:
         admin_router,
         audit_router,
         rgpd_router,
+        pilotage_router,
     ):
         app.include_router(router, prefix="/api/core")
 

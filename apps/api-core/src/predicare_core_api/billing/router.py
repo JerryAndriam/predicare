@@ -20,7 +20,7 @@ from __future__ import annotations
 import importlib
 import re
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 import httpx
@@ -361,9 +361,14 @@ def _importer_un_pdf(
             # `prestataire_impose` (compte professionnel) prime : il ne sert
             # qu'aux PDF qui ne portent aucun prestataire.
             if prestataire_impose:
-                candidats_prestataire = (prestataire_impose,)
+                candidats_prestataire: tuple[str, ...] = (prestataire_impose,)
             else:
-                candidats_prestataire = getattr(extraite, "prestataires", ()) or (extraite.prestataire,)
+                # Le module d'extraction est remplace par un faux module dans
+                # les tests d'API : `getattr` avec une valeur de repli reste
+                # necessaire. `cast` donne a mypy le type attendu.
+                candidats_prestataire = cast(
+                    "tuple[str, ...]", getattr(extraite, "prestataires", ())
+                ) or (extraite.prestataire,)
             prestataire_code = pdf_facture.resoudre_prestataire_parmi(
                 session, candidats_prestataire
             )
@@ -519,9 +524,7 @@ def _exiger(session: Session, table: str, colonne: str, valeur: str, champ: str)
     return int(identifiant)
 
 
-def _code_reference(
-    session: Session, valeur: str, champ: str
-) -> tuple[int | None, int | None]:
+def _code_reference(session: Session, valeur: str, champ: str) -> tuple[int | None, int | None]:
     """L'identifiant d'un code d'ACTE ou de MEDICAMENT, jamais les deux.
 
     Une facture de pharmacie ne porte pas de code d'acte : ses lignes sont des

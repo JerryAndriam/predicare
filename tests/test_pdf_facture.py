@@ -100,6 +100,7 @@ def _pdf(lignes: list[str]) -> bytes:
     ecrivain.write(tampon)
     return tampon.getvalue()
 
+
 def _pdf_tableau(
     lignes: list[list[tuple[int, str]]],
     *,
@@ -138,7 +139,6 @@ def _pdf_tableau(
     tampon = BytesIO()
     ecrivain.write(tampon)
     return tampon.getvalue()
-
 
 
 #: Gabarit 1 : libelle et valeur sur la meme ligne, separes par `:`.
@@ -577,7 +577,10 @@ class _Session:
             return _Resultat(scalaire=parametres["valeur"] if self.prestataire_existe else None)
         if "FROM core.prestataire" in sql:
             return _Resultat(lignes=self.prestataires)
-        for table, referentiel in (("core.acte", self.actes), ("core.medicament", self.medicaments)):
+        for table, referentiel in (
+            ("core.acte", self.actes),
+            ("core.medicament", self.medicaments),
+        ):
             if f"FROM {table} WHERE" in sql:
                 cible = str(parametres["valeur"]).upper()
                 for code, _libelle in referentiel:
@@ -802,7 +805,13 @@ def test_un_tableau_aux_colonnes_desordonnees_est_lu() -> None:
             [(40, "N° assuré"), (220, "ASS-5C99024388")],
             [(40, "Montant"), (110, "P.U."), (180, "Qté"), (240, "Code"), (320, "Désignation")],
             [(40, "12 100 Ar"), (110, "7 900 Ar"), (180, "1"), (240, "MED-ACT"), (320, "Actif")],
-            [(40, "4 200 Ar"), (110, "2 100 Ar"), (180, "2"), (240, "MED-PARA500"), (320, "Paracetamol")],
+            [
+                (40, "4 200 Ar"),
+                (110, "2 100 Ar"),
+                (180, "2"),
+                (240, "MED-PARA500"),
+                (320, "Paracetamol"),
+            ],
             [(40, "TOTAL"), (110, "16 300 Ar")],
         ]
     )

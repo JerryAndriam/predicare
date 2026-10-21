@@ -160,9 +160,45 @@ test.describe('Parcours administrateur', () => {
     // demarree ou non, l'ecran montre l'iframe (meme origine, proxifiee par
     // la passerelle) ou le repli qui explique comment la demarrer. Les deux
     // sont corrects ; ce qui compte est que l'ecran ne soit jamais vide.
-    const iframe = page.locator('iframe.bi-frame')
-    const repli = page.getByText(/n’est pas démarré/i)
-    await expect(iframe.or(repli).first()).toBeVisible({ timeout: 15_000 })
+    const iframe = page.locator('.bi-frame iframe')
+    const repli = page.getByText(/indisponible|n’est pas démarré|make up-bi/i)
+    await expect(iframe.or(repli).first()).toBeVisible({ timeout: 20_000 })
+
+    // Si Superset est demarre, le guest token doit vraiment afficher les
+    // tuiles : une iframe vide ou une erreur d'authentification ne suffit pas.
+    if (await iframe.isVisible()) {
+      const lienSuperset = page.getByRole('link', { name: 'Ouvrir Superset' })
+      await expect(lienSuperset).toHaveAttribute('href', /\/chart\/list\/$/)
+
+      const bi = page.frameLocator('.bi-frame iframe')
+      await expect(bi.getByText('Factures traitees').first()).toBeVisible({
+        timeout: 20_000,
+      })
+
+      // Le guest token doit ouvrir les interfaces de consultation de
+      // Superset, pas seulement afficher des tuiles mortes. Le menu est
+      // construit a partir des permissions du role invite.
+      await bi.getByRole('button', { name: 'More Options' }).first().click()
+      for (const entree of ['View query', 'View as table', 'Drill to detail', 'Download']) {
+        await expect(bi.getByText(entree, { exact: true })).toBeVisible()
+      }
+      await expect(bi.getByText('Edit chart', { exact: true })).toHaveCount(0)
+
+      // Les modales s'ouvrent DANS l'iframe : c'est la preuve que les
+      // interfaces ne renvoient pas vers une seconde connexion Superset.
+      await bi.getByText('Drill to detail', { exact: true }).click()
+      await expect(bi.getByText(/Drill to detail:/).first()).toBeVisible({
+        timeout: 20_000,
+      })
+      await bi.getByText('Close', { exact: true }).evaluate((bouton) =>
+        (bouton as HTMLElement).click(),
+      )
+      await expect(bi.getByText(/Drill to detail:/).first()).toBeHidden()
+
+      await bi.getByRole('button', { name: 'More Options' }).first().click()
+      await bi.getByText('View as table', { exact: true }).click()
+      await expect(bi.getByText(/Chart Data:/).first()).toBeVisible()
+    }
   })
 })
 

@@ -673,11 +673,7 @@ def _valeur_date(lignes: list[str]) -> str:
         if not valeur:
             continue
         libelle = _mot(ancre.libelle)
-        rang = (
-            _PRIORITE_DATE.index(libelle)
-            if libelle in _PRIORITE_DATE
-            else len(_PRIORITE_DATE)
-        )
+        rang = _PRIORITE_DATE.index(libelle) if libelle in _PRIORITE_DATE else len(_PRIORITE_DATE)
         candidats.append((rang, valeur))
 
     # Repli par motif : un document sans libelle de date porte la date dans
@@ -1149,9 +1145,7 @@ def extraire_facture(
 
     assure = _valeur_assure(lignes_texte)
     candidats_prestataire = _candidats_prestataire(lignes_texte)
-    prestataire = (
-        candidats_prestataire[0] if candidats_prestataire else ""
-    ) or prestataire_defaut
+    prestataire = (candidats_prestataire[0] if candidats_prestataire else "") or prestataire_defaut
     date_brute = _valeur_date(lignes_texte)
     total_brut = _valeur_champ(lignes_texte, "total")
 

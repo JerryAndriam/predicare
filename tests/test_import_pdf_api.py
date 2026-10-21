@@ -116,9 +116,7 @@ def _resoudre_prestataire(session: Any, valeur: str, *, ville: str | None = None
     return valeur
 
 
-def _resoudre_prestataire_parmi(
-    session: Any, valeurs: Any, *, ville: str | None = None
-) -> str:
+def _resoudre_prestataire_parmi(session: Any, valeurs: Any, *, ville: str | None = None) -> str:
     valeurs = list(valeurs) if valeurs is not None else []
     return valeurs[0] if valeurs else ""
 

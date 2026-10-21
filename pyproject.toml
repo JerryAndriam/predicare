@@ -36,6 +36,7 @@ dev = [
     "mypy>=1.14",
     "pre-commit>=4.0",
     "types-pyyaml>=6.0",
+    "matplotlib>=3.11",
 ]
 
 [tool.pytest.ini_options]
