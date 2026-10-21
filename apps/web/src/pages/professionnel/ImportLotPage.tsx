@@ -69,6 +69,8 @@ interface ResultatImport {
   rejected: number
   failed: number
   items: ItemImport[]
+  /** Factures pour lesquelles la chaine d'alerte (Slack / e-mail) a parte. */
+  notifications_envoyees: number
 }
 
 interface FactureDuLot {
@@ -523,8 +525,13 @@ export function ImportLotPage() {
       }))
       setLotResultats(bilan)
       const refusees = resultat.rejected + resultat.failed
+      // Le compteur d'alertes est annonce : une facture notee sous 0,8 entre
+      // dans la file du gestionnaire mais n'interrompt personne. Sans ce
+      // chiffre, l'utilisateur peut croire que la notification a echoue.
+      const alertes = resultat.notifications_envoyees ?? 0
       setSucces(
-        `${resultat.noted} importée(s), ${refusees} rejetée(s) sur ${resultat.total}.`,
+        `${resultat.noted} importée(s), ${refusees} rejetée(s) sur ${resultat.total}. ` +
+          `${alertes} alerte(s) déclenchée(s) (seuil de notification 0,8).`,
       )
     } catch (probleme) {
       setErreur(messageErreur(probleme))

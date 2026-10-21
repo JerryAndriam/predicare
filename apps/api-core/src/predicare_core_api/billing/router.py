@@ -228,6 +228,10 @@ class ImportResult(BaseModel):
     rejected: int
     failed: int
     items: list[ImportItem]
+    #: Nombre de factures pour lesquelles la chaine d'alerte (Slack / e-mail)
+    #: a ete declenchee. Il est inferieur a `noted` : seules les scores
+    #: au-dessus du seuil de NOTIFICATION (0,8) alertent un humain.
+    notifications_envoyees: int = 0
 
 
 class ImportTropVolumineuxError(PrediCareError):
@@ -299,12 +303,14 @@ def import_invoices(
     noted = sum(1 for item in items if item.statut == "notee")
     rejected = sum(1 for item in items if item.statut == "rejetee")
     failed = sum(1 for item in items if item.statut == "echec")
+    notifications = sum(1 for item in items if item.notification_envoye)
     return ImportResult(
         total=len(items),
         noted=noted,
         rejected=rejected,
         failed=failed,
         items=items,
+        notifications_envoyees=notifications,
     )
 
 
@@ -402,7 +408,7 @@ def _importer_un_pdf(
         )
     except pdf_facture.FactureIllisibleError as exc:
         return _echec(nom, str(exc) or "Facture illisible.", reference)
-    except ForbiddenError as exc:
+    except ForbiddenError:
         return ImportItem(
             fichier=nom,
             statut="rejetee",
