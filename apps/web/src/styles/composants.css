@@ -1,0 +1,347 @@
+@layer components {
+/* =============================================================================
+   Les composants de contenu.
+
+   Regle 60/30/10 : une carte est blanche, un filet de 3 px porte la couleur
+   (bleu = l'action, olive = l'information), et rien d'autre n'est colore.
+   ========================================================================== */
+
+
+/* Le chapo : il explique l'ecran en deux phrases. */
+.chapo {
+  color: var(--encre-douce);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  margin: var(--espace-2) 0 0;
+  max-width: 68ch;
+}
+
+/* ------------------------------------------------------------------ tuile */
+
+.tuiles {
+  display: grid;
+  gap: var(--espace-3);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.tuile {
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  color: inherit;
+  display: flex;
+  gap: var(--espace-3);
+  padding: var(--espace-4);
+  text-decoration: none;
+  transition: border-color var(--transition), box-shadow var(--transition),
+    transform var(--transition);
+}
+
+.tuile:hover {
+  border-color: var(--primaire);
+  box-shadow: var(--ombre-1);
+  transform: translateY(-2px);
+}
+
+.tuile-icone {
+  align-items: center;
+  background: var(--primaire-clair);
+  border-radius: var(--rayon-sm);
+  color: var(--primaire-fonce);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.tuile-corps {
+  display: block;
+  min-width: 0;
+}
+
+.tuile-titre {
+  color: var(--encre);
+  display: block;
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+  margin: 0 0 var(--espace-1);
+}
+
+.tuile-texte {
+  color: var(--encre-douce);
+  display: block;
+  font-size: var(--police-label);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.tuile-fleche {
+  color: var(--primaire);
+  margin-left: auto;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.tuile:hover .tuile-fleche {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ---------------------------------------------------------- alerte en ligne */
+
+.alerte-ligne {
+  background: var(--surface-2);
+  border-left: 4px solid var(--primaire);
+  border-radius: var(--rayon-sm);
+  display: flex;
+  gap: var(--espace-3);
+  padding: var(--espace-4);
+}
+
+.alerte-ligne.info {
+  background: var(--primaire-clair);
+  border-left-color: var(--primaire);
+}
+
+.alerte-ligne.attention {
+  background: var(--avert-clair);
+  border-left-color: var(--avert);
+}
+
+.alerte-ligne.succes {
+  background: var(--ok-clair);
+  border-left-color: var(--ok);
+}
+
+.alerte-ligne.erreur {
+  background: var(--alerte-clair);
+  border-left-color: var(--alerte);
+}
+
+.alerte-ligne-icone {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.alerte-ligne.info .alerte-ligne-icone {
+  color: var(--primaire-fonce);
+}
+
+.alerte-ligne.attention .alerte-ligne-icone {
+  color: var(--avert);
+}
+
+.alerte-ligne.succes .alerte-ligne-icone {
+  color: var(--ok);
+}
+
+.alerte-ligne.erreur .alerte-ligne-icone {
+  color: var(--alerte);
+}
+
+.alerte-ligne-titre {
+  color: var(--encre);
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+  margin: 0 0 var(--espace-1);
+}
+
+.alerte-ligne-texte {
+  color: var(--encre-douce);
+  font-size: var(--police-texte);
+  line-height: var(--interligne);
+  margin: 0;
+}
+
+.alerte-ligne-texte strong {
+  color: var(--encre);
+}
+
+
+/* ------------------------------------------------------------- stat cle */
+
+.stats {
+  display: grid;
+  gap: var(--espace-3);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  border-top: 3px solid var(--primaire);
+  padding: var(--espace-4);
+}
+
+.stat.info {
+  border-top-color: var(--secondaire);
+}
+
+.stat.alerte {
+  border-top-color: var(--alerte);
+}
+
+.stat.avert {
+  border-top-color: var(--avert);
+}
+
+.stat-valeur {
+  color: var(--encre);
+  font-size: 1.75rem;
+  font-weight: var(--poids-titre);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.stat-unite {
+  color: var(--encre-faible);
+  font-size: var(--police-label);
+  font-weight: 500;
+  margin-left: var(--espace-1);
+}
+
+.stat-libelle {
+  color: var(--encre-douce);
+  font-size: var(--police-label);
+  font-weight: 600;
+  margin-top: var(--espace-1);
+}
+
+.stat-contexte {
+  color: var(--encre-faible);
+  font-size: var(--police-petit);
+  margin-top: var(--espace-1);
+}
+
+/* ------------------------------------------------------------------ cartes */
+
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  box-shadow: none;
+  padding: var(--espace-5);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.carte-entete {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--espace-3);
+  justify-content: space-between;
+  margin-bottom: var(--espace-4);
+}
+
+.carte-entete h2 {
+  font-size: var(--police-section);
+  letter-spacing: -0.01em;
+  line-height: var(--interligne-titre);
+  margin: 0;
+}
+
+.carte-entete h3 {
+  font-size: var(--police-composant);
+  margin: 0;
+}
+
+/* -------------------------------------------------------------- pas a pas */
+
+.etapes {
+  counter-reset: etape;
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.etape {
+  counter-increment: etape;
+  display: flex;
+  gap: var(--espace-3);
+}
+
+.etape-numero::before {
+  content: counter(etape);
+}
+
+.etape-numero {
+  align-items: center;
+  background: var(--primaire);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--police-label);
+  font-weight: var(--poids-titre);
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.etape-titre {
+  color: var(--encre);
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+  margin: 0 0 var(--espace-1);
+}
+
+.etape-texte {
+  color: var(--encre-douce);
+  font-size: var(--police-texte);
+  line-height: var(--interligne);
+  margin: 0;
+  max-width: 70ch;
+}
+
+/* ------------------------------------------------------------------ badge */
+
+.badge {
+  background: var(--surface-2);
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+  color: var(--encre-douce);
+  display: inline-flex;
+  font-size: var(--police-label);
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.badge.ok {
+  background: var(--ok-clair);
+  border-color: transparent;
+  color: var(--ok);
+}
+
+.badge.alerte {
+  background: var(--alerte-clair);
+  border-color: transparent;
+  color: var(--alerte);
+}
+
+.badge.avert {
+  background: var(--avert-clair);
+  border-color: transparent;
+  color: var(--avert);
+}
+
+.badge.info {
+  background: var(--primaire-clair);
+  border-color: transparent;
+  color: var(--primaire-fonce);
+}
+
+.badge.secondaire {
+  background: var(--secondaire-clair);
+  border-color: transparent;
+  color: var(--secondaire-fonce);
+}
+
+}

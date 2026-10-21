@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
 // En production, le navigateur ne voit qu'une seule origine : la passerelle
@@ -8,7 +9,7 @@ import react from '@vitejs/plugin-react'
 const cible = (port: number) => `http://localhost:${port}`
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {

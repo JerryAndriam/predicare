@@ -303,8 +303,8 @@ class RagAgent:
             for passage in passages
         )
         return (
-            "Reponse en mode degrade : le modele de langage n'a pas repondu, "
-            "voici les passages de contrat qui correspondent a votre question.\n\n"
+            "Modele de langage indisponible : mode degrade, sans redaction. "
+            "Voici les passages de contrat trouves pour votre question.\n\n"
             f"{blocs}"
         )
 

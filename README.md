@@ -183,6 +183,8 @@ une migration ajoutée après le premier démarrage resterait non appliquée, et
 | `make bi-compte-demo` | Crée le compte Superset de démonstration, en lecture seule. |
 | `make bi-graphiques` | Exécute la requête de chaque graphique, vérifie qu'elle aboutit et qu'aucune dérive ne s'est installée. |
 | `make purge` | Aperçu de la purge des données hors durées de conservation. |
+| `make web-build` | Compile le front : vérification des types puis bundle Vite. |
+| `make web-test` | Lance les parcours Playwright des quatre rôles. |
 | `scripts/test-intrusion.sh` | Vérifie que les surfaces d'attaque connues sont fermées. |
 | `cat rapport.sql \| make db-sql` | Idem, par entrée standard. |
 

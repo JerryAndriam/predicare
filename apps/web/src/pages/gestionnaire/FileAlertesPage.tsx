@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { api, messageErreur } from '../api/client'
-import type {
-  AlertDetail,
-  AlertSummary,
-  Decision,
-  DecisionRecord,
-  PageResult,
-} from '../api/types'
-import { ShapList } from '../components/ShapList'
+import { api, messageErreur } from '../../api/client'
+import type { AlertDetail, AlertSummary, Decision, PageResult } from '../../api/types'
+import { EnTetePage } from '../../components/blocs'
+import { ShapList } from '../../components/ShapList'
 import {
   Badge,
   Carte,
@@ -18,15 +13,11 @@ import {
   EtatVide,
   Kpi,
   Pagination,
-  Pastille,
   Succes,
-  Vide,
   dateCourte,
   montant,
   pourcentage,
-} from '../components/ui'
-
-type Onglet = 'file' | 'historique'
+} from '../../components/ui'
 
 const DECISIONS: { valeur: Decision; libelle: string }[] = [
   { valeur: 'valider_fraude', libelle: 'Confirmer la fraude' },
@@ -55,9 +46,7 @@ function queryAlertes(filtres: Filtres, offset: number): string {
   return params.toString()
 }
 
-export function ManagerPage() {
-  const [onglet, setOnglet] = useState<Onglet>('file')
-
+export function FileAlertesPage() {
   const [alertes, setAlertes] = useState<AlertSummary[]>([])
   const [totalAlertes, setTotalAlertes] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -72,9 +61,6 @@ export function ManagerPage() {
   const [succes, setSucces] = useState<string | null>(null)
   const [enCoursDecision, setEnCoursDecision] = useState(false)
 
-  const [historique, setHistorique] = useState<DecisionRecord[]>([])
-  const [totalHistorique, setTotalHistorique] = useState(0)
-  const [offsetHistorique, setOffsetHistorique] = useState(0)
 
   const chargerFile = useCallback(
     (decalage: number, filtresActifs: Filtres = filtres) => {
@@ -98,22 +84,7 @@ export function ManagerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const chargerHistorique = useCallback((decalage: number) => {
-    api<PageResult<DecisionRecord>>(
-      `/api/core/alertes/historique?limit=${LIMITE}&offset=${decalage}`,
-    )
-      .then((page) => {
-        setHistorique(page.items)
-        setTotalHistorique(page.total)
-        setOffsetHistorique(page.offset)
-      })
-      .catch((probleme: unknown) => setErreur(messageErreur(probleme)))
-  }, [])
 
-  useEffect(() => {
-    if (onglet !== 'historique') return
-    chargerHistorique(0)
-  }, [onglet, chargerHistorique])
 
   const ouvrir = async (predictionId: string) => {
     setDetailEnCours(true)
@@ -181,28 +152,6 @@ export function ManagerPage() {
    * L'export porte sur ce que l'écran montre (page courante) : exporter
    * autre chose serait une surprise pour le lecteur.
    */
-  const exporterHistorique = () => {
-    const entetes = ['decided_at', 'prediction_id', 'decision', 'score_fraude', 'commentaire']
-    const lignes = historique.map((ligne) =>
-      [
-        ligne.decided_at,
-        ligne.prediction_id,
-        ligne.decision,
-        String(ligne.score_fraude),
-        ligne.commentaire ?? '',
-      ]
-        .map((valeur) => `"${String(valeur).replace(/"/g, '""')}"`)
-        .join(';'),
-    )
-    const contenu = [entetes.join(';'), ...lignes].join('\r\n')
-    const blob = new Blob([`﻿${contenu}`], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const lien = document.createElement('a')
-    lien.href = url
-    lien.download = `decisions-${new Date().toISOString().slice(0, 10)}.csv`
-    lien.click()
-    URL.revokeObjectURL(url)
-  }
 
   const appliquerFiltres = () => {    setSelection(null)
     chargerFile(0, filtres)
@@ -221,51 +170,24 @@ export function ManagerPage() {
       ? Math.round(alertes.reduce((somme, a) => somme + a.age_minutes, 0) / alertes.length)
       : 0
 
-  return (
-    <div className="pile">
-      <div className="titre-page">
-        <h1>File d’alertes</h1>
-        <p>
-          Chaque alerte s’ouvre sur le rapport SHAP qui la justifie et sur les lignes de la
-          facture source. La décision est motivée et tracée dans le journal.
-        </p>
-      </div>
 
-      <div className="onglets" role="tablist" aria-label="File et historique">
-        <button
-          type="button"
-          role="tab"
-          id="onglet-file"
-          aria-controls="panneau-file"
-          aria-selected={onglet === 'file'}
-          className={onglet === 'file' ? 'onglet actif' : 'onglet'}
-          onClick={() => setOnglet('file')}
-        >
-          À traiter ({totalAlertes})
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="onglet-historique"
-          aria-controls="panneau-historique"
-          aria-selected={onglet === 'historique'}
-          className={onglet === 'historique' ? 'onglet actif' : 'onglet'}
-          onClick={() => setOnglet('historique')}
-        >
-          Historique
-        </button>
-      </div>
+  return (
+    <>
+      <EnTetePage
+        fil={[{ libelle: 'Espace gestionnaire', chemin: '/gestionnaire' }, { libelle: 'File d’alertes' }]}
+        titre="File d’alertes"
+        chapo={
+          <>
+            Les factures dont la note dépasse le seuil, triées de la plus suspecte à la
+            moins suspecte. Chaque alerte s’ouvre sur l’explication de la note et sur les
+            lignes de la facture source : la décision est motivée, puis conservée.
+          </>
+        }
+      />
 
       <Erreur message={erreur} />
       <Succes message={succes} />
 
-      {onglet === 'file' && (
-        <div
-          id="panneau-file"
-          role="tabpanel"
-          aria-labelledby="onglet-file"
-          className="pile"
-        >
           <div className="grille quatre">
             <Kpi titre="À traiter" valeur={totalAlertes} ton={totalAlertes > 0 ? 'alerte' : 'ok'} />
             <Kpi
@@ -357,7 +279,7 @@ export function ManagerPage() {
               {!chargement && alertes.length === 0 && (
                 <EtatVide
                   titre="Aucune alerte à traiter"
-                  texte="Toutes les alertes au-dessus du seuil ont été traitées, ou le seuil est trop élevé. Elargissez les filtres, ou baissez le seuil depuis l’administration."
+                  texte="Toutes les alertes au-dessus du seuil ont été traitées, ou le seuil est trop élevé. Élargissez les filtres, ou baissez le seuil depuis l’administration."
                 />
               )}
               {alertes.length > 0 && (
@@ -404,14 +326,17 @@ export function ManagerPage() {
             <Carte titre="Détail et décision">
               {detailEnCours && <Chargement texte="Ouverture du dossier…" />}
               {!detailEnCours && selection === null && (
-                <Vide>Sélectionnez une alerte pour voir son explication et ses lignes.</Vide>
+                <EtatVide
+                  titre="Aucune alerte sélectionnée"
+                  texte="Choisissez une alerte dans la file : son explication et ses lignes de facture s’afficheront ici."
+                />
               )}
               {selection !== null && !detailEnCours && (
                 <div className="detail-alerte">
                   <div className="entete-detail">
                     <div className="score-bloc">
                       <span className="score-valeur">{pourcentage(selection.score_fraude)}</span>
-                      <span className="score-legende">score de fraude</span>
+                      <span className="score-legende">note de vigilance</span>
                     </div>
                     <div className="resultat-meta">
                       <span className="mono">Facture {selection.facture_id}</span>
@@ -423,12 +348,15 @@ export function ManagerPage() {
 
                   <h3>Lignes de la facture</h3>
                   {selection.lignes.length === 0 ? (
-                    <Vide>Aucune ligne de facture enregistrée pour ce dossier.</Vide>
+                    <EtatVide
+                      titre="Aucune ligne enregistrée"
+                      texte="Ce dossier ne comporte aucune ligne de facture exploitable."
+                    />
                   ) : (
                     <div className="table-enveloppe">
                       <table className="table table-dense">
                         <caption className="visuellement-cache">
-                          Lignes de la facture {selection.facture_id}
+                          Détail des lignes de la facture {selection.facture_id}
                         </caption>
                         <thead>
                           <tr>
@@ -467,7 +395,7 @@ export function ManagerPage() {
                     </div>
                   )}
 
-                  <h3>Pourquoi le modèle alerte</h3>
+                  <h3>Ce qui a pesé dans la note</h3>
                   <ShapList contributions={selection.shap} />
 
                   <div className="formulaire">
@@ -509,90 +437,6 @@ export function ManagerPage() {
               )}
             </Carte>
           </div>
-        </div>
-      )}
-
-      {onglet === 'historique' && (
-        <div
-          id="panneau-historique"
-          role="tabpanel"
-          aria-labelledby="onglet-historique"
-          className="pile"
-        >
-          <Carte
-            titre={`${totalHistorique} décision(s)`}
-            actions={
-              <div className="carte-actions">
-                <button
-                  type="button"
-                  className="bouton discret"
-                  onClick={exporterHistorique}
-                  disabled={historique.length === 0}
-                >
-                  Exporter en CSV
-                </button>
-              </div>
-            }
-          >
-            {historique.length === 0 && (
-              <EtatVide
-                titre="Aucune décision enregistrée"
-                texte="Les décisions que vous prenez sur la file apparaîtront ici, avec leur motif."
-              />
-            )}
-            {historique.length > 0 && (
-              <>
-                <div className="table-enveloppe">
-                  <table className="table table-dense">
-                    <caption className="visuellement-cache">
-                      Historique des décisions du gestionnaire
-                    </caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Date</th>
-                        <th scope="col">Alerte</th>
-                        <th scope="col">Décision</th>
-                        <th scope="col" className="droite">
-                          Score
-                        </th>
-                        <th scope="col">Commentaire</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historique.map((ligne) => (
-                        <tr key={`${ligne.prediction_id}-${ligne.decided_at}`}>
-                          <td>{dateCourte(ligne.decided_at)}</td>
-                          <td className="mono">{ligne.prediction_id}</td>
-                          <td>
-                            <Pastille
-                              statut={
-                                ligne.decision === 'valider_fraude'
-                                  ? 'fraude_confirmee'
-                                  : ligne.decision === 'rejeter'
-                                    ? 'rejetée'
-                                    : 'piece_demandee'
-                              }
-                            />
-                          </td>
-                          <td className="droite">{pourcentage(ligne.score_fraude)}</td>
-                          <td>{ligne.commentaire ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <Pagination
-                  total={totalHistorique}
-                  offset={offsetHistorique}
-                  limite={LIMITE}
-                  onChange={chargerHistorique}
-                  libelle="décisions"
-                />
-              </>
-            )}
-          </Carte>
-        </div>
-      )}
-    </div>
+    </>
   )
 }

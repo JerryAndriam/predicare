@@ -497,6 +497,14 @@ n8n-export: ## Exporte les workflows n8n dans apps/n8n/workflows/
 n8n-import: ## Restaure et reactive les workflows n8n
 	@scripts/n8n-import.sh
 
+.PHONY: web-build
+web-build: ## Compile le front (types + bundle Vite)
+	@cd apps/web && npm ci --no-audit --no-fund && npm run build
+
+.PHONY: web-test
+web-test: ## Lance les parcours Playwright du front
+	@cd apps/web && npx playwright test
+
 .PHONY: e2e-n8n
 e2e-n8n: ## Verifie la chaine n8n de bout en bout (pile demarree)
 	@scripts/e2e_n8n.sh

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { EnTetePage } from '../components/blocs'
 import { Carte, Chargement, EtatVide } from '../components/ui'
 
 /**
@@ -55,14 +56,18 @@ export function PilotagePage() {
 
   return (
     <div className="pile">
-      <div className="titre-page">
-        <h1>Pilotage décisionnel</h1>
-        <p>
-          Le tableau de bord Superset est branché en lecture seule sur la base. Il est
-          servi par la même passerelle que l’application : aucune seconde connexion à
-          ouvrir.
-        </p>
-      </div>
+      <EnTetePage
+        fil={[{ libelle: 'Pilotage décisionnel' }]}
+        titre="Pilotage décisionnel"
+        chapo={
+          <>
+            Le tableau de bord Superset est branché en lecture seule sur la base : il
+            montre le volume de factures, la fraude détectée, le cycle de décision et les
+            meilleurs prestataires. Il est servi par la même passerelle que
+            l’application, sans seconde connexion à ouvrir.
+          </>
+        }
+      />
 
       {etat === 'chargement' && <Chargement texte="Test du service de pilotage…" />}
 

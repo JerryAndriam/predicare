@@ -1,16 +1,18 @@
-import type { ReactNode } from 'react'
+import { Children, cloneElement, useId } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 export function Carte({
   titre,
   actions,
   children,
+  ...attributs
 }: {
   titre?: string
   actions?: ReactNode
   children: ReactNode
-}) {
+} & Omit<React.ComponentPropsWithoutRef<'section'>, 'title' | 'children'>) {
   return (
-    <section className="carte">
+    <section className="carte" {...attributs}>
       {(titre !== undefined || actions !== undefined) && (
         <header className="carte-entete">
           {titre !== undefined && <h2>{titre}</h2>}
@@ -23,6 +25,53 @@ export function Carte({
 }
 
 export type Ton = 'neutre' | 'ok' | 'alerte' | 'info' | 'avert'
+
+/**
+ * Variantes de bouton.
+ *
+ * `principal` est l'action unique de l'ecran ; `secondaire` et `contour`
+ * sont les actions secondaires ; `discret` est l'action tertiaire (dans un
+ * tableau, un menu) ; `danger` detruit. Un ecran qui affiche deux boutons
+ * principaux n'a pas de priorite : c'est le role du design system de
+ * l'empecher, pas celui de chaque page.
+ */
+export type VarianteBouton = 'principal' | 'secondaire' | 'contour' | 'discret' | 'danger'
+
+export function Bouton({
+  children,
+  variante = 'contour',
+  chargement = false,
+  desactive = false,
+  taille,
+  type = 'button',
+  onClick,
+  titre,
+}: {
+  children: ReactNode
+  variante?: VarianteBouton
+  chargement?: boolean
+  desactive?: boolean
+  taille?: 'mini' | 'normale' | 'grande'
+  type?: 'button' | 'submit' | 'reset'
+  onClick?: () => void
+  titre?: string
+}) {
+  const classes = ['bouton', variante]
+  if (taille === 'mini') classes.push('mini')
+  if (taille === 'grande') classes.push('large')
+  return (
+    <button
+      type={type}
+      className={classes.join(' ')}
+      disabled={desactive || chargement}
+      aria-busy={chargement || undefined}
+      onClick={onClick}
+      title={titre}
+    >
+      {children}
+    </button>
+  )
+}
 
 export function Badge({ ton = 'neutre', children }: { ton?: Ton; children: ReactNode }) {
   return <span className={`badge ${ton}`}>{children}</span>
@@ -64,7 +113,7 @@ export function EtatVide({
   action?: ReactNode
 }) {
   return (
-    <div className="etat-vide">
+    <div className="etat-vide" role="status">
       <p className="etat-vide-titre">{titre}</p>
       <p className="etat-vide-texte">{texte}</p>
       {action}
@@ -172,12 +221,13 @@ export function Kpi({
  * front qui connait la correspondance.
  */
 const ETATS: Record<string, { libelle: string; ton: Ton }> = {
-  payee: { libelle: 'Remboursé', ton: 'ok' },
+  payee: { libelle: 'Remboursée', ton: 'ok' },
   en_cours: { libelle: 'En cours', ton: 'avert' },
   recue: { libelle: 'Reçue', ton: 'info' },
   rejetee: { libelle: 'Rejetée', ton: 'alerte' },
   fraude_confirmee: { libelle: 'Fraude confirmée', ton: 'alerte' },
   piece_demandee: { libelle: 'Pièce demandée', ton: 'avert' },
+  archive: { libelle: 'Archivée', ton: 'neutre' },
 }
 
 export function Pastille({ statut }: { statut: string }) {
@@ -208,24 +258,70 @@ export function Vide({ children }: { children: ReactNode }) {
   return <p className="vide">{children}</p>
 }
 
+/**
+ * Attente.
+ *
+ * `Chargement` et `Vide` ne doivent pas se ressembler : l'un dit « j'arrive »,
+ * l'autre dit « il n'y a rien ». Les deux sont annonces aux lecteurs d'ecran,
+ * pour qu'un utilisateur non visuel sache dans quel etat il se trouve.
+ */
 export function Chargement({ texte = 'Chargement...' }: { texte?: string }) {
-  return <p className="vide">{texte}</p>
+  return (
+    <p className="vide chargement" role="status" aria-live="polite">
+      {texte}
+    </p>
+  )
 }
 
+/**
+ * Champ de formulaire.
+ *
+ * L'association du libelle au controle est IMPLICITE (le `<label>`
+ * englobe le controle) : c'est ce que les lecteurs d'ecran lisent, et
+ * c'est ce sur quoi s'appuient les tests de parcours. L'aide et
+ * l'erreur sont en revanche relyees par `aria-describedby`, pour qu'un
+ * lecteur d'ecran les annonce avec le champ.
+ */
 export function Champ({
   label,
   aide,
+  erreur,
+  requis = false,
   children,
 }: {
   label: string
   aide?: string
+  erreur?: string
+  requis?: boolean
   children: ReactNode
 }) {
+  const identifiant = `champ-${useId()}`
+  // Le controle enfant herite de l'identifiant, de l'etat invalide et de
+  // l'aide : c'est ce que le lecteur d'ecran annonce avec le champ. Le
+  // `<label>` continue d'englober le controle, donc l'association
+  // implicite reste vraie meme si un appelant remplace le label.
+  const enfant = Children.only(children) as ReactElement<Record<string, unknown>>
+  const decriptionId = erreur !== undefined ? `${identifiant}-erreur` : `${identifiant}-aide`
+  const controle = cloneElement(enfant, {
+    id: identifiant,
+    'aria-describedby': aide !== undefined || erreur !== undefined ? decriptionId : undefined,
+    'aria-invalid': erreur !== undefined ? true : undefined,
+    'aria-required': requis || undefined,
+  })
   return (
-    <label className="champ">
+    <label className={`champ${requis ? ' champ-requis' : ''}`} htmlFor={identifiant}>
       <span className="champ-label">{label}</span>
-      {children}
-      {aide !== undefined && <span className="champ-aide">{aide}</span>}
+      {controle}
+      {aide !== undefined && (
+        <span className="champ-aide" id={`${identifiant}-aide`}>
+          {aide}
+        </span>
+      )}
+      {erreur !== undefined && (
+        <span className="champ-erreur" id={`${identifiant}-erreur`}>
+          {erreur}
+        </span>
+      )}
     </label>
   )
 }
@@ -254,5 +350,10 @@ export function dateCourte(iso: string | null): string {
 }
 
 export function pourcentage(valeur: number): string {
-  return (valeur * 100).toFixed(1) + ' %'
+  return (
+    (valeur * 100).toLocaleString('fr-FR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }) + ' %'
+  )
 }

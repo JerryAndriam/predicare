@@ -1,0 +1,256 @@
+@layer components {
+/* =============================================================================
+   Les pages : connexion, accueils d'espace, hero.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- connexion */
+
+.login {
+  align-items: center;
+  background: var(--surface);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--espace-6) var(--espace-4);
+  position: relative;
+}
+
+/* Un voile bleu a 4 % : la page respire sans etre un aplat de couleur. */
+.login::before {
+  background: radial-gradient(circle at 50% 0%, var(--primaire-clair) 0%, transparent 62%);
+  content: '';
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.login-contenu {
+  display: grid;
+  gap: var(--espace-6);
+  grid-template-columns: minmax(0, 1fr) 400px;
+  margin: 0 auto;
+  max-width: 940px;
+  position: relative;
+  width: 100%;
+}
+
+.login-presentation {
+  align-self: center;
+}
+
+.login-presentation .marque {
+  align-items: center;
+  color: var(--encre);
+  display: inline-flex;
+  font-size: 1.5rem;
+  font-weight: var(--poids-titre);
+  gap: var(--espace-2);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.login-presentation .marque-point {
+  background: var(--primaire);
+  border-radius: var(--rayon-sm);
+  display: block;
+  height: 1.35rem;
+  width: 1.35rem;
+}
+
+.login-presentation h1 {
+  font-size: 2.375rem;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: var(--espace-5) 0 var(--espace-3);
+  max-width: 15ch;
+}
+
+.login-presentation p {
+  color: var(--encre-douce);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 44ch;
+}
+
+.login-arguments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-2);
+  list-style: none;
+  margin: var(--espace-5) 0 0;
+  padding: 0;
+}
+
+.login-argument {
+  align-items: flex-start;
+  color: var(--encre-douce);
+  display: flex;
+  font-size: var(--police-texte);
+  gap: var(--espace-2);
+}
+
+.login-argument svg {
+  color: var(--secondaire);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.login-carte {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon-lg);
+  box-shadow: var(--ombre-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-4);
+  padding: var(--espace-6) var(--espace-5);
+}
+
+.login-carte h2 {
+  font-size: var(--police-section);
+  margin: 0;
+}
+
+.login-aide {
+  color: var(--encre-douce);
+  font-size: var(--police-label);
+  margin: calc(-1 * var(--espace-3)) 0 0;
+}
+
+.login-pied {
+  color: var(--encre-faible);
+  font-size: var(--police-petit);
+  line-height: 1.6;
+  margin: var(--espace-4) 0 0;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .login-contenu {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 460px;
+  }
+
+  .login-presentation {
+    text-align: center;
+  }
+
+  .login-presentation h1,
+  .login-presentation p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .login-arguments {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--primaire);
+  border-radius: var(--rayon);
+  padding: var(--espace-6);
+}
+
+.hero h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  margin: var(--espace-1) 0 var(--espace-2);
+}
+
+.hero-texte {
+  color: var(--encre-douce);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 68ch;
+}
+
+.surtitre {
+  color: var(--secondaire-fonce);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------- accueils d'espace */
+
+.accueil-intro {
+  color: var(--encre-douce);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  margin: 0 0 var(--espace-4);
+  max-width: 72ch;
+}
+
+.accueil-intro strong {
+  color: var(--encre);
+  font-weight: var(--poids-composant);
+}
+
+.accueil-section {
+  margin-top: var(--espace-6);
+}
+
+.accueil-section h2 {
+  font-size: var(--police-section);
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--espace-1);
+}
+
+.accueil-section-chapo {
+  color: var(--encre-douce);
+  margin: 0 0 var(--espace-4);
+  max-width: 72ch;
+}
+
+.accueil-colonnes {
+  display: grid;
+  gap: var(--espace-4);
+  grid-template-columns: 1.7fr 1fr;
+}
+
+@media (max-width: 980px) {
+  .accueil-colonnes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.liste-definitions {
+  display: grid;
+  gap: var(--espace-3);
+  margin: 0;
+}
+
+.liste-definitions div {
+  border-bottom: 1px solid var(--bord);
+  padding-bottom: var(--espace-3);
+}
+
+.liste-definitions div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.liste-definitions dt {
+  color: var(--encre);
+  font-size: var(--police-texte);
+  font-weight: var(--poids-composant);
+  margin-bottom: var(--espace-1);
+}
+
+.liste-definitions dd {
+  color: var(--encre-douce);
+  font-size: var(--police-label);
+  line-height: var(--interligne);
+  margin: 0;
+}
+
+}

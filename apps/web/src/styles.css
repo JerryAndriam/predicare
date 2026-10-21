@@ -1,37 +1,117 @@
+@layer components {
 /* =============================================================================
-   PrediCare - feuille de style unique.
+   PrediCare - styles de base.
    Aucune police ni icone externe : la politique de securite (CSP) de la
    passerelle interdit tout chargement depuis un domaine tiers.
    ============================================================================= */
 
 :root {
-  --fond: #f0f4f8;
-  --fond-degrade: linear-gradient(135deg, #f0f4f8 0%, #e8f0f6 100%);
+  /* Fond papier, surfaces blanches : 60 % de la page reste neutre. */
+  --fond: #fbfcfa;
   --surface: #ffffff;
-  --surface-degrade: linear-gradient(180deg, #ffffff, #f8fafc);
-  --encre: #0e1a27;
-  --encre-douce: #5b6776;
-  --bord: #dde3eb;
-  --bord-fonce: #c5cdd6;
-  --primaire: #0f766e;
-  --primaire-fonce: #0b5c56;
-  --primaire-clair: #e6f4f2;
-  --primaire-degrade: linear-gradient(135deg, #0f766e, #0b5c56);
-  --alerte: #b42318;
-  --alerte-clair: #fee4e2;
-  --ok: #067647;
-  --ok-clair: #dcfae6;
-  --info: #1d4ed8;
-  --info-clair: #e8efff;
-  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.05), 0 12px 40px rgba(0,0,0,0.04);
-  --ombre-levite: 0 8px 24px rgba(16, 24, 40, 0.08), 0 2px 8px rgba(16, 24, 40, 0.04);
-  --rayon: 14px;
-  --rayon-sm: 8px;
-  --transition: all 0.2s ease;
+  --surface-2: #f5f7f3;
+  --surface-3: #edf0ea;
+  --encre: #1c2b27;
+  --encre-douce: #4b5a54;
+  --encre-faible: #6e7d76;
+  --bord: #e2e7dd;
+  --bord-fonce: #cfd6c9;
+  --bord-fort: #a9b3a2;
+
+  /* 30 % de bleu semi-clair : l'action, le lien, la navigation active. */
+  --primaire: #3e7ca8;
+  --primaire-fonce: #2f6288;
+  --primaire-clair: #edf4f9;
+  --primaire-degrade: linear-gradient(135deg, #5b9bc9, #3e7ca8);
+  --primaire-rgb: 62 124 168;
+
+  /* 10 % de vert arme estompe : l'accent, l'information, le succes. */
+  --secondaire: #66755a;
+  --secondaire-fonce: #556348;
+  --secondaire-clair: #f1f3ec;
+  --secondaire-vif: #8a9878;
+
+  --ok: #4f7a4a;
+  --ok-clair: #edf3e9;
+  --ok-vif: #6f9a63;
+  --avert: #946200;
+  --avert-clair: #fbf2dc;
+  --alerte: #a8443c;
+  --alerte-clair: #faece9;
+  --alerte-vif: #c25a50;
+  --info: #3e7ca8;
+  --info-clair: #edf4f9;
+
+  --encre-rgb: 28 43 39;
+
+  --espace-1: 4px;
+  --espace-2: 8px;
+  --espace-3: 12px;
+  --espace-4: 16px;
+  --espace-5: 24px;
+  --espace-6: 32px;
+  --espace-7: 40px;
+  --espace-8: 48px;
+
+  /* Nunito porte le texte ; Inter porte les titres et les chiffres. */
+  --police-sans: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --police-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --police-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --police-titre: 1.875rem;
+  --police-section: 1.375rem;
+  --police-composant: 1.0625rem;
+  --police-texte: 0.9375rem;
+  --police-label: 0.8125rem;
+  --police-petit: 0.75rem;
+  --interligne: 1.62;
+  --interligne-titre: 1.22;
+  --poids-titre: 700;
+  --poids-composant: 600;
+
+  --rayon-sm: 7px;
+  --rayon: 11px;
+  --rayon-lg: 16px;
+
+  --ombre-1: 0 1px 2px rgb(var(--encre-rgb) / 0.04);
+  --ombre-2: 0 1px 3px rgb(var(--encre-rgb) / 0.06), 0 8px 24px rgb(var(--encre-rgb) / 0.05);
+  --ombre-3: 0 16px 48px rgb(var(--encre-rgb) / 0.14);
+
+  --z-1: 1;
+  --z-2: 10;
+  --z-3: 100;
+
+  --focus: 0 0 0 3px rgb(var(--primaire-rgb) / 0.28);
+
+  --transition: 160ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* ------------------------------------------------------------------ focus
+ * Un anneau unique, visible sur fond clair ET sur le header sombre. Sans
+ * lui, la navigation au clavier ne montre plus ou l'on est : c'est le
+ * premier ecart de la WCAG 2.2 pour une application de sante. */
+:focus-visible {
+  outline: 2px solid var(--primaire);
+  outline-offset: 2px;
+  box-shadow: var(--focus);
+  border-radius: var(--rayon-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 html,
@@ -42,11 +122,11 @@ body,
 }
 
 body {
-  background: var(--fond-degrade);
+  background: var(--fond);
   color: var(--encre);
-  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
-  font-size: 15.5px;
-  line-height: 1.55;
+  font-family: var(--police-sans);
+  font-size: var(--police-texte);
+  line-height: var(--interligne);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -54,20 +134,25 @@ body {
 h1,
 h2,
 h3 {
+  font-family: var(--police-display);
+  letter-spacing: -0.02em;
   margin: 0 0 0.4rem;
-  line-height: 1.25;
+  line-height: var(--interligne-titre);
 }
 
 h1 {
-  font-size: 1.65rem;
+  font-size: 1.75rem;
+  font-weight: 700;
 }
 
 h2 {
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  font-weight: 600;
 }
 
 h3 {
-  font-size: 0.98rem;
+  font-size: 1rem;
+  font-weight: 600;
   margin-top: 0.6rem;
 }
 
@@ -76,7 +161,7 @@ p {
 }
 
 code {
-  background: #eef1f5;
+  background: var(--surface-3);
   border-radius: 4px;
   padding: 0.05rem 0.3rem;
   font-size: 0.9em;
@@ -84,115 +169,6 @@ code {
 
 a {
   color: var(--primaire);
-}
-
-/* ------------------------------------------------------------------ coquille */
-
-.app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.entete {
-  background: linear-gradient(160deg, #0e1a27 0%, #16202c 100%);
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
-}
-
-.barre-haut {
-  align-items: center;
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  margin: 0 auto;
-  max-width: 1220px;
-  padding: 0.9rem 1.4rem 0.7rem;
-}
-
-.marque {
-  align-items: center;
-  color: #fff;
-  display: inline-flex;
-  font-size: 1.2rem;
-  font-weight: 700;
-  gap: 0.55rem;
-  letter-spacing: 0.02em;
-  text-decoration: none;
-}
-
-.marque-point {
-  background: linear-gradient(135deg, #2dd4bf, #0f766e);
-  border-radius: 6px;
-  display: inline-block;
-  height: 1.15rem;
-  width: 1.15rem;
-}
-
-.marque-sous {
-  color: #8fa3b8;
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.marque.grande {
-  font-size: 1.7rem;
-  margin-bottom: 1.6rem;
-}
-
-.utilisateur {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-
-.utilisateur-nom {
-  font-weight: 600;
-}
-
-.nav {
-  display: flex;
-  gap: 0.25rem;
-  margin: 0 auto;
-  max-width: 1220px;
-  overflow-x: auto;
-  padding: 0 1rem;
-}
-
-.nav a {
-  border-bottom: 3px solid transparent;
-  color: #b9c6d4;
-  padding: 0.55rem 0.85rem 0.6rem;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.nav a:hover {
-  color: #fff;
-}
-
-.nav a.actif {
-  border-bottom-color: #2dd4bf;
-  color: #fff;
-  font-weight: 600;
-}
-
-.contenu {
-  flex: 1;
-  margin: 0 auto;
-  max-width: 1220px;
-  padding: 1.6rem 1.4rem 2.6rem;
-  width: 100%;
-}
-
-.pied {
-  color: var(--encre-douce);
-  font-size: 0.8rem;
-  padding: 1rem 1.4rem 1.6rem;
-  text-align: center;
 }
 
 /* ------------------------------------------------------------------- communs */
@@ -236,39 +212,39 @@ a {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
 
-.kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.kpi-valeur {
-  color: var(--encre);
-  font-size: 1.8rem;
-  font-weight: 750;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-
-.kpi-libelle {
-  color: var(--encre-douce);
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
 .grille-kpi {
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 }
 
-.titre-page p {
-  color: var(--encre-douce);
-  max-width: 70ch;
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon-lg);
+  box-shadow: var(--ombre-1);
+  padding: var(--espace-5);
+}
+
+.carte-entete h2 {
+  font-size: var(--police-section);
+  font-weight: var(--poids-composant);
+  letter-spacing: -0.01em;
+  line-height: var(--interligne-titre);
+  margin: 0;
+}
+
+.carte h3 {
+  font-size: var(--police-composant);
+  font-weight: var(--poids-composant);
+  line-height: var(--interligne-titre);
+  margin: 0 0 var(--espace-2);
+}
+
+.carte p {
+  line-height: var(--interligne);
 }
 
 .carte:hover {
-  box-shadow: var(--ombre-levite);
-  transform: translateY(-2px);
+  box-shadow: var(--ombre-2);
 }
 
 .carte-entete {
@@ -290,8 +266,9 @@ a {
 }
 
 .mono {
-  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-family: var(--police-mono);
   font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------------- KPI */
@@ -379,7 +356,7 @@ a {
 }
 
 .kpi-avert {
-  border-left-color: var(--avert, #d97706);
+  border-left-color: var(--avert, var(--avert));
 }
 
 .kpi-info {
@@ -395,7 +372,7 @@ a {
 }
 
 .squelette-barre {
-  background: linear-gradient(90deg, #eef2f7 25%, #e2e8f0 50%, #eef2f7 75%);
+  background: linear-gradient(90deg, var(--surface-3) 25%, var(--bord) 50%, var(--surface-3) 75%);
   background-size: 200% 100%;
   border-radius: 6px;
   animation: squelette 1.4s ease-in-out infinite;
@@ -481,7 +458,7 @@ a {
 }
 
 .barres-piste {
-  background: var(--surface-3, #f1f5f9);
+  background: var(--surface-3, var(--surface-3));
   border-radius: 3px 3px 0 0;
   display: flex;
   flex-direction: column;
@@ -506,7 +483,7 @@ a {
 }
 
 .barres-etiquette {
-  color: var(--encre-faible, #94a3b8);
+  color: var(--encre-faible, var(--encre-faible));
   font-size: 0.62rem;
   overflow: hidden;
   text-align: center;
@@ -527,7 +504,7 @@ a {
 }
 
 .table-dense tbody tr:hover {
-  background: var(--surface-2, #f8fafc);
+  background: var(--surface-2, var(--surface-2));
 }
 
 .droite {
@@ -537,21 +514,27 @@ a {
 /* ------------------------------------------------------------------- boutons */
 
 .bouton {
+  align-items: center;
   background: #fff;
   border: 1px solid var(--bord);
-  border-radius: 10px;
+  border-radius: var(--rayon);
   color: var(--encre);
   cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-weight: 600;
+  justify-content: center;
+  /* 44 px : une cible tactile confortable, au-dessus du minimum de 24 px
+     exige par la WCAG 2.2 (2.5.8). */
+  min-height: 44px;
   padding: 0.55rem 1rem;
   text-decoration: none;
   transition: var(--transition);
-  box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+  box-shadow: 0 1px 2px rgb(var(--encre-rgb) / 0.04);
 }
 
 .bouton:hover {
-  background: #f6f8fb;
+  background: var(--surface-2);
 }
 
 .bouton:disabled {
@@ -562,14 +545,14 @@ a {
 .bouton.principal {
   background: var(--primaire-degrade);
   border-color: transparent;
-  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
+  box-shadow: 0 1px 2px rgb(var(--primaire-rgb) / 0.18);
   color: #fff;
   letter-spacing: 0.01em;
 }
 
 .bouton.principal:hover {
-  background: linear-gradient(135deg, #0b5c56, #0a4e48);
-  box-shadow: 0 4px 16px rgba(15, 118, 110, 0.35);
+  background: linear-gradient(135deg, var(--primaire-fonce), var(--primaire-fonce));
+  box-shadow: 0 4px 14px rgb(var(--primaire-rgb) / 0.25);
   transform: translateY(-1px);
 }
 
@@ -581,7 +564,7 @@ a {
 }
 
 .bouton.discret:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-3);
 }
 
 .carte .bouton.discret {
@@ -593,13 +576,13 @@ a {
 }
 
 .bouton.danger {
-  background: linear-gradient(135deg, #fee4e2, #ffd5d0);
-  border-color: #f3b6b0;
-  color: #b42318;
+  background: linear-gradient(135deg, var(--alerte-clair), var(--alerte-clair));
+  border-color: var(--alerte);
+  color: var(--alerte);
 }
 
 .bouton.danger:hover {
-  background: linear-gradient(135deg, #ffd5d0, #fcb5aa);
+  background: linear-gradient(135deg, var(--alerte-clair), var(--alerte-clair));
   border-color: var(--alerte);
 }
 
@@ -621,78 +604,6 @@ a {
   font: inherit;
   padding: 0;
   text-decoration: underline;
-}
-
-/* --------------------------------------------------------------------- login */
-
-.login {
-  align-items: center;
-  display: grid;
-  gap: 3rem;
-  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
-  margin: 0 auto;
-  max-width: 1080px;
-  min-height: 100vh;
-  padding: 2rem 1.4rem;
-}
-
-.login-presentation h1 {
-  font-size: 2.1rem;
-  max-width: 20ch;
-}
-
-.login-presentation p {
-  color: var(--encre-douce);
-  max-width: 48ch;
-}
-
-.login-points {
-  color: var(--encre-douce);
-  margin: 1.2rem 0 0;
-  padding-left: 1.1rem;
-}
-
-.login-points li {
-  margin: 0.35rem 0;
-}
-
-.login-carte {
-  background: var(--surface);
-  border: 1px solid var(--bord);
-  border-radius: 16px;
-  box-shadow: var(--ombre);
-  padding: 1.8rem;
-}
-
-.login-aide {
-  color: var(--encre-douce);
-  font-size: 0.88rem;
-  margin-bottom: 1rem;
-}
-
-.comptes-demo {
-  border-top: 1px solid var(--bord);
-  margin-top: 1.3rem;
-  padding-top: 1rem;
-}
-
-.comptes-demo ul {
-  list-style: none;
-  margin: 0.5rem 0;
-  padding: 0;
-}
-
-.comptes-demo li {
-  align-items: center;
-  display: flex;
-  font-size: 0.86rem;
-  gap: 0.6rem;
-  justify-content: space-between;
-  padding: 0.2rem 0;
-}
-
-.comptes-demo li span {
-  color: var(--encre-douce);
 }
 
 /* ----------------------------------------------------------------- formulaire */
@@ -738,7 +649,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--primaire);
-  outline: 2px solid rgba(15, 118, 110, 0.18);
+  outline: 2px solid rgb(var(--primaire-rgb) / 0.18);
 }
 
 textarea {
@@ -769,32 +680,6 @@ textarea {
   padding-top: 0.7rem;
 }
 
-/* -------------------------------------------------------------------- onglets */
-
-.onglets {
-  border-bottom: 1px solid var(--bord);
-  display: flex;
-  gap: 0.2rem;
-  overflow-x: auto;
-}
-
-.onglet {
-  background: none;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  color: var(--encre-douce);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  padding: 0.55rem 0.9rem;
-  white-space: nowrap;
-}
-
-.onglet.actif {
-  border-bottom-color: var(--primaire);
-  color: var(--primaire);
-}
-
 /* --------------------------------------------------------------------- table */
 
 .table-enveloppe {
@@ -822,7 +707,7 @@ textarea {
 }
 
 .table tbody tr:hover {
-  background: #fafbfd;
+  background: var(--surface-2);
 }
 
 /* -------------------------------------------------------------------- badges */
@@ -836,11 +721,11 @@ textarea {
   padding: 0.24rem 0.7rem;
   white-space: nowrap;
   transition: var(--transition);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: var(--ombre-1);
 }
 
 .badge.neutre {
-  background: #eef1f5;
+  background: var(--surface-3);
   color: var(--encre-douce);
 }
 
@@ -860,8 +745,8 @@ textarea {
 }
 
 .badge.avert {
-  background: #fffbeb;
-  color: #b45309;
+  background: var(--avert-clair);
+  color: var(--avert);
 }
 
 /* ------------------------------------------------------------------- messages */
@@ -870,7 +755,7 @@ textarea {
   background: var(--alerte-clair);
   border-left: 4px solid var(--alerte);
   border-radius: 6px;
-  color: #7a1a12;
+  color: var(--alerte);
   padding: 0.55rem 0.75rem;
 }
 
@@ -878,7 +763,7 @@ textarea {
   background: var(--ok-clair);
   border-left: 4px solid var(--ok);
   border-radius: 6px;
-  color: #04543a;
+  color: var(--ok);
   padding: 0.55rem 0.75rem;
 }
 
@@ -891,37 +776,6 @@ textarea {
 .centre {
   padding: 3rem 1rem;
   text-align: center;
-}
-
-/* ---------------------------------------------------------------------- accueil */
-
-.hero {
-  background: linear-gradient(120deg, #0e1a27, #14384a 62%, #0f766e);
-  border-radius: var(--rayon);
-  color: #fff;
-  padding: 1.7rem 1.8rem;
-}
-
-.hero h1 {
-  font-size: 1.75rem;
-}
-
-.surtitre {
-  color: #7dd3c7;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  margin-bottom: 0.3rem;
-  text-transform: uppercase;
-}
-
-.hero-texte {
-  color: #cfdae5;
-  max-width: 75ch;
-}
-
-.hero .badge {
-  vertical-align: middle;
 }
 
 .etape {
@@ -967,7 +821,7 @@ textarea {
   background: linear-gradient(135deg, var(--primaire-clair), #fff);
   border: 1px solid var(--bord);
   border-radius: 14px;
-  box-shadow: var(--ombre);
+  box-shadow: var(--ombre-1);
   display: flex;
   gap: 0.6rem;
   padding: 0.9rem 1.1rem;
@@ -975,7 +829,7 @@ textarea {
 }
 
 .score-valeur {
-  background: linear-gradient(135deg, var(--primaire), #0b5c56);
+  background: linear-gradient(135deg, var(--primaire), var(--primaire-fonce));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1015,7 +869,7 @@ textarea {
 }
 
 .shap-valeur {
-  font-family: "Cascadia Mono", Consolas, monospace;
+  font-family: var(--police-mono);
   font-size: 0.82rem;
   white-space: nowrap;
 }
@@ -1029,7 +883,7 @@ textarea {
 }
 
 .barre {
-  background: #e8ecf1;
+  background: var(--surface-3);
   border-radius: 999px;
   height: 7px;
   margin-top: 0.3rem;
@@ -1043,11 +897,11 @@ textarea {
 }
 
 .barre span.pousse_vers_fraude {
-  background: linear-gradient(90deg, #f97066, #b42318);
+  background: linear-gradient(90deg, var(--alerte-vif), var(--alerte));
 }
 
 .barre span.pousse_vers_legitime {
-  background: linear-gradient(90deg, #32d583, #067647);
+  background: linear-gradient(90deg, var(--ok-vif), var(--ok));
 }
 
 /* ---------------------------------------------------------------------- alertes */
@@ -1085,9 +939,9 @@ textarea {
 }
 
 .alerte-age {
-  background: #fffbeb;
+  background: var(--avert-clair);
   border-radius: 999px;
-  color: #b45309;
+  color: var(--avert);
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.05rem 0.45rem;
@@ -1143,7 +997,7 @@ textarea {
 
 .bulle.assistant {
   align-self: flex-start;
-  background: #f4f6f9;
+  background: var(--surface-2);
 }
 
 .bulle-auteur {
@@ -1359,7 +1213,7 @@ textarea {
 
 .sonde {
   align-items: center;
-  background: #f8fafc;
+  background: var(--surface-2);
   border: 1px solid var(--bord);
   border-radius: 10px;
   display: flex;
@@ -1372,20 +1226,11 @@ textarea {
 /* ------------------------------------------------------------------ responsive */
 
 @media (max-width: 980px) {
-  .grille.deux,
+  .grille.quatre,
   .grille.trois,
-  .grille.deux-large,
-  .login {
+  .grille.deux,
+  .grille.deux-large {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .login {
-    gap: 1.5rem;
-    padding-top: 2.4rem;
-  }
-
-  .login-presentation h1 {
-    font-size: 1.6rem;
   }
 
   .ligne-facture {
@@ -1395,4 +1240,202 @@ textarea {
   .ligne-facture .bouton {
     grid-column: 1 / -1;
   }
+}
+
+
+/* =============================================================================
+   Classes qui manquaient : le contenu s'affichait « nu », sans habillage.
+   ========================================================================== */
+
+/* Resultat de la notation d'une facture (espace professionnel). */
+.resultat {
+  background: var(--primaire-clair);
+  border: 1px solid var(--bord);
+  border-left: 3px solid var(--primaire);
+  border-radius: var(--rayon);
+  padding: var(--espace-4);
+}
+
+/* Detail d'une alerte (espace gestionnaire). */
+.detail-alerte {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-3);
+}
+
+/* Details techniques d'une reponse de l'assistant. */
+.details-techniques {
+  margin-top: var(--espace-2);
+}
+
+.details-techniques > summary {
+  color: var(--encre-douce);
+  cursor: pointer;
+  font-size: var(--police-label);
+}
+
+.details-techniques > summary:focus-visible {
+  outline: 2px solid var(--primaire);
+  outline-offset: 2px;
+}
+
+/* Journal : le detail d'une ligne, replie. */
+.journal-details {
+  margin-top: var(--espace-1);
+}
+
+.journal-details-liste {
+  color: var(--encre-douce);
+  font-size: var(--police-petit);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* =============================================================================
+   Variantes de boutons. Le jeu de classes existant est conserve : les
+   usages actuels ne changent pas, on ajoute ce qui manquait.
+   ========================================================================== */
+
+.bouton.secondaire {
+  background: var(--primaire-clair);
+  border-color: transparent;
+  color: var(--primaire-fonce);
+}
+
+.bouton.secondaire:hover {
+  background: var(--primaire-clair);
+}
+
+.bouton.contour {
+  background: transparent;
+  border-color: var(--bord-fonce);
+  color: var(--encre);
+}
+
+.bouton.contour:hover {
+  background: var(--surface-2);
+  border-color: var(--primaire);
+  color: var(--primaire-fonce);
+}
+
+.bouton.danger {
+  background: var(--alerte-clair);
+  border-color: var(--alerte);
+  color: var(--alerte);
+}
+
+.bouton.danger:hover {
+  background: var(--alerte-clair);
+}
+
+.bouton.mini {
+  font-size: var(--police-label);
+  padding: var(--espace-1) var(--espace-2);
+}
+
+.bouton[aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.75;
+}
+
+/* Cible tactile : 44 px de hauteur, la recommandation mobile. */
+.bouton,
+.nav a,
+.onglet {
+  min-height: 2.75rem;
+}
+
+.bouton.large {
+  min-height: 2.875rem;
+}
+
+/* =============================================================================
+   Champs de formulaire : etat d'erreur explicite et libelle associe.
+   ========================================================================== */
+
+.champ-erreur {
+  color: var(--alerte);
+  display: block;
+  font-size: var(--police-label);
+  margin-top: var(--espace-1);
+}
+
+.champ[aria-invalid='true'] input,
+.champ[aria-invalid='true'] select,
+.champ[aria-invalid='true'] textarea {
+  border-color: var(--alerte);
+}
+
+/* L'asterisque suit le TEXTE du champ, pas le controle : mis sur le
+   label entier, il tombait sous la zone de saisie. */
+.champ-requis .champ-label::after {
+  color: var(--alerte);
+  content: ' *';
+}
+
+/* =============================================================================
+   Pieces ajoutees par la refonte
+   ========================================================================== */
+
+/* Un texte reserve aux lecteurs d'ecran : il existe pour l'accessibilite,
+   pas pour la lecture visuelle. */
+.visuellement-cache {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+/* Un formulaire pose sur une surface : la carte qui le contient suffit
+   souvent, le formulaire ne rajoute pas de second cadre. */
+.formulaire-creux {
+  background: var(--surface-2);
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  padding: var(--espace-5);
+}
+
+/* ------------------------------------------------------------------ evasion
+ * Un clavier ne doit pas traverser la navigation a chaque page. Le lien
+ * n'apparait qu'a la premiere tabulation : il est la, mais invisible. */
+.lien-evitement {
+  background: var(--primaire);
+  border-radius: var(--rayon);
+  color: #fff;
+  font-weight: 600;
+  left: var(--espace-3);
+  padding: var(--espace-2) var(--espace-4);
+  position: absolute;
+  text-decoration: none;
+  top: var(--espace-3);
+  z-index: var(--z-3);
+  /* Invisible par defaut : il ne doit pas apparaitre sur la page, seulement
+     a la premiere tabulation. */
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.lien-evitement:focus {
+  clip: auto;
+  clip-path: none;
+  height: auto;
+  overflow: visible;
+  width: auto;
+}
+
+.lien-evitement:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 }

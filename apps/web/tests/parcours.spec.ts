@@ -26,7 +26,7 @@ async function seConnecter(page: Page, email: string): Promise<void> {
   await page.getByLabel('ADRESSE E-MAIL').fill(email)
   await page.getByLabel('MOT DE PASSE').fill(MOT_DE_PASSE)
   await page.getByRole('button', { name: 'Se connecter' }).click()
-  await expect(page.getByRole('button', { name: 'Se deconnecter' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Menu du profil' })).toBeVisible()
 }
 
 test.describe('Parcours assuré', () => {
@@ -43,12 +43,19 @@ test.describe('Parcours assuré', () => {
     // il repond en mode degrade et le dit ; sur une machine configuree, il
     // repond avec ses sources. Le test verifie les DEUX cas : ce qui compte
     // est que l'utilisateur sache ce qu'il obtient.
-    await page.getByRole('tab', { name: 'Assistant' }).click()
+    await page.getByRole('link', { name: 'Assistant garanties' }).click()
+    await expect(page).toHaveURL(/\/assure\/assistant/)
     await page.getByLabel('Votre question').fill('Quel est mon plafond de remboursement ?')
     await page.getByRole('button', { name: 'Envoyer' }).click()
-    await expect(page.locator('.bulle.assistant')).toBeVisible({ timeout: 30_000 })
+    // La bulle existe des que la reponse demarre, et affiche d'abord un
+    // texte d'ATTENTE (« Recherche dans vos contrats... »). Lire a cet
+    // instant fait echouer le test sur une course, pas sur un vrai defaut :
+    // on attend donc que l'etat d'attente disparaisse.
+    const bulle = page.locator('.bulle.assistant').last()
+    await expect(bulle).toBeVisible({ timeout: 30_000 })
+    await expect(bulle).not.toContainText(/Recherche dans vos contrats/i, { timeout: 30_000 })
 
-    const reponse = (await page.locator('.bulle.assistant').last().innerText()).toLowerCase()
+    const reponse = (await bulle.innerText()).toLowerCase()
     // Le mode degrade, la reponse sourcee et l'echec sont trois issues
     // possibles : ce qui compte est que l'utilisateur sache ce qu'il
     // obtient, et que l'ecran ne reste jamais vide.
@@ -73,19 +80,19 @@ test.describe('Parcours professionnel de santé', () => {
     await seConnecter(page, COMPTES.pro)
     await expect(page).toHaveURL(/\/professionnel/)
 
-    await page.getByRole('tab', { name: 'Deposer une facture' }).click()
+    await page.getByRole('link', { name: 'Déposer une facture' }).click()
     await expect(page.getByRole('button', { name: /Envoyer et noter/i })).toBeVisible()
 
     await page.getByRole('button', { name: /Envoyer et noter/i }).click()
 
     // Le resultat porte le score, le seuil et l'etat de la notification.
-    await expect(page.getByText(/score de fraude/i)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/note de vigilance/i)).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(/seuil/i).first()).toBeVisible()
   })
 
   test('importe un lot et rejette les factures invalides', async ({ page }) => {
     await seConnecter(page, COMPTES.pro)
-    await page.getByRole('tab', { name: 'Import de lot' }).click()
+    await page.getByRole('link', { name: 'Importer un lot' }).click()
 
     const zone = page.getByLabel(/Contenu/i)
     await expect(zone).toBeVisible()
@@ -93,7 +100,7 @@ test.describe('Parcours professionnel de santé', () => {
 
   test('suit ses dossiers avec un filtre de statut', async ({ page }) => {
     await seConnecter(page, COMPTES.pro)
-    await page.getByRole('tab', { name: 'Suivi des dossiers' }).click()
+    await page.getByRole('link', { name: 'Suivi des dossiers' }).click()
     await expect(page.getByLabel('Statut')).toBeVisible()
     await expect(page.getByText(/dossier\(s\)/)).toBeVisible()
   })
@@ -111,7 +118,7 @@ test.describe('Parcours gestionnaire', () => {
     const premiere = page.locator('.alerte-item').first()
     if (await premiere.count()) {
       await premiere.click()
-      await expect(page.getByText(/Lignes de la facture/i)).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Lignes de la facture' })).toBeVisible()
       await expect(page.getByText(/Ordonnance/i)).toBeVisible()
     }
   })
@@ -122,25 +129,25 @@ test.describe('Parcours administrateur', () => {
     await seConnecter(page, COMPTES.admin)
     await expect(page).toHaveURL(/\/administration/)
 
-    // L'en-tete affiche la version ET le seuil, venus du serveur.
-    await expect(page.getByText(/^Version :/)).toBeVisible()
-    await expect(page.getByText(/^Seuil :/)).toBeVisible()
+    // L'accueil affiche la version ET le seuil, venus du serveur.
+    await expect(page.getByText(/Version du modèle/i)).toBeVisible()
+    await expect(page.getByText(/Seuil de déclenchement/i)).toBeVisible()
   })
 
   test('consulte le journal d’audit filtrable et exportable', async ({ page }) => {
     await seConnecter(page, COMPTES.admin)
-    await page.getByRole('tab', { name: 'Journal' }).click()
+    await page.getByRole('link', { name: 'Journal' }).click()
 
     await expect(page.getByLabel('Action')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Exporter en CSV' })).toBeVisible()
-    await expect(page.getByText(/Journal d’audit/i).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Journal des actions' })).toBeVisible()
   })
 
   test('teste un canal de notification', async ({ page }) => {
     await seConnecter(page, COMPTES.admin)
-    await page.getByRole('tab', { name: 'Canaux' }).click()
+    await page.getByRole('link', { name: 'Canaux' }).click()
 
-    await expect(page.getByText(/Secrets à configurer/i)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Canaux de notification' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Tester' }).first()).toBeVisible()
   })
 
@@ -162,7 +169,9 @@ test.describe('Parcours administrateur', () => {
 test.describe('Aide intégrée', () => {
   test('est accessible et propre au rôle', async ({ page }) => {
     await seConnecter(page, COMPTES.gestionnaire)
-    await page.getByRole('link', { name: 'Aide' }).click()
+    await page.getByRole('button', { name: 'Menu du profil' }).click()
+    await page.getByRole('menuitem', { name: 'Aide' }).click()
+    await page.getByRole('menuitem', { name: 'Centre d’aide' }).click()
     await expect(page).toHaveURL(/\/aide/)
     await expect(page.getByText(/Traiter une alerte/i)).toBeVisible()
   })

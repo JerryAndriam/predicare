@@ -65,7 +65,7 @@ est alors conservé une heure, cloisonné sur votre seul dossier.
 > « Quel est le taux de remboursement d'une consultation en formule PREMIUM ? »
 > « Et quel est le plafond annuel de l'optique pour cette formule ? »
 
-**Dans l'interface web, ce suivi est actif.** L'onglet Assistant génère un
+**Dans l'interface web, ce suivi est actif.** La page « Assistant garanties » génère un
 identifiant de conversation et le réutilise pour chaque question. Vous pouvez
 donc enchaîner « Et pour l'optique ? » après une question sur une formule.
 Le bouton **Nouvelle conversation** repart sans contexte : il génère un nouvel
@@ -246,7 +246,7 @@ source de malentendu :
 
 | Seuil | Où il se règle | Ce qu'il décide |
 | --- | --- | --- |
-| **Détection** | onglet Seuil, ou `FRAUD_ALERT_THRESHOLD` | ce qui entre dans la file du gestionnaire |
+| **Détection** | section « Seuil d’alerte », ou `FRAUD_ALERT_THRESHOLD` | ce qui entre dans la file du gestionnaire |
 | **Notification** | `SEUIL_NOTIFICATION_SLACK` | ce qui déclenche une interruption humaine par Slack |
 
 Le seuil se change **à chaud** : aucun conteneur ne redémarre. L'en-tête

@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-fond: #fbfcfa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f7f3;
+  --color-surface-3: #edf0ea;
+  --color-ink: #1c2b27;
+  --color-ink-soft: #4b5a54;
+  --color-ink-muted: #6e7d76;
+  --color-line: #e2e7dd;
+  --color-line-strong: #cfd6c9;
+  --color-primary: #3e7ca8;
+  --color-primary-dark: #2f6288;
+  --color-primary-soft: #edf4f9;
+  --color-olive: #66755a;
+  --color-olive-dark: #556348;
+  --color-olive-soft: #f1f3ec;
+  --color-ok: #4f7a4a;
+  --color-warn: #946200;
+  --color-danger: #a8443c;
+
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, monospace;
+
+  --radius-card: 16px;
+  --shadow-card: 0 1px 3px rgb(28 43 39 / 0.06), 0 8px 24px rgb(28 43 39 / 0.05);
+  --shadow-float: 0 16px 48px rgb(28 43 39 / 0.14);
+
+  --animate-menu: apparition-menu 150ms cubic-bezier(0.2, 0, 0.2, 1);
+  --animate-content: entree-contenu 220ms cubic-bezier(0.2, 0, 0.2, 1);
+
+  @keyframes apparition-menu {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes entree-contenu {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
