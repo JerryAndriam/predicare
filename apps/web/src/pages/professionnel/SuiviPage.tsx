@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
 
-import { api, messageErreur } from '../../api/client'
-import type { InvoiceSummary, Page } from '../../api/types'
-import { EnTetePage } from '../../components/blocs'
+import { api, messageErreur } from "../../api/client";
+import type { InvoiceSummary, Page } from "../../api/types";
+import { EnTetePage } from "../../components/blocs";
 import {
   Carte,
   Champ,
@@ -14,20 +14,19 @@ import {
   dateCourte,
   montant,
   pourcentage,
-} from '../../components/ui'
+} from "../../components/ui";
 
 /** Nombre de dossiers servis par page : la pagination est cote serveur. */
-const LIMITE_SUIVI = 100
+const LIMITE_SUIVI = 100;
 
 /** Statuts de facture proposes dans le filtre du suivi. */
 const STATUTS_AFFICHES: { valeur: string; libelle: string }[] = [
-  { valeur: 'reçue', libelle: 'Reçue' },
-  { valeur: 'en_cours', libelle: 'En cours' },
-  { valeur: 'payee', libelle: 'Payée' },
-  { valeur: 'rejetée', libelle: 'Rejetée' },
-  { valeur: 'fraude_confirmee', libelle: 'Fraude confirmée' },
-  { valeur: 'piece_demandee', libelle: 'Pièce demandée' },
-]
+  { valeur: "recue", libelle: "Reçue" },
+  { valeur: "EN_COURS", libelle: "En cours" },
+  { valeur: "PAYEE", libelle: "Payée" },
+  { valeur: "REJETEE", libelle: "Rejetée" },
+  { valeur: "PIECE_DEMANDEE", libelle: "Pièce demandée" },
+];
 
 /**
  * Le suivi des dossiers.
@@ -37,44 +36,49 @@ const STATUTS_AFFICHES: { valeur: string; libelle: string }[] = [
  * est applique lui aussi par le serveur.
  */
 export function SuiviPage() {
-  const [factures, setFactures] = useState<InvoiceSummary[]>([])
-  const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
-  const [chargement, setChargement] = useState(true)
-  const [filtreStatut, setFiltreStatut] = useState('')
-  const [erreur, setErreur] = useState<string | null>(null)
+  const [factures, setFactures] = useState<InvoiceSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [chargement, setChargement] = useState(true);
+  const [filtreStatut, setFiltreStatut] = useState("");
+  const [erreur, setErreur] = useState<string | null>(null);
 
   const charger = (decalage = 0) => {
-    setChargement(true)
-    const filtre = filtreStatut === '' ? '' : `&statut=${encodeURIComponent(filtreStatut)}`
+    setChargement(true);
+    const filtre =
+      filtreStatut === "" ? "" : `&statut=${encodeURIComponent(filtreStatut)}`;
     api<Page<InvoiceSummary>>(
       `/api/core/factures?limit=${LIMITE_SUIVI}&offset=${decalage}${filtre}`,
     )
       .then((page) => {
-        setFactures(page.items)
-        setOffset(decalage)
-        setTotal(page.total)
+        setFactures(page.items);
+        setOffset(decalage);
+        setTotal(page.total);
       })
       .catch((probleme: unknown) => setErreur(messageErreur(probleme)))
-      .finally(() => setChargement(false))
-  }
+      .finally(() => setChargement(false));
+  };
 
   useEffect(() => {
-    charger()
-  }, [])
+    charger();
+  }, []);
 
   return (
     <div className="pile">
       <EnTetePage
         fil={[
-          { libelle: 'Espace professionnel de santé', chemin: '/professionnel' },
-          { libelle: 'Suivi des dossiers' },
+          {
+            libelle: "Espace professionnel de santé",
+            chemin: "/professionnel",
+          },
+          { libelle: "Suivi des dossiers" },
         ]}
         titre="Suivi des dossiers"
         chapo={
           <>
-            L’état de chaque dossier déposé : date, montant, note de vigilance et statut
-            de traitement. Le filtre et la pagination couvrent l’ensemble de vos dépôts.
+            L’état de chaque dossier déposé : date, montant, note de vigilance
+            et statut de traitement. Le filtre et la pagination couvrent
+            l’ensemble de vos dépôts.
           </>
         }
       />
@@ -88,9 +92,9 @@ export function SuiviPage() {
             <select
               value={filtreStatut}
               onChange={(event) => {
-                setFiltreStatut(event.target.value)
-                setFactures([])
-                charger(0)
+                setFiltreStatut(event.target.value);
+                setFactures([]);
+                charger(0);
               }}
             >
               <option value="">Tous les statuts</option>
@@ -121,6 +125,7 @@ export function SuiviPage() {
                 </caption>
                 <thead>
                   <tr>
+                    <th scope="col">Référence</th>
                     <th scope="col">Date</th>
                     <th scope="col">Assuré</th>
                     <th scope="col">Prestataire</th>
@@ -136,13 +141,23 @@ export function SuiviPage() {
                 <tbody>
                   {factures.map((facture) => (
                     <tr key={facture.facture_id}>
+                      <td className="mono">
+                        {facture.reference ?? facture.facture_id}
+                      </td>
                       <td>{dateCourte(facture.date_facture)}</td>
                       <td className="mono">{facture.assure_pseudonyme}</td>
-                      <td className="mono">{facture.prestataire_id}</td>
-                      <td className="droite">{montant(facture.montant_total)}</td>
+                      <td
+                        className="mono"
+                        title={facture.prestataire_nom ?? undefined}
+                      >
+                        {facture.prestataire_nom ?? facture.prestataire_id}
+                      </td>
+                      <td className="droite">
+                        {montant(facture.montant_total)}
+                      </td>
                       <td className="droite">
                         {facture.score_fraude === null
-                          ? '-'
+                          ? "-"
                           : pourcentage(facture.score_fraude)}
                       </td>
                       <td>
@@ -164,7 +179,6 @@ export function SuiviPage() {
           </>
         )}
       </Carte>
-
     </div>
-  )
+  );
 }
