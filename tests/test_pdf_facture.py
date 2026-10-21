@@ -41,6 +41,7 @@ from predicare.pdf_facture import (
     resoudre_acte,
     resoudre_assure,
     resoudre_prestataire,
+    resoudre_prestataire_parmi,
 )
 
 
@@ -97,6 +98,46 @@ def _pdf(lignes: list[str]) -> bytes:
     tampon = BytesIO()
     ecrivain.write(tampon)
     return tampon.getvalue()
+
+def _pdf_tableau(
+    lignes: list[list[tuple[int, str]]],
+    *,
+    y_depart: int = 800,
+    interligne: int = 14,
+) -> bytes:
+    """Un PDF texte dont les cellules sont placees a des abscisses explicites."""
+    ecrivain = PdfWriter()
+    page = ecrivain.add_blank_page(width=595, height=842)
+    police = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+            NameObject("/Encoding"): NameObject("/WinAnsiEncoding"),
+        }
+    )
+    reference_police = ecrivain._add_object(police)
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): reference_police})}
+    )
+
+    contenu = ["BT", "/F1 9 Tf"]
+    y = y_depart
+    for cellules in lignes:
+        for x, texte in cellules:
+            contenu.append(f"1 0 0 1 {x} {y} Tm")
+            contenu.append(f"{_chaine_pdf(texte)} Tj")
+        y -= interligne
+    contenu.append("ET")
+
+    flux = DecodedStreamObject()
+    flux.set_data("\n".join(contenu).encode("latin-1"))
+    page[NameObject("/Contents")] = ecrivain._add_object(flux)
+
+    tampon = BytesIO()
+    ecrivain.write(tampon)
+    return tampon.getvalue()
+
 
 
 #: Gabarit 1 : libelle et valeur sur la meme ligne, separes par `:`.
@@ -517,11 +558,13 @@ class _Session:
         prestataire_existe: bool = True,
         prestataires: list[tuple] | None = None,
         actes: list[tuple] | None = None,
+        medicaments: list[tuple] | None = None,
     ) -> None:
         self.assure_existe = assure_existe
         self.prestataire_existe = prestataire_existe
         self.prestataires = prestataires or []
         self.actes = actes or []
+        self.medicaments = medicaments or []
         self.requetes: list[str] = []
 
     def execute(self, requete, parametres=None):
@@ -533,14 +576,17 @@ class _Session:
             return _Resultat(scalaire=parametres["valeur"] if self.prestataire_existe else None)
         if "FROM core.prestataire" in sql:
             return _Resultat(lignes=self.prestataires)
-        if "FROM core.acte WHERE" in sql:
-            cible = str(parametres["valeur"]).upper()
-            for code, _libelle in self.actes:
-                if code.upper() == cible:
-                    return _Resultat(scalaire=code)
-            return _Resultat(scalaire=None)
+        for table, referentiel in (("core.acte", self.actes), ("core.medicament", self.medicaments)):
+            if f"FROM {table} WHERE" in sql:
+                cible = str(parametres["valeur"]).upper()
+                for code, _libelle in referentiel:
+                    if code.upper() == cible:
+                        return _Resultat(scalaire=code)
+                return _Resultat(scalaire=None)
         if "FROM core.acte" in sql:
             return _Resultat(lignes=self.actes)
+        if "FROM core.medicament" in sql:
+            return _Resultat(lignes=self.medicaments)
         raise AssertionError(f"Requete inattendue : {sql}")
 
 
@@ -686,3 +732,160 @@ def test_extraction_pure_ne_touche_pas_a_la_base() -> None:
 
     assert payload["lignes"]
     assert payload["facture_id"] == facture.reference
+
+
+# ---------------------------------------------------------------------------
+# Lecture d'un tableau mis en page (le vrai gabarit du jury)
+# ---------------------------------------------------------------------------
+
+GABARIT_TABLEAU = _pdf_tableau(
+    [
+        [(40, "DOCUMENT FICTIF - donnees synthetiques PrediCare TPA")],
+        [(40, "Page 1")],
+        [(40, "BIO-LABO ANDRIMASO")],
+        [(40, "Lot V G 211 Bis Ambanidia - Antananarivo")],
+        [(40, "FACTURE N° BA177/2026/00043")],
+        [(40, "Date des soins"), (220, "2026-01-30")],
+        [(40, "Date de facture"), (220, "2026-02-05")],
+        [(40, "Patient"), (220, "RASOATIANA Isabelle")],
+        [(40, "N° assuré"), (220, "ASS-AA878F0B2E")],
+        [
+            (40, "Code"),
+            (110, "Désignation"),
+            (330, "Qté"),
+            (380, "P.U."),
+            (470, "Montant"),
+        ],
+        [
+            (40, "LAB-NFS"),
+            (110, "Numération formule sanguine"),
+            (330, "1"),
+            (380, "11 500 Ar"),
+            (470, "11 500 Ar"),
+        ],
+        [
+            (40, "LAB-CRP"),
+            (110, "Protéine C réactive"),
+            (330, "1"),
+            (380, "11 500 Ar"),
+            (470, "11 500 Ar"),
+        ],
+        [(40, "TOTAL"), (470, "23 000 Ar")],
+        [(40, "Arrêtée la présente facture à la somme de : vingt-trois mille ariary")],
+    ]
+)
+
+
+def test_un_tableau_mis_en_page_est_lu_ligne_a_ligne() -> None:
+    extraite = extraire_facture(GABARIT_TABLEAU, nom="facture_tableau.pdf")
+
+    assert extraite.date_facture == "2026-02-05T00:00:00"
+    assert extraite.assure == "ASS-AA878F0B2E"
+    assert extraite.prestataire == "BIO-LABO ANDRIMASO"
+    assert extraite.prestataires == ("BIO-LABO ANDRIMASO",)
+    assert extraite.montant_total == 23000.0
+    assert len(extraite.lignes) == 2
+    assert [ligne["code_acte"] for ligne in extraite.lignes] == ["LAB-NFS", "LAB-CRP"]
+    assert all(ligne["quantite"] == 1 for ligne in extraite.lignes)
+
+
+def test_un_tableau_aux_colonnes_desordonnees_est_lu() -> None:
+    document = _pdf_tableau(
+        [
+            [(40, "DOCUMENT FICTIF - donnees synthetiques PrediCare TPA")],
+            [(40, "Page 1")],
+            [(40, "PHARMACIE VONINKAZO")],
+            [(40, "FACTURE N° X")],
+            [(40, "Date de facture"), (220, "2026-02-05")],
+            [(40, "Patient"), (220, "ASS-5C99024388")],
+            [(40, "N° assuré"), (220, "ASS-5C99024388")],
+            [(40, "Montant"), (110, "P.U."), (180, "Qté"), (240, "Code"), (320, "Désignation")],
+            [(40, "12 100 Ar"), (110, "7 900 Ar"), (180, "1"), (240, "MED-ACT"), (320, "Actif")],
+            [(40, "4 200 Ar"), (110, "2 100 Ar"), (180, "2"), (240, "MED-PARA500"), (320, "Paracetamol")],
+            [(40, "TOTAL"), (110, "16 300 Ar")],
+        ]
+    )
+    extraite = extraire_facture(document, nom="facture_desordre.pdf")
+
+    assert extraite.prestataire == "PHARMACIE VONINKAZO"
+    assert [ligne["code_acte"] for ligne in extraite.lignes] == ["MED-ACT", "MED-PARA500"]
+    assert [ligne["quantite"] for ligne in extraite.lignes] == [1, 2]
+    assert extraite.montant_total == 16300.0
+
+
+def test_le_total_du_tableau_sert_de_montant_total() -> None:
+    document = _pdf_tableau(
+        [
+            [(40, "DOCUMENT FICTIF - donnees synthetiques PrediCare TPA")],
+            [(40, "Page 1")],
+            [(40, "PHARMACIE VONINKAZO")],
+            [(40, "FACTURE N° X")],
+            [(40, "Date de facture"), (220, "2026-02-05")],
+            [(40, "Patient"), (220, "ASS-5C99024388")],
+            [(40, "N° assuré"), (220, "ASS-5C99024388")],
+            [(40, "Code"), (110, "Désignation"), (330, "Qté"), (380, "P.U."), (470, "Montant")],
+            [(40, "MED-ACT"), (110, "Actif"), (330, "1"), (380, "7 900 Ar"), (470, "7 900 Ar")],
+            [(40, "TOTAL"), (470, "7 900 Ar")],
+        ]
+    )
+    extraite = extraire_facture(document, nom="facture_sans_ancre_total.pdf")
+
+    assert extraite.montant_total == 7900.0
+    assert len(extraite.lignes) == 1
+
+
+def test_une_facture_sans_tableau_ni_prix_est_rejetee() -> None:
+    document = _pdf(
+        [
+            "DOCUMENT FICTIF - donnees synthetiques PrediCare TPA",
+            "Page 1",
+            "Patient : assr_Wv7VAUFiUXieeWwChWmGXB",
+            "Prestataire : PRE-00155",
+            "Date facture : 20/10/2026",
+            "Code acte : DENT-CONS",
+            "Quantité : 1",
+        ]
+    )
+    with pytest.raises(ChampIntrouvableError, match="montant_total"):
+        extraire_facture(document, nom="facture_sans_prix.pdf")
+
+
+# ---------------------------------------------------------------------------
+# Resolution des medicaments
+# ---------------------------------------------------------------------------
+
+
+def test_resoudre_acte_accepte_un_medicament() -> None:
+    session = _Session(
+        actes=[("DENT-CONS", "Consultation dentaire")],
+        medicaments=[("MED-ACT", "Actif")],
+    )
+
+    assert resoudre_acte(session, "MED-ACT") == "MED-ACT"
+    assert resoudre_acte(session, "Actif") == "MED-ACT"
+    assert resoudre_acte(session, "DENT-CONS") == "DENT-CONS"
+
+
+def test_resoudre_acte_inconnu_nomme_lignes_0_code_acte_avec_medicaments() -> None:
+    session = _Session(
+        actes=[("DENT-CONS", "Consultation dentaire")],
+        medicaments=[("MED-ACT", "Actif")],
+    )
+
+    with pytest.raises(ChampIntrouvableError, match=r"lignes\.0\.code_acte"):
+        resoudre_acte(session, "MED-INCONNU")
+
+
+def test_resoudre_prestataire_parmi_essaie_les_suivants() -> None:
+    session = _Session(
+        prestataires=[("PRE-00001", "Pharmacie Z", "Antananarivo", "ONM-1", "111")],
+    )
+
+    assert resoudre_prestataire_parmi(session, ("Enseigne inconnue", "111")) == "PRE-00001"
+
+
+def test_resoudre_prestataire_parmi_propage_le_dernier_rejet() -> None:
+    session = _Session(prestataires=[])
+
+    with pytest.raises(ChampIntrouvableError, match="prestataire_id"):
+        resoudre_prestataire_parmi(session, ("Inconnu A", "Inconnu B"))

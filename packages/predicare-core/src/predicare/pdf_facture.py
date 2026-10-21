@@ -1,10 +1,18 @@
 """Lecture des factures PDF deposees par le jury.
 
 Le CDC impose que le jury fournisse vingt factures inedites le jour J, en PDF.
-Un PDF n'est pas un CSV : il n'a pas de colonnes, et `pypdf` aplatit les
-tableaux en une valeur par ligne. Ce module ne cherche donc PAS des colonnes :
-il cherche des ANCRES DE LIBELLES (« N° facture », « Patient », « Code acte »,
-« Total »...) et lit la valeur qui suit.
+Un PDF n'est pas un CSV, et le jury peut apporter N'IMPORTE QUEL gabarit :
+aucune mise en page n'est garantie. Le module lit donc en deux passes.
+
+1. les CHAMPS D'EN-TETE (date, assure, prestataire, total) par ANCRES DE
+   LIBELLES : « N° facture », « Patient », « Date de facture », « Total »...
+   et la valeur qui suit. C'est robuste a un document en vrac, sans tableau.
+2. les LIGNES DE FACTURE par un LECTEUR DE TABLEAU : `pypdf` en mode `layout`
+   restitue l'alignement des colonnes par des espaces, l'en-tete est reconnu a
+   ses libelles (« Code », « Designation », « Qte », « P.U. », « Montant »)
+   quelles que soient leur ordre et leur position. Un repli sur le texte
+   simple couvre les PDF ou le mode `layout` n'aboutit pas, et un dernier
+   repli sur les ancres couvre les factures ecrites en clair.
 
 Deux responsabilites, volontairement separees :
 
@@ -80,6 +88,11 @@ class FactureExtraite:
     lignes: tuple[dict, ...]
     montant_total: float
     source: str
+    #: Candidats prestataire, du plus sur au plus douteux : code `PRE-...`,
+    #: libelle explicite, enseigne, puis NIF/O.N.M. La resolution essaie les
+    #: suivants quand le premier ne correspond a rien, au lieu de rejeter une
+    #: facture dont le NIF est exact mais l'enseigne mal orthographiee.
+    prestataires: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +127,16 @@ def _cle(texte: str) -> str:
     return re.sub(r"\s+", " ", _sans_accents(texte)).strip().upper()
 
 
+def _mot(texte: str) -> str:
+    """Cle d'un libelle de colonne : ponctuation reduite a des espaces.
+
+    « P.U. » et « P U » doivent designer la meme colonne ; « Total ligne » et
+    « TOTAL-LIGNE » aussi. On ne garde que les lettres, les chiffres et les
+    espaces.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"[^A-Z0-9 ]", " ", _cle(texte))).strip()
+
+
 # ---------------------------------------------------------------------------
 # Lecture du PDF
 # ---------------------------------------------------------------------------
@@ -138,6 +161,34 @@ def extraire_texte(donnees: bytes) -> str:
     try:
         lecteur = PdfReader(BytesIO(donnees))
         pages = [page.extract_text() or "" for page in lecteur.pages]
+    except Exception as exc:  # pypdf leve des types varies selon la corruption
+        raise FactureIllisibleError(f"PDF illisible : {exc}") from exc
+    return _normaliser_typographie("\n".join(pages))
+
+
+def extraire_texte_mis_en_page(donnees: bytes) -> str:
+    """Le texte de toutes les pages, en conservant l'alignement des colonnes.
+
+    `extract_text()` aplatit un tableau : les cellules d'une meme ligne se
+    retrouvent dispersees, et rien ne dit a quelle colonne elles appartiennent.
+    Le mode `layout` de `pypdf` reconstruit la geometrie par des espaces, ce
+    qui rend le tableau lisible ligne par ligne. Il ne sert qu'aux LIGNES ;
+    les champs d'en-tete restent lus sur le texte simple, ou l'ancrage est
+    plus fiable qu'une position.
+
+    Une page dont la geometrie n'est pas exploitable retombe sur le texte
+    simple : une facture lisible ne doit pas echouer pour un mode d'extraction.
+    """
+    if not est_pdf(donnees):
+        raise FactureIllisibleError("Ce fichier n'est pas un PDF.")
+    try:
+        lecteur = PdfReader(BytesIO(donnees))
+        pages: list[str] = []
+        for page in lecteur.pages:
+            try:
+                pages.append(page.extract_text(extraction_mode="layout") or "")
+            except Exception:  # geometrie indisponible : le texte simple suffit
+                pages.append(page.extract_text() or "")
     except Exception as exc:  # pypdf leve des types varies selon la corruption
         raise FactureIllisibleError(f"PDF illisible : {exc}") from exc
     return _normaliser_typographie("\n".join(pages))
@@ -372,66 +423,450 @@ _LIBELLES_PRESTATAIRE_GENERIQUES = frozenset(
     {"PHARMACIE", "CABINET", "CLINIQUE", "LABORATOIRE", "ETABLISSEMENT"}
 )
 
+#: Les libelles qui portent un IDENTIFIANT (exact en base, mais muet pour
+#: l'utilisateur) : ils passent apres le nom de l'etablissement.
+_LIBELLES_PRESTATAIRE_IDENTIFIANTS = frozenset(
+    {"NIF", "N O N M", "NO O N M", "NUMERO O N M", "NUMERO ONM", "N ONM", "ONM"}
+)
 
-def _valeur_prestataire(lignes: list[str]) -> str:
-    """Le prestataire, en preferant la preuve a l'enseigne.
+#: Un identifiant d'assure : `ASS-...` (brut) ou `assr_...` (pseudonyme).
+_IDENTIFIANT_ASSURE = re.compile(r"\b(?:ASS|assr)[-_][A-Za-z0-9]{4,}\b")
 
-    Trois pieges constates sur des PDF reels :
+#: Les mots d'en-tete qui ne sont jamais une enseigne.
+_MOTS_ENTETE = frozenset(
+    {
+        "FACTURE",
+        "FACTURES",
+        "DEVIS",
+        "RECU",
+        "ORDONNANCE",
+        "NOTE",
+        "TICKET",
+        "AVOIR",
+        "PAGE",
+        "DOCUMENT",
+    }
+)
 
-    1. l'en-tete « CABINET MEDICAL ESPOIR » contient le mot « Cabinet », qui
-       est une ancre : sans arbitrage, il devient la valeur du champ ;
-    2. « Prestataire : PRE-00062 » est explicite et doit gagner ;
-    3. une facture de pharmacie sans ligne « Prestataire » doit quand meme
-       pouvoir designer l'officine.
 
-    Ordre de preference : un code `PRE-...` ; sinon un libelle explicite suivi
-    d'un separateur (`:`) ; sinon un libelle explicite ; en dernier recours
-    l'enseigne generique.
+def _valeur_apres(lignes: list[str], index: int, ancre: _Ancre) -> str:
+    """La valeur ecrite a la ligne suivante, s'il y en a une.
+
+    `pypdf` separe souvent le libelle de sa valeur. On s'arrete des qu'un
+    nouveau libelle apparait : sinon la ligne suivante serait lue comme une
+    valeur alors qu'elle appartient a un autre champ.
     """
-    candidats: list[tuple[str, str, bool]] = []
+    suivant = index + 1
+    while suivant < len(lignes):
+        candidat = lignes[suivant]
+        suivant += 1
+        if not candidat:
+            continue
+        if _ancre(candidat) is not None:
+            return ""
+        if (
+            ancre.groupe == "acte"
+            and not _RESSEMBLE_CODE.match(candidat)
+            and not _cle(ancre.libelle).startswith("LIBELLE")
+        ):
+            return ""
+        return candidat
+    return ""
+
+
+def _enseigne(lignes: list[str]) -> str:
+    """Le nom de l'etablissement, quand il ouvre le document.
+
+    Une facture commence presque toujours par l'enseigne. La valeur n'est
+    qu'un CANDIDAT : si elle ne correspond a aucun prestataire, la resolution
+    essaie les indices suivants. On ecarte donc les lignes qui sont deja un
+    champ, une adresse ou un numero.
+    """
+    for ligne in lignes[:8]:
+        candidat = ligne.strip()
+        if not candidat:
+            continue
+        if _ancre(candidat) is not None:
+            return ""
+        if any(mot in _MOTS_ENTETE for mot in _mot(candidat).split()):
+            continue
+        if re.search(r"\d{2,}", candidat):  # telephone, NIF, code postal
+            continue
+        if not 2 <= len(candidat.split()) <= 8:
+            continue
+        if sum(1 for caractere in candidat if caractere.isalpha()) < 3:
+            continue
+        return candidat
+    return ""
+
+
+def _candidats_prestataire(lignes: list[str]) -> list[str]:
+    """Les indices de prestataire du document, du plus sur au plus douteux.
+
+    Un document porte souvent plusieurs indices — enseigne en tete, libelle
+    explicite, NIF, code interne — et ils ne se valent pas. Les rendre tous,
+    dans l'ordre, permet a la resolution d'essayer le suivant quand le plus
+    visible ne correspond a rien : une enseigne mal orthographiee ne fait plus
+    perdre une facture dont le NIF est exact.
+    """
+    trouves: list[tuple[str, str, bool]] = []
     for index, ligne in enumerate(lignes):
         ancre = _ancre(ligne)
         if ancre is None or ancre.groupe != "prestataire":
             continue
         reste = ancre.reste
         if not reste:
-            suivant = index + 1
-            while suivant < len(lignes):
-                candidat = lignes[suivant]
-                suivant += 1
-                if not candidat:
-                    continue
-                if _ancre(candidat) is not None:
-                    break
-                reste = candidat
-                break
+            reste = _valeur_apres(lignes, index, ancre)
         if not reste:
             continue
-        libelle = _cle(ancre.libelle)
+        libelle = _mot(ancre.libelle)
         meme_ligne = ancre.reste != ""
         if libelle in _LIBELLES_PRESTATAIRE_GENERIQUES and meme_ligne and ":" not in ligne:
             # « Pharmacie Vatolampy » : l'ancre fait partie du nom. La retirer
             # donnerait « Vatolampy », introuvable dans `core.prestataire`.
-            # Une valeur a la ligne suivante reste une valeur : le libelle
-            # « Etablissement » n'y est qu'une etiquette.
             cible = _sans_accents(ligne).upper()
             correspondance = _MOTIFS[ancre.libelle].search(cible)
             prefixe = ligne[: correspondance.end()].strip() if correspondance else ancre.libelle
             reste = f"{prefixe} {reste}".strip()
-        candidats.append((reste, libelle, bool(re.search(r"[:=]", ligne))))
+        trouves.append((reste, libelle, bool(re.search(r"[:=]", ligne))))
 
+    candidats: list[str] = []
+
+    def _ajouter(valeur: str) -> None:
+        # Un meme libelle peut porter deux indices (« NIF 520... - ONM-81702 ») :
+        # les separer multiplie les chances d'en reconnaitre un.
+        for part in re.split(r"\s+-\s+", valeur.strip()):
+            propre = part.strip(" -")
+            if propre and propre not in candidats:
+                candidats.append(propre)
+
+    # 1. un code du referentiel : la seule preuve non ambigue.
+    for valeur, _, _ in trouves:
+        if _CODE_PRESTATAIRE.match(valeur):
+            _ajouter(valeur)
+    # 2. un libelle explicite, avec separateur puis sans.
+    for valeur, libelle, separateur in trouves:
+        if separateur and libelle not in _LIBELLES_PRESTATAIRE_IDENTIFIANTS:
+            _ajouter(valeur)
+    for valeur, libelle, _ in trouves:
+        if libelle not in _LIBELLES_PRESTATAIRE_IDENTIFIANTS:
+            _ajouter(valeur)
+    # 3. l'enseigne en tete de document.
+    _ajouter(_enseigne(lignes))
+    # 4. les identifiants : exacts, mais ils ne nomment pas l'etablissement.
+    for valeur, libelle, _ in trouves:
+        if libelle in _LIBELLES_PRESTATAIRE_IDENTIFIANTS:
+            _ajouter(valeur)
+    return candidats
+
+
+def _valeur_prestataire(lignes: list[str]) -> str:
+    """Le meilleur indice de prestataire (le premier candidat)."""
+    candidats = _candidats_prestataire(lignes)
+    return candidats[0] if candidats else ""
+
+
+#: Priorite des libelles de date : la date de FACTURE prime sur la date des
+#: soins, qui peut differer (constate sur 7 factures sur 30 du lot de test).
+_PRIORITE_DATE = (
+    "DATE DE FACTURE",
+    "DATE FACTURE",
+    "DATE D EMISSION",
+    "DATE EMISSION",
+    "DATE DU JOUR",
+    "DATE DES SOINS",
+    "DATE DE SOIN",
+    "DATE",
+)
+
+
+def _valeur_date(lignes: list[str]) -> str:
+    """La date de facture, en preferant le libelle le plus explicite."""
+    candidats: list[tuple[int, str]] = []
+    for index, ligne in enumerate(lignes):
+        ancre = _ancre(ligne)
+        if ancre is None or ancre.groupe != "date":
+            continue
+        valeur = ancre.reste or _valeur_apres(lignes, index, ancre)
+        if not valeur:
+            continue
+        libelle = _mot(ancre.libelle)
+        rang = (
+            _PRIORITE_DATE.index(libelle)
+            if libelle in _PRIORITE_DATE
+            else len(_PRIORITE_DATE)
+        )
+        candidats.append((rang, valeur))
     if not candidats:
         return ""
-    for valeur, _, _ in candidats:
-        if _CODE_PRESTATAIRE.match(valeur):
+    return min(candidats, key=lambda couple: couple[0])[1]
+
+
+def _valeur_assure(lignes: list[str]) -> str:
+    """L'assure du document, en preferant un IDENTIFIANT a un nom.
+
+    Un nom ne se resout qu'avec l'index hors-ligne des identites, absent de
+    l'API ; un `ASS-...` se pseudonymise directement et se verifie en base.
+    Preferer l'identifiant rend donc l'import independant d'un fichier de
+    donnees personnelles.
+    """
+    valeurs: list[tuple[int, str]] = []
+    for index, ligne in enumerate(lignes):
+        ancre = _ancre(ligne)
+        if ancre is None or ancre.groupe != "assure":
+            continue
+        valeur = ancre.reste or _valeur_apres(lignes, index, ancre)
+        if not valeur:
+            continue
+        identifiant = _IDENTIFIANT_ASSURE.search(valeur)
+        if identifiant is not None:
+            valeurs.append((0, identifiant.group(0)))
+        else:
+            valeurs.append((1, valeur))
+    if valeurs:
+        return min(valeurs, key=lambda couple: couple[0])[1]
+    # L'identifiant peut apparaitre sans libelle (« ASS-... » seul).
+    for ligne in lignes:
+        identifiant = _IDENTIFIANT_ASSURE.search(ligne)
+        if identifiant is not None:
+            return identifiant.group(0)
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Lecture d'un tableau de facture
+# ---------------------------------------------------------------------------
+#: Les colonnes d'une ligne de facture, avec les libelles qu'on rencontre.
+#: L'ordre de cette liste n'impose rien : c'est l'EN-TETE du document qui
+#: donne la position de chaque colonne. Un gabarit qui place « Montant » avant
+#: « P.U. », ou qui ajoute une colonne, reste donc lisible.
+_ROLES_TABLEAU: tuple[tuple[str, frozenset[str]], ...] = (
+    (
+        "code",
+        frozenset(
+            {
+                "CODE",
+                "CODE ACTE",
+                "CODE DE L ACTE",
+                "CODE MEDICAMENT",
+                "CODE PRODUIT",
+                "CODE PRESTATION",
+                "REFERENCE",
+                "REF",
+                "ARTICLE",
+            }
+        ),
+    ),
+    (
+        "libelle",
+        frozenset(
+            {"DESIGNATION", "LIBELLE", "DESCRIPTION", "PRESTATION", "ACTE", "PRODUIT", "SOIN"}
+        ),
+    ),
+    ("quantite", frozenset({"QTE", "QUANTITE", "NOMBRE", "NB", "QTY", "NBR"})),
+    (
+        "pu",
+        frozenset({"P U", "PU", "PRIX UNITAIRE", "PRIX U", "MONTANT UNITAIRE", "PRIX", "TARIF"}),
+    ),
+    (
+        "montant",
+        frozenset(
+            {"MONTANT", "TOTAL LIGNE", "MONTANT LIGNE", "TOTAL", "MONTANT AR", "MONTANT MGA"}
+        ),
+    ),
+)
+
+#: Les libelles qui ferment le tableau (pied de facture).
+_FIN_TABLEAU = (
+    "TOTAL",
+    "SOUS TOTAL",
+    "ARRETE",
+    "ARRETEE",
+    "NET A PAYER",
+    "MONTANT TOTAL",
+    "SIGNATURE",
+    "CACHET",
+    "TVA",
+    "IBAN",
+    "COORDONNEES",
+    "MERCI",
+)
+
+
+def _cellules(ligne: str) -> list[str]:
+    """Decoupe une ligne mise en page en cellules.
+
+    Le mode `layout` separe les colonnes par au moins deux espaces ; un espace
+    isole reste a l'interieur d'un libelle (« Consultation generale »).
+    """
+    return [cellule.strip() for cellule in re.split(r"\s{2,}", ligne.strip()) if cellule.strip()]
+
+
+def _role_colonne(cellule: str) -> str | None:
+    """Le role d'un libelle de colonne, ou `None`."""
+    mot = _mot(cellule)
+    for role, libelles in _ROLES_TABLEAU:
+        if mot in libelles:
+            return role
+    return None
+
+
+def _roles_entete(cellules: list[str]) -> dict[str, int]:
+    """Les positions des colonnes reconnues dans une ligne d'en-tete."""
+    roles: dict[str, int] = {}
+    for position, cellule in enumerate(cellules):
+        role = _role_colonne(cellule)
+        if role is not None and role not in roles:
+            roles[role] = position
+    return roles
+
+
+def _entete_valide(roles: dict[str, int]) -> bool:
+    """Un en-tete de facture doit au moins porter un code et un montant."""
+    return len(roles) >= 3 and "code" in roles and ("montant" in roles or "pu" in roles)
+
+
+def _montant_ou_none(valeur: str) -> float | None:
+    try:
+        return normaliser_montant(valeur)
+    except ValueError:
+        return None
+
+
+def _dernier_montant(cellules: list[str]) -> float | None:
+    """Le dernier montant lisible d'une ligne (« TOTAL ... 23 000 Ar »)."""
+    for cellule in reversed(cellules):
+        valeur = _montant_ou_none(cellule)
+        if valeur is not None:
             return valeur
-    for valeur, libelle, separateur in candidats:
-        if separateur and libelle not in _LIBELLES_PRESTATAIRE_GENERIQUES:
-            return valeur
-    for valeur, libelle, _ in candidats:
-        if libelle not in _LIBELLES_PRESTATAIRE_GENERIQUES:
-            return valeur
-    return candidats[0][0]
+    return None
+
+
+def _ligne_tableau(cellules: list[str], roles: dict[str, int], surplus: int) -> dict | None:
+    """Une ligne de facture, ou `None` si la ligne n'en est pas une.
+
+    `surplus` est le nombre de cellules en trop par rapport a l'en-tete :
+    elles appartiennent toutes a la colonne « libelle », la seule qui puisse
+    contenir des espaces que la mise en page n'a pas separes.
+    """
+    position_libelle = roles.get("libelle", 1)
+
+    def _cellule(role: str) -> str:
+        position = roles.get(role)
+        if position is None:
+            return ""
+        if position > position_libelle:
+            position += surplus
+        return cellules[position] if 0 <= position < len(cellules) else ""
+
+    code = _cellule("code").strip()
+    if not code or _RESSEMBLE_CODE.match(code) is None:
+        return None
+
+    libelle = " ".join(cellules[position_libelle : position_libelle + surplus + 1]).strip()
+    quantite = _entier(_cellule("quantite"), 0)
+    prix = _montant_ou_none(_cellule("pu"))
+    montant = _montant_ou_none(_cellule("montant"))
+
+    if quantite <= 0:
+        quantite = 1
+    if prix is None and montant is not None:
+        prix = montant / quantite
+    if prix is None:
+        return None
+    if montant is None:
+        montant = prix * quantite
+
+    return {
+        "code_acte": code,
+        "quantite": quantite,
+        "montant_unitaire": round(prix, 2),
+        "libelle": libelle,
+        "montant": round(montant, 2),
+    }
+
+
+def _lire_tableau_mis_en_page(texte: str) -> tuple[list[dict], float | None]:
+    """Les lignes d'un tableau de facture, lues par colonnes.
+
+    Rend `(lignes, total)` : `total` est le montant de la ligne « TOTAL »
+    rencontree, quand elle en porte un.
+    """
+    lignes = [ligne.rstrip() for ligne in texte.splitlines() if ligne.strip()]
+    entete: tuple[int, int, dict[str, int]] | None = None
+    for index, ligne in enumerate(lignes):
+        cellules = _cellules(ligne)
+        if len(cellules) < 3:
+            continue
+        roles = _roles_entete(cellules)
+        if _entete_valide(roles):
+            entete = (index, len(cellules), roles)
+            break
+    if entete is None:
+        return [], None
+
+    debut, nombre_colonnes, roles = entete
+    lues: list[dict] = []
+    total: float | None = None
+    for ligne in lignes[debut + 1 :]:
+        cellules = _cellules(ligne)
+        if not cellules:
+            continue
+        if any(_mot(cellules[0]).startswith(fin) for fin in _FIN_TABLEAU):
+            montant = _dernier_montant(cellules[1:])
+            if montant is not None:
+                total = montant
+            break
+        surplus = max(0, len(cellules) - nombre_colonnes)
+        lue = _ligne_tableau(cellules, roles, surplus)
+        if lue is None:
+            # Une designation coupee par la mise en page continue seule : on
+            # la recolle a la ligne precedente au lieu de la perdre.
+            if lues and len(cellules) == 1:
+                lues[-1]["libelle"] = (lues[-1]["libelle"] + " " + cellules[0]).strip()
+            continue
+        lues.append(lue)
+    return lues, total
+
+
+def _lire_tableau_texte(lignes: list[str]) -> tuple[list[dict], float | None]:
+    """Repli : tableau lu sur le texte simple, ou les cellules sont en colonne.
+
+    Sans geometrie, `pypdf` rend une cellule par ligne. On reconnait l'en-tete
+    comme une SUITE de libelles de colonnes, puis on groupe les lignes
+    suivantes par paquets de N. Ce repli ne s'applique que si l'en-tete est
+    complet, sinon il inventerait des lignes.
+    """
+    for index in range(len(lignes) - 2):
+        roles: dict[str, int] = {}
+        suivant = index
+        while suivant < len(lignes):
+            role = _role_colonne(lignes[suivant])
+            if role is None or role in roles:
+                break
+            roles[role] = len(roles)
+            suivant += 1
+        if len(roles) < 4 or not _entete_valide(roles):
+            continue
+        nombre_colonnes = len(roles)
+        corps = lignes[suivant:]
+        lues: list[dict] = []
+        total: float | None = None
+        index_courant = 0
+        while index_courant + nombre_colonnes <= len(corps):
+            cellules = corps[index_courant : index_courant + nombre_colonnes]
+            if any(_mot(cellules[0]).startswith(fin) for fin in _FIN_TABLEAU):
+                montant = _dernier_montant(cellules[1:])
+                if montant is not None:
+                    total = montant
+                break
+            lue = _ligne_tableau(cellules, roles, 0)
+            if lue is None:
+                break
+            lues.append(lue)
+            index_courant += nombre_colonnes
+        return lues, total
+    return [], None
 
 
 # ---------------------------------------------------------------------------
@@ -534,7 +969,59 @@ def reference_deterministe(donnees: bytes) -> str:
 
 
 def _champ_manquant(nom: str, champ: str) -> ChampIntrouvableError:
+    if champ == "lignes.0.code_acte":
+        # Diagnostic utile quand le document n'a aucun tableau lisible : dire
+        # « champ introuvable » sans plus laisserait l'utilisateur sans piste.
+        return ChampIntrouvableError(
+            f"Aucune ligne de facture lisible dans le PDF ({nom}) : un tableau "
+            "avec un code d'acte par ligne est attendu (champ technique : "
+            "lignes.0.code_acte)."
+        )
     return ChampIntrouvableError(f"Champ introuvable dans le PDF ({nom}) : {champ}")
+
+
+def _lire_lignes(donnees: bytes, lignes_texte: list[str]) -> tuple[list[dict], float | None]:
+    """Les lignes de facture, par trois lectures de la plus structuree a la plus libre.
+
+    1. le tableau lu par colonnes (`layout`) : le cas nominal ;
+    2. le tableau lu sur le texte simple, quand chaque cellule est sur sa ligne ;
+    3. les ancres de libelles, pour une facture ecrite en clair
+       (« Code acte : LAB-NFS »).
+
+    Le premier resultat non vide gagne : une lecture ne doit jamais inventer
+    des lignes pour en remplacer d'autres.
+    """
+    try:
+        texte_mis_en_page = extraire_texte_mis_en_page(donnees)
+    except FactureIllisibleError:
+        texte_mis_en_page = ""
+    if texte_mis_en_page:
+        lues, total = _lire_tableau_mis_en_page(texte_mis_en_page)
+        if lues:
+            return lues, total
+
+    lues, total = _lire_tableau_texte(lignes_texte)
+    if lues:
+        return lues, total
+
+    codes = _valeurs_groupe(lignes_texte, "acte", multiples=True)
+    quantites = _valeurs_groupe(lignes_texte, "quantite", multiples=True)
+    prix = _valeurs_groupe(lignes_texte, "pu", multiples=True)
+    lignes: list[dict] = []
+    for index, code in enumerate(codes):
+        quantite = _entier(quantites[index]) if index < len(quantites) else 1
+        try:
+            montant_unitaire = normaliser_montant(prix[index]) if index < len(prix) else 0.0
+        except ValueError:
+            montant_unitaire = 0.0
+        lignes.append(
+            {
+                "code_acte": code,
+                "quantite": quantite,
+                "montant_unitaire": montant_unitaire,
+            }
+        )
+    return lignes, None
 
 
 def extraire_facture(
@@ -561,9 +1048,12 @@ def extraire_facture(
 
     lignes_texte = _lignes_utiles(texte)
 
-    assure = _valeur_champ(lignes_texte, "assure")
-    prestataire = _valeur_prestataire(lignes_texte) or prestataire_defaut
-    date_brute = _valeur_champ(lignes_texte, "date")
+    assure = _valeur_assure(lignes_texte)
+    candidats_prestataire = _candidats_prestataire(lignes_texte)
+    prestataire = (
+        candidats_prestataire[0] if candidats_prestataire else ""
+    ) or prestataire_defaut
+    date_brute = _valeur_date(lignes_texte)
     total_brut = _valeur_champ(lignes_texte, "total")
 
     try:
@@ -571,41 +1061,26 @@ def extraire_facture(
     except ValueError:
         date_facture = ""
 
-    codes = _valeurs_groupe(lignes_texte, "acte", multiples=True)
-    quantites = _valeurs_groupe(lignes_texte, "quantite", multiples=True)
-    prix = _valeurs_groupe(lignes_texte, "pu", multiples=True)
-    dates_actes = _valeurs_groupe(lignes_texte, "date_acte", multiples=True)
+    lignes_lues, total_tableau = _lire_lignes(donnees, lignes_texte)
 
     for champ, valeur in (
         ("assure_pseudonyme", assure),
         ("prestataire_id", prestataire),
         ("date_facture", date_facture),
-        ("lignes.0.code_acte", codes[0] if codes else ""),
+        ("lignes.0.code_acte", lignes_lues[0]["code_acte"] if lignes_lues else ""),
     ):
         if not valeur:
             raise _champ_manquant(source, champ)
 
-    lignes: list[dict] = []
-    for index, code in enumerate(codes):
-        quantite = _entier(quantites[index]) if index < len(quantites) else 1
-        try:
-            montant_unitaire = normaliser_montant(prix[index]) if index < len(prix) else 0.0
-        except ValueError:
-            montant_unitaire = 0.0
-        date_acte = date_facture
-        if index < len(dates_actes):
-            try:
-                date_acte = normaliser_date(dates_actes[index])
-            except ValueError:
-                date_acte = date_facture
-        lignes.append(
-            {
-                "code_acte": code,
-                "quantite": quantite,
-                "montant_unitaire": montant_unitaire,
-                "date_acte": date_acte,
-            }
-        )
+    lignes = [
+        {
+            "code_acte": lue["code_acte"],
+            "quantite": lue["quantite"],
+            "montant_unitaire": lue["montant_unitaire"],
+            "date_acte": date_facture,
+        }
+        for lue in lignes_lues
+    ]
 
     somme = round(sum(ligne["quantite"] * ligne["montant_unitaire"] for ligne in lignes), 2)
     try:
@@ -613,10 +1088,14 @@ def extraire_facture(
     except ValueError:
         montant_total = None
 
-    # Un total absent se calcule a partir des lignes. S'il n'y a ni total ni
-    # prix unitaire, il n'y a rien a calculer : le champ est reellement absent.
+    # Un total absent se lit dans la ligne « TOTAL » du tableau, puis se
+    # calcule a partir des lignes.
     if montant_total is None:
-        if not prix:
+        montant_total = total_tableau
+    if montant_total is None:
+        # Ni total, ni prix unitaire : il n'y a rien a calculer, le champ est
+        # reellement absent du document.
+        if all(ligne["montant_unitaire"] <= 0 for ligne in lignes):
             raise _champ_manquant(source, "montant_total")
         montant_total = somme
     elif montant_total < 0:
@@ -633,6 +1112,7 @@ def extraire_facture(
         lignes=tuple(lignes),
         montant_total=round(montant_total, 2),
         source=source,
+        prestataires=tuple(candidats_prestataire),
     )
 
 
@@ -790,26 +1270,57 @@ def resoudre_prestataire(session: Session, valeur: str, *, ville: str | None = N
     return str(candidats[0][0])
 
 
-def resoudre_acte(session: Session, valeur: str) -> str:
-    """Un code d'acte, ou un libelle, -> le code du referentiel.
+def resoudre_prestataire_parmi(
+    session: Session, valeurs: tuple[str, ...] | list[str], *, ville: str | None = None
+) -> str:
+    """Le premier candidat prestataire qui se resout.
 
-    `core.acte.code` est UNIQUE, mais le modele ne connait que 58 codes : un
-    code absent est hors vocabulaire et doit etre rejete en le nommant.
+    Un PDF porte souvent plusieurs indices : l'enseigne en tete, un libelle
+    explicite, un NIF. Les essayer dans l'ordre evite de rejeter une facture
+    dont le NIF est exact sous pretexte que l'enseigne est mal orthographiee.
+    L'ambiguite, elle, reste une erreur : on ne devine pas entre deux
+    prestataires.
+    """
+    candidats = [valeur for valeur in valeurs if str(valeur).strip()]
+    derniere: ChampIntrouvableError | None = None
+    for valeur in candidats:
+        try:
+            return resoudre_prestataire(session, valeur, ville=ville)
+        except ChampIntrouvableError as exc:
+            derniere = exc
+    if derniere is not None:
+        raise derniere
+    raise ChampIntrouvableError("prestataire_id : valeur vide")
+
+
+def resoudre_acte(session: Session, valeur: str) -> str:
+    """Un code d'acte OU de medicament -> le code du referentiel.
+
+    Une facture de pharmacie ne porte pas de code d'acte : ses lignes sont des
+    medicaments (`MED-...`), ranges dans `core.medicament`. Les deux
+    referentiels sont donc interroges, dans cet ordre, et le code rendu est
+    celui que l'API saura ranger dans `core.ligne_facture` (colonne `acte_id`
+    ou `medicament_id`).
+
+    Aucune creation : un code absent des deux referentiels est hors vocabulaire
+    et doit etre rejete en le nommant.
     """
     brut = valeur.strip()
     if not brut:
         raise ChampIntrouvableError("lignes.0.code_acte : valeur vide")
 
-    code = session.execute(
-        text("SELECT code FROM core.acte WHERE UPPER(code) = :valeur"),
-        {"valeur": brut.upper()},
-    ).scalar()
-    if code is not None:
-        return str(code)
+    for table in ("core.acte", "core.medicament"):
+        code = session.execute(
+            text(f"SELECT code FROM {table} WHERE UPPER(code) = :valeur"),
+            {"valeur": brut.upper()},
+        ).scalar()
+        if code is not None:
+            return str(code)
 
     cible = _cle(brut)
-    for code, libelle in session.execute(text("SELECT code, libelle FROM core.acte")).all():
-        if _cle(str(libelle or "")) == cible:
-            return str(code)
+    for table in ("core.acte", "core.medicament"):
+        for code, libelle in session.execute(text(f"SELECT code, libelle FROM {table}")).all():
+            if _cle(str(libelle or "")) == cible:
+                return str(code)
 
     raise ChampIntrouvableError(f"lignes.0.code_acte : valeur inconnue ({brut})")

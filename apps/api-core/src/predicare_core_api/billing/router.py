@@ -342,8 +342,15 @@ def _importer_un_pdf(
 
         with session_scope() as session:
             assure_pseudonyme = pdf_facture.resoudre_assure(session, extraite.assure)
-            prestataire = prestataire_impose or extraite.prestataire
-            prestataire_code = pdf_facture.resoudre_prestataire(session, prestataire)
+            # `prestataire_impose` (compte professionnel) prime : il ne sert
+            # qu'aux PDF qui ne portent aucun prestataire.
+            if prestataire_impose:
+                candidats_prestataire = (prestataire_impose,)
+            else:
+                candidats_prestataire = getattr(extraite, "prestataires", ()) or (extraite.prestataire,)
+            prestataire_code = pdf_facture.resoudre_prestataire_parmi(
+                session, candidats_prestataire
+            )
             codes_actes = [
                 pdf_facture.resoudre_acte(session, _valeur_acte(ligne)) for ligne in extraite.lignes
             ]
@@ -481,6 +488,33 @@ def _exiger(session: Session, table: str, colonne: str, valeur: str, champ: str)
     return int(identifiant)
 
 
+def _code_reference(
+    session: Session, valeur: str, champ: str
+) -> tuple[int | None, int | None]:
+    """L'identifiant d'un code d'ACTE ou de MEDICAMENT, jamais les deux.
+
+    Une facture de pharmacie ne porte pas de code d'acte : ses lignes sont des
+    medicaments (`MED-...`), ranges dans `core.medicament`. `core.ligne_facture`
+    a deux colonnes et une contrainte qui en exige exactement une, donc on rend
+    le couple `(acte_id, medicament_id)` deja conforme.
+
+    Aucune creation : un code absent des deux referentiels est rejete en le
+    nommant, comme avant.
+    """
+    brut = valeur.strip()
+    for table, est_acte in (("core.acte", True), ("core.medicament", False)):
+        identifiant = session.execute(
+            text(f"SELECT id FROM {table} WHERE UPPER(code) = :valeur"),
+            {"valeur": brut.upper()},
+        ).scalar()
+        if identifiant is not None:
+            return (int(identifiant), None) if est_acte else (None, int(identifiant))
+    raise InvalidInvoiceError(
+        f"Facture invalide - {champ} : valeur inconnue ({valeur})",
+        details={"champ": champ, "valeur": valeur},
+    )
+
+
 def _verifier_references(invoice: InvoiceSubmission, user: TokenPayload) -> None:
     """Verifie les references AVANT de noter : rien n'est ecrit si elles manquent.
 
@@ -497,7 +531,7 @@ def _verifier_references(invoice: InvoiceSubmission, user: TokenPayload) -> None
             session, "core.prestataire", "code", invoice.prestataire_id, "prestataire_id"
         )
         for index, ligne in enumerate(invoice.lignes):
-            _exiger(session, "core.acte", "code", ligne.code_acte, f"lignes.{index}.code_acte")
+            _code_reference(session, ligne.code_acte, f"lignes.{index}.code_acte")
 
         if user.role is Role.PROFESSIONNEL_SANTE:
             propre = _prestataire_du_compte(session, user)
@@ -613,10 +647,11 @@ def _ordonnance_liee(
             SELECT o.id
             FROM core.ordonnance o
             JOIN core.ordonnance_ligne ol ON ol.ordonnance_id = o.id
-            JOIN core.acte a ON a.id = ol.acte_id
+            LEFT JOIN core.acte a ON a.id = ol.acte_id
+            LEFT JOIN core.medicament m ON m.id = ol.medicament_id
             WHERE o.assure_id = :assure_id
               AND o.prestataire_id = :prestataire_id
-              AND a.code IN :codes
+              AND COALESCE(a.code, m.code) IN :codes
               AND o.date_ordonnance <= :date_facture
               AND o.date_ordonnance
                   + make_interval(days => COALESCE(o.validite_jours, 0))
@@ -680,20 +715,23 @@ def _enregistrer_facture(invoice: InvoiceSubmission, reference: str) -> None:
         ).scalar()
 
         for index, ligne in enumerate(invoice.lignes):
-            acte_id = _exiger(
-                session, "core.acte", "code", ligne.code_acte, f"lignes.{index}.code_acte"
+            acte_id, medicament_id = _code_reference(
+                session, ligne.code_acte, f"lignes.{index}.code_acte"
             )
             session.execute(
                 text(
                     """
                     INSERT INTO core.ligne_facture
-                        (facture_id, acte_id, quantite, montant_unitaire, date_acte)
-                    VALUES (:facture_id, :acte_id, :quantite, :montant_unitaire, :date_acte)
+                        (facture_id, acte_id, medicament_id, quantite,
+                         montant_unitaire, date_acte)
+                    VALUES (:facture_id, :acte_id, :medicament_id, :quantite,
+                            :montant_unitaire, :date_acte)
                     """
                 ),
                 {
                     "facture_id": facture_id,
                     "acte_id": acte_id,
+                    "medicament_id": medicament_id,
                     "quantite": ligne.quantite,
                     "montant_unitaire": ligne.montant_unitaire,
                     "date_acte": ligne.date_acte,

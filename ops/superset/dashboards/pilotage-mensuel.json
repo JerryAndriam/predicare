@@ -31,7 +31,7 @@
       "cache_timeout": null
     },
     {
-      "id": 12,
+      "id": 2,
       "titre": "Montant presente (MGA)",
       "viz_type": "big_number",
       "vue": "v_kpi_global",
@@ -83,7 +83,7 @@
       "cache_timeout": null
     },
     {
-      "id": 13,
+      "id": 4,
       "titre": "Delai moyen de traitement (jours)",
       "viz_type": "big_number",
       "vue": "v_kpi_global",
@@ -109,7 +109,7 @@
       "cache_timeout": null
     },
     {
-      "id": 14,
+      "id": 5,
       "titre": "Montants economises confirmes (MGA)",
       "viz_type": "big_number",
       "vue": "v_cdc_global",
@@ -135,7 +135,7 @@
       "cache_timeout": null
     },
     {
-      "id": 15,
+      "id": 6,
       "titre": "Taux de detection du modele (%)",
       "viz_type": "big_number",
       "vue": "v_modele_performance",
@@ -161,7 +161,7 @@
       "cache_timeout": null
     },
     {
-      "id": 17,
+      "id": 7,
       "titre": "Taux de faux positifs du modele (%)",
       "viz_type": "big_number",
       "vue": "v_modele_performance",
@@ -187,7 +187,7 @@
       "cache_timeout": null
     },
     {
-      "id": 5,
+      "id": 8,
       "titre": "Montant present par mois (MGA)",
       "viz_type": "echarts_timeseries",
       "vue": "v_kpi_mensuel",
@@ -219,7 +219,7 @@
       "cache_timeout": null
     },
     {
-      "id": 6,
+      "id": 9,
       "titre": "Fraude par mecanisme (24 mois)",
       "viz_type": "echarts_timeseries_bar",
       "vue": "v_fraude_par_type",
@@ -258,7 +258,7 @@
       "cache_timeout": null
     },
     {
-      "id": 7,
+      "id": 10,
       "titre": "Cinq prestataires les plus exposes (MGA)",
       "viz_type": "table",
       "vue": "v_top5_prestataires",
@@ -335,7 +335,7 @@
       "cache_timeout": null
     },
     {
-      "id": 9,
+      "id": 12,
       "titre": "Motifs de non-paiement par mois",
       "viz_type": "echarts_timeseries_bar",
       "vue": "v_controle_points",
@@ -400,11 +400,11 @@
       ],
       "type": "COLUMN"
     },
-    "CHART-12": {
+    "CHART-2": {
       "children": [],
-      "id": "CHART-12",
+      "id": "CHART-2",
       "meta": {
-        "chartId": 12,
+        "chartId": 2,
         "height": 20,
         "sliceName": "Montant presente (MGA)",
         "width": 3
@@ -419,7 +419,7 @@
     },
     "COLUMN-0-12": {
       "children": [
-        "CHART-12"
+        "CHART-2"
       ],
       "id": "COLUMN-0-12",
       "meta": {
@@ -466,11 +466,11 @@
       ],
       "type": "COLUMN"
     },
-    "CHART-13": {
+    "CHART-4": {
       "children": [],
-      "id": "CHART-13",
+      "id": "CHART-4",
       "meta": {
-        "chartId": 13,
+        "chartId": 4,
         "height": 20,
         "sliceName": "Delai moyen de traitement (jours)",
         "width": 3
@@ -485,7 +485,7 @@
     },
     "COLUMN-0-13": {
       "children": [
-        "CHART-13"
+        "CHART-4"
       ],
       "id": "COLUMN-0-13",
       "meta": {
@@ -517,11 +517,11 @@
       ],
       "type": "ROW"
     },
-    "CHART-14": {
+    "CHART-5": {
       "children": [],
-      "id": "CHART-14",
+      "id": "CHART-5",
       "meta": {
-        "chartId": 14,
+        "chartId": 5,
         "height": 20,
         "sliceName": "Montants economises confirmes (MGA)",
         "width": 4
@@ -536,7 +536,7 @@
     },
     "COLUMN-1-14": {
       "children": [
-        "CHART-14"
+        "CHART-5"
       ],
       "id": "COLUMN-1-14",
       "meta": {
@@ -550,11 +550,11 @@
       ],
       "type": "COLUMN"
     },
-    "CHART-15": {
+    "CHART-6": {
       "children": [],
-      "id": "CHART-15",
+      "id": "CHART-6",
       "meta": {
-        "chartId": 15,
+        "chartId": 6,
         "height": 20,
         "sliceName": "Taux de detection du modele (%)",
         "width": 4
@@ -569,7 +569,7 @@
     },
     "COLUMN-1-15": {
       "children": [
-        "CHART-15"
+        "CHART-6"
       ],
       "id": "COLUMN-1-15",
       "meta": {
@@ -583,11 +583,11 @@
       ],
       "type": "COLUMN"
     },
-    "CHART-17": {
+    "CHART-7": {
       "children": [],
-      "id": "CHART-17",
+      "id": "CHART-7",
       "meta": {
-        "chartId": 17,
+        "chartId": 7,
         "height": 20,
         "sliceName": "Taux de faux positifs du modele (%)",
         "width": 4
@@ -602,7 +602,7 @@
     },
     "COLUMN-1-17": {
       "children": [
-        "CHART-17"
+        "CHART-7"
       ],
       "id": "COLUMN-1-17",
       "meta": {
@@ -633,11 +633,11 @@
       ],
       "type": "ROW"
     },
-    "CHART-5": {
+    "CHART-8": {
       "children": [],
-      "id": "CHART-5",
+      "id": "CHART-8",
       "meta": {
-        "chartId": 5,
+        "chartId": 8,
         "height": 30,
         "sliceName": "Montant present par mois (MGA)",
         "width": 6
@@ -652,7 +652,7 @@
     },
     "COLUMN-2-5": {
       "children": [
-        "CHART-5"
+        "CHART-8"
       ],
       "id": "COLUMN-2-5",
       "meta": {
@@ -666,11 +666,11 @@
       ],
       "type": "COLUMN"
     },
-    "CHART-6": {
+    "CHART-9": {
       "children": [],
-      "id": "CHART-6",
+      "id": "CHART-9",
       "meta": {
-        "chartId": 6,
+        "chartId": 9,
         "height": 30,
         "sliceName": "Fraude par mecanisme (24 mois)",
         "width": 6
@@ -685,7 +685,7 @@
     },
     "COLUMN-2-6": {
       "children": [
-        "CHART-6"
+        "CHART-9"
       ],
       "id": "COLUMN-2-6",
       "meta": {
@@ -715,11 +715,11 @@
       ],
       "type": "ROW"
     },
-    "CHART-7": {
+    "CHART-10": {
       "children": [],
-      "id": "CHART-7",
+      "id": "CHART-10",
       "meta": {
-        "chartId": 7,
+        "chartId": 10,
         "height": 30,
         "sliceName": "Cinq prestataires les plus exposes (MGA)",
         "width": 6
@@ -734,7 +734,7 @@
     },
     "COLUMN-3-7": {
       "children": [
-        "CHART-7"
+        "CHART-10"
       ],
       "id": "COLUMN-3-7",
       "meta": {
@@ -797,11 +797,11 @@
       ],
       "type": "ROW"
     },
-    "CHART-9": {
+    "CHART-12": {
       "children": [],
-      "id": "CHART-9",
+      "id": "CHART-12",
       "meta": {
-        "chartId": 9,
+        "chartId": 12,
         "height": 32,
         "sliceName": "Motifs de non-paiement par mois",
         "width": 12
@@ -816,7 +816,7 @@
     },
     "COLUMN-4-9": {
       "children": [
-        "CHART-9"
+        "CHART-12"
       ],
       "id": "COLUMN-4-9",
       "meta": {
