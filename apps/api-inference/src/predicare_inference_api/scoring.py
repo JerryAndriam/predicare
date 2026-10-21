@@ -36,6 +36,11 @@ class Score:
     seuil: float
     contributions: list[ShapContribution]
     inference_ms: float
+    #: Vrai si SHAP a REELLEMENT calcule les contributions. Faux = echec du
+    #: calculateur : `contributions` est alors vide, jamais un vecteur de
+    #: zeros. Un zero est une contribution possible ; le confondre avec une
+    #: panne ferait croire au gestionnaire que le modele n'a rien vu.
+    shap_available: bool = True
 
 
 class Scorer:
@@ -66,16 +71,24 @@ class Scorer:
         estimateur: Any = self.bundle.estimator
         score = float(estimateur.predict_proba(vecteur)[0, 1])
 
-        shap_values = np.zeros(len(self.bundle.feature_names))
+        # Aucun vecteur de zeros par defaut : un echec de SHAP doit rester
+        # VISIBLE. On renvoie une liste vide (le schema `PredictionResponse`
+        # autorise `shap=[]`) plutot que des contributions fabriquees, et le
+        # drapeau `shap_available` dit pourquoi.
+        shap_values: np.ndarray | None = None
         try:
             shap_values = self._contributions(vecteur)
         except Exception as exc:
-            # Meme regle que dans le routeur : une explication indisponible ne
-            # prive pas le gestionnaire de son score.
+            # Une explication indisponible ne prive pas le gestionnaire de son
+            # score, mais elle ne doit pas se faire passer pour une explication.
             logger.warning("shap.indisponible", erreur=str(exc))
 
-        contributions = shap_to_contributions(
-            self.bundle.feature_names, shap_values, self.bundle.shap_base_value
+        contributions = (
+            shap_to_contributions(
+                self.bundle.feature_names, shap_values, self.bundle.shap_base_value
+            )
+            if shap_values is not None
+            else []
         )
         return Score(
             score=score,
@@ -83,4 +96,5 @@ class Scorer:
             seuil=self.seuil,
             contributions=contributions,
             inference_ms=(time.perf_counter() - debut) * 1000,
+            shap_available=shap_values is not None,
         )

@@ -16,6 +16,7 @@ import json
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from predicare.features import (
@@ -454,3 +455,81 @@ def test_artefact_referentiels_est_chargable() -> None:
 def test_horodatage_importable() -> None:
     """Garde-fou : le module importe `UTC`, on ne veut pas le retirer."""
     assert datetime.now(UTC).tzinfo is UTC
+
+
+# ---------------------------------------------------------------------------
+# Baseline de la Q8 (C.3) : contrats de sortie, sans entrainement lourd
+# ---------------------------------------------------------------------------
+def test_comparer_baselines_renvoie_les_cles_attendues() -> None:
+    """Verrouille le contrat de `comparer_baselines` sur un jeu minuscule.
+
+    Le test ne verifie pas les scores (un jeu de 20 lignes ne prouve rien) :
+    il verifie que les trois baselines annoncees dans la soutenance existent
+    REELLEMENT et que chaque ligne porte les metriques comparables (rappel,
+    precision, PR-AUC, ROC-AUC, matrice de confusion et cout metier), aux
+    deux seuils demandes.
+    """
+    from predicare_ml_training.evaluate import (
+        REGLES_DETERMINISTES,
+        _hyperparametres,
+        comparer_baselines,
+    )
+
+    noms = ["montant_total", "nb_lignes", *REGLES_DETERMINISTES[:3]]
+    generateur = np.random.default_rng(0)
+    x = generateur.random((20, len(noms)))
+    y = np.zeros(20, dtype=np.int8)
+    y[[0, 2, 5, 8, 11, 13, 16, 18]] = 1
+    x[:, 2] = y.astype(float)  # la premiere regle suit la cible
+    x[[1, 4, 10], 3] = 1.0  # une regle se declenche aussi sur des saines
+
+    x_ent, y_ent = x[:12], y[:12]
+    x_val, y_val = x[12:16], y[12:16]
+    x_test, y_test = x[16:], y[16:]
+
+    resultats = comparer_baselines(
+        x_ent,
+        y_ent,
+        x_val,
+        y_val,
+        x_test,
+        y_test,
+        noms_features=noms,
+        seuil_modele=0.2876,
+        hyperparametres=_hyperparametres(2, 10, 0.1, 2),
+    )
+
+    strategies = {r["strategie"] for r in resultats}
+    assert strategies == {
+        "modele XGBoost",
+        "regles deterministes",
+        "regression logistique",
+        "regles + modele (OU)",
+    }, "les trois baselines de la Q8 doivent etre presentes"
+
+    attendues = {
+        "strategie",
+        "seuil",
+        "origine_seuil",
+        "roc_auc",
+        "pr_auc",
+        "rappel",
+        "precision",
+        "f1",
+        "cout_total",
+        "gain_metier",
+        "matrice_confusion",
+    }
+    for ligne in resultats:
+        assert attendues <= set(ligne)
+        assert set(ligne["matrice_confusion"]) == {
+            "vrais_positifs",
+            "faux_positifs",
+            "faux_negatifs",
+            "vrais_negatifs",
+        }
+        assert 0.0 <= ligne["rappel"] <= 1.0
+        assert 0.0 <= ligne["precision"] <= 1.0
+
+    # Deux lectures par baseline : seuil de production et seuil de cout minimal.
+    assert len(resultats) == 8
