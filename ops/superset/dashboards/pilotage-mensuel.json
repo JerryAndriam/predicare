@@ -31,7 +31,7 @@
       "cache_timeout": null
     },
     {
-      "id": 12,
+      "id": 2,
       "titre": "Montant presente (MGA)",
       "viz_type": "big_number",
       "vue": "v_kpi_global",
@@ -83,7 +83,7 @@
       "cache_timeout": null
     },
     {
-      "id": 13,
+      "id": 4,
       "titre": "Delai moyen de traitement (jours)",
       "viz_type": "big_number",
       "vue": "v_kpi_global",
@@ -109,7 +109,7 @@
       "cache_timeout": null
     },
     {
-      "id": 14,
+      "id": 5,
       "titre": "Montants economises confirmes (MGA)",
       "viz_type": "big_number",
       "vue": "v_cdc_global",
@@ -135,7 +135,7 @@
       "cache_timeout": null
     },
     {
-      "id": 15,
+      "id": 6,
       "titre": "Taux de detection du modele (%)",
       "viz_type": "big_number",
       "vue": "v_modele_performance",
@@ -161,7 +161,7 @@
       "cache_timeout": null
     },
     {
-      "id": 17,
+      "id": 7,
       "titre": "Taux de faux positifs du modele (%)",
       "viz_type": "big_number",
       "vue": "v_modele_performance",
@@ -187,7 +187,7 @@
       "cache_timeout": null
     },
     {
-      "id": 5,
+      "id": 8,
       "titre": "Montant present par mois (MGA)",
       "viz_type": "echarts_timeseries",
       "vue": "v_kpi_mensuel",
@@ -219,7 +219,7 @@
       "cache_timeout": null
     },
     {
-      "id": 6,
+      "id": 9,
       "titre": "Fraude par mecanisme (24 mois)",
       "viz_type": "echarts_timeseries_bar",
       "vue": "v_fraude_par_type",
@@ -258,7 +258,7 @@
       "cache_timeout": null
     },
     {
-      "id": 7,
+      "id": 10,
       "titre": "Cinq prestataires les plus exposes (MGA)",
       "viz_type": "table",
       "vue": "v_top5_prestataires",
@@ -283,9 +283,7 @@
             "aggregate": "SUM"
           }
         ],
-        "groupby": [
-          "prestataire_nom"
-        ],
+        "groupby": ["prestataire_nom"],
         "timeseries_limit_metric": {
           "label": "Montant expose (MGA)",
           "expressionType": "SIMPLE",
@@ -335,7 +333,7 @@
       "cache_timeout": null
     },
     {
-      "id": 9,
+      "id": 12,
       "titre": "Motifs de non-paiement par mois",
       "viz_type": "echarts_timeseries_bar",
       "vue": "v_controle_points",
@@ -352,9 +350,7 @@
           }
         ],
         "x_axis": "mois",
-        "groupby": [
-          "motif"
-        ],
+        "groupby": ["motif"],
         "stack": "Stack",
         "order_desc": true,
         "row_limit": 10000,
@@ -376,61 +372,39 @@
         "sliceName": "Factures traitees",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0",
-        "COLUMN-0-1"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0", "COLUMN-0-1"],
       "type": "CHART"
     },
     "COLUMN-0-1": {
-      "children": [
-        "CHART-1"
-      ],
+      "children": ["CHART-1"],
       "id": "COLUMN-0-1",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0"],
       "type": "COLUMN"
     },
-    "CHART-12": {
+    "CHART-2": {
       "children": [],
-      "id": "CHART-12",
+      "id": "CHART-2",
       "meta": {
         "chartId": 12,
         "height": 20,
         "sliceName": "Montant presente (MGA)",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0",
-        "COLUMN-0-12"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0", "COLUMN-0-12"],
       "type": "CHART"
     },
     "COLUMN-0-12": {
-      "children": [
-        "CHART-12"
-      ],
+      "children": ["CHART-2"],
       "id": "COLUMN-0-12",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0"],
       "type": "COLUMN"
     },
     "CHART-3": {
@@ -442,310 +416,201 @@
         "sliceName": "Taux de fraude observe (%)",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0",
-        "COLUMN-0-3"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0", "COLUMN-0-3"],
       "type": "CHART"
     },
     "COLUMN-0-3": {
-      "children": [
-        "CHART-3"
-      ],
+      "children": ["CHART-3"],
       "id": "COLUMN-0-3",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0"],
       "type": "COLUMN"
     },
-    "CHART-13": {
+    "CHART-4": {
       "children": [],
-      "id": "CHART-13",
+      "id": "CHART-4",
       "meta": {
         "chartId": 13,
         "height": 20,
         "sliceName": "Delai moyen de traitement (jours)",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0",
-        "COLUMN-0-13"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0", "COLUMN-0-13"],
       "type": "CHART"
     },
     "COLUMN-0-13": {
-      "children": [
-        "CHART-13"
-      ],
+      "children": ["CHART-4"],
       "id": "COLUMN-0-13",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 3
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-0"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-0"],
       "type": "COLUMN"
     },
     "ROW-0": {
-      "children": [
-        "COLUMN-0-1",
-        "COLUMN-0-12",
-        "COLUMN-0-3",
-        "COLUMN-0-13"
-      ],
+      "children": ["COLUMN-0-1", "COLUMN-0-12", "COLUMN-0-3", "COLUMN-0-13"],
       "id": "ROW-0",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "height": 20
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID"
-      ],
-      "type": "ROW"
-    },
-    "CHART-14": {
-      "children": [],
-      "id": "CHART-14",
-      "meta": {
-        "chartId": 14,
-        "height": 20,
-        "sliceName": "Montants economises confirmes (MGA)",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1",
-        "COLUMN-1-14"
-      ],
-      "type": "CHART"
-    },
-    "COLUMN-1-14": {
-      "children": [
-        "CHART-14"
-      ],
-      "id": "COLUMN-1-14",
-      "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1"
-      ],
-      "type": "COLUMN"
-    },
-    "CHART-15": {
-      "children": [],
-      "id": "CHART-15",
-      "meta": {
-        "chartId": 15,
-        "height": 20,
-        "sliceName": "Taux de detection du modele (%)",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1",
-        "COLUMN-1-15"
-      ],
-      "type": "CHART"
-    },
-    "COLUMN-1-15": {
-      "children": [
-        "CHART-15"
-      ],
-      "id": "COLUMN-1-15",
-      "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1"
-      ],
-      "type": "COLUMN"
-    },
-    "CHART-17": {
-      "children": [],
-      "id": "CHART-17",
-      "meta": {
-        "chartId": 17,
-        "height": 20,
-        "sliceName": "Taux de faux positifs du modele (%)",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1",
-        "COLUMN-1-17"
-      ],
-      "type": "CHART"
-    },
-    "COLUMN-1-17": {
-      "children": [
-        "CHART-17"
-      ],
-      "id": "COLUMN-1-17",
-      "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "width": 4
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-1"
-      ],
-      "type": "COLUMN"
-    },
-    "ROW-1": {
-      "children": [
-        "COLUMN-1-14",
-        "COLUMN-1-15",
-        "COLUMN-1-17"
-      ],
-      "id": "ROW-1",
-      "meta": {
-        "background": "BACKGROUND_TRANSPARENT",
-        "height": 20
-      },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID"],
       "type": "ROW"
     },
     "CHART-5": {
       "children": [],
       "id": "CHART-5",
       "meta": {
-        "chartId": 5,
-        "height": 30,
-        "sliceName": "Montant present par mois (MGA)",
-        "width": 6
+        "chartId": 14,
+        "height": 20,
+        "sliceName": "Montants economises confirmes (MGA)",
+        "width": 4
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-2",
-        "COLUMN-2-5"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1", "COLUMN-1-14"],
       "type": "CHART"
     },
-    "COLUMN-2-5": {
-      "children": [
-        "CHART-5"
-      ],
-      "id": "COLUMN-2-5",
+    "COLUMN-1-14": {
+      "children": ["CHART-5"],
+      "id": "COLUMN-1-14",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
-        "width": 6
+        "width": 4
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-2"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1"],
       "type": "COLUMN"
     },
     "CHART-6": {
       "children": [],
       "id": "CHART-6",
       "meta": {
+        "chartId": 15,
+        "height": 20,
+        "sliceName": "Taux de detection du modele (%)",
+        "width": 4
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1", "COLUMN-1-15"],
+      "type": "CHART"
+    },
+    "COLUMN-1-15": {
+      "children": ["CHART-6"],
+      "id": "COLUMN-1-15",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 4
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1"],
+      "type": "COLUMN"
+    },
+    "CHART-7": {
+      "children": [],
+      "id": "CHART-7",
+      "meta": {
+        "chartId": 17,
+        "height": 20,
+        "sliceName": "Taux de faux positifs du modele (%)",
+        "width": 4
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1", "COLUMN-1-17"],
+      "type": "CHART"
+    },
+    "COLUMN-1-17": {
+      "children": ["CHART-7"],
+      "id": "COLUMN-1-17",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 4
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-1"],
+      "type": "COLUMN"
+    },
+    "ROW-1": {
+      "children": ["COLUMN-1-14", "COLUMN-1-15", "COLUMN-1-17"],
+      "id": "ROW-1",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "height": 20
+      },
+      "parents": ["ROOT_ID", "GRID_ID"],
+      "type": "ROW"
+    },
+    "CHART-8": {
+      "children": [],
+      "id": "CHART-8",
+      "meta": {
+        "chartId": 5,
+        "height": 30,
+        "sliceName": "Montant present par mois (MGA)",
+        "width": 6
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-2", "COLUMN-2-5"],
+      "type": "CHART"
+    },
+    "COLUMN-2-5": {
+      "children": ["CHART-8"],
+      "id": "COLUMN-2-5",
+      "meta": {
+        "background": "BACKGROUND_TRANSPARENT",
+        "width": 6
+      },
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-2"],
+      "type": "COLUMN"
+    },
+    "CHART-9": {
+      "children": [],
+      "id": "CHART-9",
+      "meta": {
         "chartId": 6,
         "height": 30,
         "sliceName": "Fraude par mecanisme (24 mois)",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-2",
-        "COLUMN-2-6"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-2", "COLUMN-2-6"],
       "type": "CHART"
     },
     "COLUMN-2-6": {
-      "children": [
-        "CHART-6"
-      ],
+      "children": ["CHART-9"],
       "id": "COLUMN-2-6",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-2"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-2"],
       "type": "COLUMN"
     },
     "ROW-2": {
-      "children": [
-        "COLUMN-2-5",
-        "COLUMN-2-6"
-      ],
+      "children": ["COLUMN-2-5", "COLUMN-2-6"],
       "id": "ROW-2",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "height": 30
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID"],
       "type": "ROW"
     },
-    "CHART-7": {
+    "CHART-10": {
       "children": [],
-      "id": "CHART-7",
+      "id": "CHART-10",
       "meta": {
         "chartId": 7,
         "height": 30,
         "sliceName": "Cinq prestataires les plus exposes (MGA)",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-3",
-        "COLUMN-3-7"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-3", "COLUMN-3-7"],
       "type": "CHART"
     },
     "COLUMN-3-7": {
-      "children": [
-        "CHART-7"
-      ],
+      "children": ["CHART-10"],
       "id": "COLUMN-3-7",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-3"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-3"],
       "type": "COLUMN"
     },
     "CHART-11": {
@@ -757,112 +622,69 @@
         "sliceName": "Evolution du delai de traitement",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-3",
-        "COLUMN-3-11"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-3", "COLUMN-3-11"],
       "type": "CHART"
     },
     "COLUMN-3-11": {
-      "children": [
-        "CHART-11"
-      ],
+      "children": ["CHART-11"],
       "id": "COLUMN-3-11",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 6
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-3"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-3"],
       "type": "COLUMN"
     },
     "ROW-3": {
-      "children": [
-        "COLUMN-3-7",
-        "COLUMN-3-11"
-      ],
+      "children": ["COLUMN-3-7", "COLUMN-3-11"],
       "id": "ROW-3",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "height": 30
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID"],
       "type": "ROW"
     },
-    "CHART-9": {
+    "CHART-12": {
       "children": [],
-      "id": "CHART-9",
+      "id": "CHART-12",
       "meta": {
         "chartId": 9,
         "height": 32,
         "sliceName": "Motifs de non-paiement par mois",
         "width": 12
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-4",
-        "COLUMN-4-9"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-4", "COLUMN-4-9"],
       "type": "CHART"
     },
     "COLUMN-4-9": {
-      "children": [
-        "CHART-9"
-      ],
+      "children": ["CHART-12"],
       "id": "COLUMN-4-9",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "width": 12
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID",
-        "ROW-4"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID", "ROW-4"],
       "type": "COLUMN"
     },
     "ROW-4": {
-      "children": [
-        "COLUMN-4-9"
-      ],
+      "children": ["COLUMN-4-9"],
       "id": "ROW-4",
       "meta": {
         "background": "BACKGROUND_TRANSPARENT",
         "height": 32
       },
-      "parents": [
-        "ROOT_ID",
-        "GRID_ID"
-      ],
+      "parents": ["ROOT_ID", "GRID_ID"],
       "type": "ROW"
     },
     "GRID_ID": {
-      "children": [
-        "ROW-0",
-        "ROW-1",
-        "ROW-2",
-        "ROW-3",
-        "ROW-4"
-      ],
+      "children": ["ROW-0", "ROW-1", "ROW-2", "ROW-3", "ROW-4"],
       "id": "GRID_ID",
-      "parents": [
-        "ROOT_ID"
-      ],
+      "parents": ["ROOT_ID"],
       "type": "GRID"
     },
     "ROOT_ID": {
-      "children": [
-        "GRID_ID"
-      ],
+      "children": ["GRID_ID"],
       "id": "ROOT_ID",
       "type": "ROOT"
     },

@@ -73,6 +73,15 @@ class ChampIntrouvableError(FactureIllisibleError):
     """Un champ obligatoire n'a pas ete trouve dans le document."""
 
 
+class DocumentNonFactureError(ChampIntrouvableError):
+    """Le document est lisible, mais ce n'est pas une facture de soins.
+
+    Une ordonnance prescribe des actes ; elle ne demande rien a payer et ne
+    porte ni montant ni ligne facturee. La rejeter avec un message clair
+    evite que l'utilisateur y cherche une date qui n'y est pas.
+    """
+
+
 @dataclass(frozen=True)
 class FactureExtraite:
     """Une facture lue dans un PDF, avant toute resolution en base.
@@ -568,6 +577,11 @@ def _valeur_prestataire(lignes: list[str]) -> str:
 
 #: Priorite des libelles de date : la date de FACTURE prime sur la date des
 #: soins, qui peut differer (constate sur 7 factures sur 30 du lot de test).
+#:
+#: Le rang de la date ecrite SANS libelle (« Antananarivo, le 2026-03-02 »)
+#: est intercale entre « Date du jour » et « Date des soins » : la formule
+#: « Fait a <ville>, le <date> » est la date de facture par convention, la
+#: date des soins ne decrit que le soin.
 _PRIORITE_DATE = (
     "DATE DE FACTURE",
     "DATE FACTURE",
@@ -579,9 +593,77 @@ _PRIORITE_DATE = (
     "DATE",
 )
 
+#: Rang de la date trouvee par MOTIF, entre « Date du jour » et « Date des
+#: soins » (les rangs des ancres vont de 0 a 7, celui-ci vaut 5).
+_RANG_DATE_MOTIF = 5
+
+#: Rang d'une date ISO trouvee seule, moins bonne que « Date des soins » :
+#: sans libelle ni « le », elle peut designer autre chose.
+_RANG_DATE_ISO = len(_PRIORITE_DATE) + 1
+
+#: Une date introduite par « le » : « Antananarivo, le 2026-03-02 ».
+_MOTIF_DATE_LE = re.compile(
+    r"\ble\s+("
+    r"\d{4}[-/]\d{1,2}[-/]\d{1,2}"
+    r"|\d{1,2}(?:er)?\s+[A-Za-zÀ-ÿ]+\s+\d{4}"
+    r"|\d{1,2}[-/.]\d{1,2}[-/.]\d{4}"
+    r")",
+    re.IGNORECASE,
+)
+
+#: Une date ISO seule : « 2026-03-02 ».
+_MOTIF_DATE_ISO = re.compile(r"\b(\d{4}-\d{1,2}-\d{1,2})\b")
+
+
+def _date_par_motif(ligne: str) -> str:
+    """Une date ecrite SANS libelle, deduite de la forme de la ligne.
+
+    Le gabarit du jury ecrit « Antananarivo, le 2026-03-02 » : la date de
+    facture n'a pas de libelle, elle se deduit du motif. La forme « ... le
+    <date> » est la formule « Fait a <ville>, le <date> » ; on la prefere a
+    une date ISO isolee, qui peut designer autre chose.
+    """
+    correspondance = _MOTIF_DATE_LE.search(ligne)
+    if correspondance is not None:
+        return correspondance.group(1)
+    correspondance = _MOTIF_DATE_ISO.search(ligne)
+    if correspondance is not None:
+        return correspondance.group(1)
+    return ""
+
+
+#: Les marqueurs propres a une ORDONNANCE (prescription). Une facture peut
+#: mentionner « Ordonnance : ORD-0003289 » comme simple champ : c'est la
+#: COMBINAISON de ces marqueurs qui distingue une prescription d'une facture.
+_MARQUEURS_ORDONNANCE = (
+    r"validite\s*:\s*\d+\s*jours",
+    r"ref\.\s*ord-\d+",
+    r"signature et cachet du medecin",
+    r"renseignement clinique",
+)
+
+
+def _est_ordonnance(texte: str) -> bool:
+    """Le document est-il une ordonnance (prescription) et non une facture ?
+
+    Une ordonnance prescrit des actes : elle ne demande rien a payer et ne
+    porte ni montant ni ligne facturee. La rejeter avec un message clair
+    evite que l'utilisateur y cherche une date de facture qui n'y est pas.
+    """
+    if re.search(r"\bordonnance\b", texte, re.IGNORECASE) is None:
+        return False
+    plat = _sans_accents(texte).lower()
+    return any(re.search(marqueur, plat) for marqueur in _MARQUEURS_ORDONNANCE)
+
 
 def _valeur_date(lignes: list[str]) -> str:
-    """La date de facture, en preferant le libelle le plus explicite."""
+    """La date de facture, en preferant le libelle le plus explicite.
+
+    Deux sources : les ANCRES de libelles (« Date de facture ») et, quand le
+    document n'en porte aucune, le MOTIF de la ligne (« Antananarivo, le
+    2026-03-02 »). La seconde a une priorite placee au-dessus de « Date
+    des soins », qui decrit le soin et non la facture.
+    """
     candidats: list[tuple[int, str]] = []
     for index, ligne in enumerate(lignes):
         ancre = _ancre(ligne)
@@ -593,6 +675,16 @@ def _valeur_date(lignes: list[str]) -> str:
         libelle = _mot(ancre.libelle)
         rang = _PRIORITE_DATE.index(libelle) if libelle in _PRIORITE_DATE else len(_PRIORITE_DATE)
         candidats.append((rang, valeur))
+
+    # Repli par motif : un document sans libelle de date porte la date dans
+    # la formule « <ville>, le <date> ».
+    for ligne in lignes:
+        for motif, rang in ((_MOTIF_DATE_LE, _RANG_DATE_MOTIF), (_MOTIF_DATE_ISO, _RANG_DATE_ISO)):
+            correspondance = motif.search(ligne)
+            if correspondance is not None:
+                candidats.append((rang, correspondance.group(1)))
+                break
+
     if not candidats:
         return ""
     return min(candidats, key=lambda couple: couple[0])[1]
@@ -1041,6 +1133,13 @@ def extraire_facture(
     texte = extraire_texte(donnees)
     if detecter_scan(texte):
         raise PdfSansTexteError(MESSAGE_SCAN)
+
+    if _est_ordonnance(texte):
+        raise DocumentNonFactureError(
+            "Ce document est une ORDONNANCE (prescription), pas une facture de "
+            "soins : elle ne porte ni montant ni ligne facturee. Importez la "
+            "facture de soins correspondante."
+        )
 
     lignes_texte = _lignes_utiles(texte)
 

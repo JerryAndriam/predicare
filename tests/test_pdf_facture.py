@@ -28,6 +28,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from predicare.crypto import pseudonymize
 from predicare.pdf_facture import (
     ChampIntrouvableError,
+    DocumentNonFactureError,
     FactureIllisibleError,
     PdfSansTexteError,
     detecter_scan,
@@ -898,3 +899,90 @@ def test_resoudre_prestataire_parmi_propage_le_dernier_rejet() -> None:
 
     with pytest.raises(ChampIntrouvableError, match="prestataire_id"):
         resoudre_prestataire_parmi(session, ("Inconnu A", "Inconnu B"))
+
+
+# ---------------------------------------------------------------------------
+# Date sans libelle, et ordonnance
+# ---------------------------------------------------------------------------
+
+
+def test_une_date_sans_libelle_est_lue_par_motif() -> None:
+    # Gabarit du jury : la date de facture n'a pas de libelle, elle est dans
+    # la formule « <ville>, le <date> ».
+    document = _pdf(
+        [
+            "PHARMACIE VONINKAZO",
+            "Antananarivo, le 2026-03-02",
+            "Patient : ASS-5C99024388",
+            "N° assuré : ASS-5C99024388",
+            "Code acte : MED-ACT",
+            "Quantité : 1",
+            "P.U. : 7 900 Ar",
+            "Total : 7 900 Ar",
+        ]
+    )
+
+    extraite = extraire_facture(document, nom="jury_sans_libelle.pdf")
+
+    assert extraite.date_facture == "2026-03-02T00:00:00"
+    assert extraite.assure == "ASS-5C99024388"
+    assert len(extraite.lignes) == 1
+
+
+def test_la_date_de_facture_prime_sur_la_date_des_soins() -> None:
+    document = _pdf(
+        [
+            "PHARMACIE VONINKAZO",
+            "Date des soins : 2026-01-30",
+            "Date de facture : 2026-02-05",
+            "Antananarivo, le 2026-03-02",
+            "Patient : ASS-5C99024388",
+            "Code acte : MED-ACT",
+            "Quantité : 1",
+            "P.U. : 7 900 Ar",
+            "Total : 7 900 Ar",
+        ]
+    )
+
+    extraite = extraire_facture(document, nom="priorite_date.pdf")
+
+    assert extraite.date_facture == "2026-02-05T00:00:00"
+
+
+def test_une_ordonnance_est_rejetee_clairement() -> None:
+    document = _pdf(
+        [
+            "Docteur RANAIVOMALALA Felana",
+            "ORDONNANCE",
+            "Antananarivo, le 2026-02-02",
+            "Patient : RASOATIANA Isabelle - 33 ans",
+            "Renseignement clinique : Suspicion infection respiratoire aiguë",
+            "1. Numération formule sanguine - Qté : 1",
+            "Validité : 10 jours - Réf. ORD-0003289",
+            "Signature et cachet du médecin",
+        ]
+    )
+
+    with pytest.raises(DocumentNonFactureError, match="ORDONNANCE"):
+        extraire_facture(document, nom="ORD-0003289.pdf")
+
+
+def test_une_facture_qui_mentionne_une_ordonnance_n_est_pas_rejetee() -> None:
+    # Une facture peut porter « Ordonnance : ORD-0003289 » comme champ :
+    # elle doit rester importable.
+    document = _pdf(
+        [
+            "PHARMACIE VONINKAZO",
+            "Antananarivo, le 2026-03-02",
+            "Patient : ASS-5C99024388",
+            "Ordonnance : ORD-0003289",
+            "Code acte : MED-ACT",
+            "Quantité : 1",
+            "P.U. : 7 900 Ar",
+            "Total : 7 900 Ar",
+        ]
+    )
+
+    extraite = extraire_facture(document, nom="facture_avec_ordonnance.pdf")
+
+    assert extraite.date_facture == "2026-03-02T00:00:00"

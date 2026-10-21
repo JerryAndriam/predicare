@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { api, apiFormData, messageErreur } from '../../api/client'
-import type { InvoiceInput, Prediction, References } from '../../api/types'
+import type { InvoiceInput, Prediction, References, ShapContribution } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { EnTetePage } from '../../components/blocs'
+import { ShapList } from '../../components/ShapList'
 import {
   Badge,
   Carte,
@@ -30,6 +32,15 @@ interface ResultatLot {
   reference: string
   statut: 'ok' | 'erreur'
   message: string
+  /** Détails riches (uniquement pour l'import PDF). */
+  score_fraude?: number | null
+  is_fraud?: boolean | null
+  seuil_applique?: number | null
+  prediction_id?: number | null
+  shap?: ShapContribution[] | null
+  notification_envoye?: boolean | null
+  notification_message?: string | null
+  champ?: string | null
 }
 
 /** Un fichier du lot PDF, tel que renvoye par `POST /factures/import`. */
@@ -40,6 +51,10 @@ interface ItemImport {
   score_fraude: number | null
   is_fraud: boolean | null
   seuil_applique: number | null
+  prediction_id: number | null
+  shap: ShapContribution[] | null
+  notification_envoye: boolean | null
+  notification_message: string | null
   message: string
   champ?: string | null
 }
@@ -54,6 +69,8 @@ interface ResultatImport {
   rejected: number
   failed: number
   items: ItemImport[]
+  /** Factures pour lesquelles la chaine d'alerte (Slack / e-mail) a parte. */
+  notifications_envoyees: number
 }
 
 interface FactureDuLot {
@@ -247,6 +264,7 @@ export function ImportLotPage() {
   // et l'aide changent, le traitement est identique.
   const { profile } = useAuth()
   const estAdmin = profile?.role === 'administrateur'
+  const navigate = useNavigate()
 
   const [references, setReferences] = useState<References | null>(null)
   const [prestataire, setPrestataire] = useState('')
@@ -264,6 +282,9 @@ export function ImportLotPage() {
   const [pdfEnCours, setPdfEnCours] = useState(false)
   const [pdfGlisse, setPdfGlisse] = useState(false)
   const inputPdfRef = useRef<HTMLInputElement | null>(null)
+
+  const [onglet, setOnglet] = useState<'pdf' | 'json'>('pdf')
+  const [detail, setDetail] = useState<ResultatLot | null>(null)
 
   const importEnCours = lotEnCours || pdfEnCours
 
@@ -493,11 +514,24 @@ export function ImportLotPage() {
         reference: item.reference ?? '-',
         statut: item.statut === 'notee' ? 'ok' : 'erreur',
         message: item.message.trim() === '' ? item.statut : item.message,
+        score_fraude: item.score_fraude,
+        is_fraud: item.is_fraud,
+        seuil_applique: item.seuil_applique,
+        prediction_id: item.prediction_id,
+        shap: item.shap,
+        notification_envoye: item.notification_envoye,
+        notification_message: item.notification_message,
+        champ: item.champ,
       }))
       setLotResultats(bilan)
       const refusees = resultat.rejected + resultat.failed
+      // Le compteur d'alertes est annonce : une facture notee sous 0,8 entre
+      // dans la file du gestionnaire mais n'interrompt personne. Sans ce
+      // chiffre, l'utilisateur peut croire que la notification a echoue.
+      const alertes = resultat.notifications_envoyees ?? 0
       setSucces(
-        `${resultat.noted} importée(s), ${refusees} rejetée(s) sur ${resultat.total}.`,
+        `${resultat.noted} importée(s), ${refusees} rejetée(s) sur ${resultat.total}. ` +
+          `${alertes} alerte(s) déclenchée(s) (seuil de notification 0,8).`,
       )
     } catch (probleme) {
       setErreur(messageErreur(probleme))
@@ -610,10 +644,33 @@ export function ImportLotPage() {
           )}
         </div>
 
-        <h3>Factures PDF</h3>
-        <div className="formulaire">
-          <Champ
-            label="Fichiers PDF (une facture par fichier)"
+        <div className="onglets-import" role="tablist" aria-label="Mode d'import">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={onglet === 'pdf'}
+            className={`onglet-import${onglet === 'pdf' ? ' onglet-import--actif' : ''}`}
+            onClick={() => setOnglet('pdf')}
+          >
+            Factures PDF
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={onglet === 'json'}
+            className={`onglet-import${onglet === 'json' ? ' onglet-import--actif' : ''}`}
+            onClick={() => setOnglet('json')}
+          >
+            Fichier JSON / CSV
+          </button>
+        </div>
+
+        {onglet === 'pdf' && (
+          <>
+            <h3>Factures PDF</h3>
+            <div className="formulaire">
+              <Champ
+                label="Fichiers PDF (une facture par fichier)"
             aide={`1 à ${LIMITE_PDF} fichiers .pdf, sélection multiple, dépôt par glisser-déposer.`}
           >
             <div
@@ -725,8 +782,12 @@ export function ImportLotPage() {
             </p>
           )}
         </div>
+          </>
+        )}
 
-        <h3>Fichier JSON ou CSV</h3>
+        {onglet === 'json' && (
+          <>
+            <h3>Fichier JSON ou CSV</h3>
         <div className="formulaire">
           <Champ label="Fichier (.json ou .csv)">
             <input
@@ -783,6 +844,8 @@ export function ImportLotPage() {
           </div>
           {lotNom !== '' && <p className="aide">Fichier : {lotNom}</p>}
         </div>
+          </>
+        )}
 
         {lotEnCours && (
           <p className="aide" role="status" aria-live="polite">
@@ -796,6 +859,18 @@ export function ImportLotPage() {
             titre="Aucun import pour le moment"
             texte="Le bilan de l’import, ligne par ligne, apparaîtra ici après le traitement du lot."
           />
+        )}
+
+        {lotResultats.length > 0 && (
+          <div className="boutons-ligne" style={{ marginBottom: 'var(--espace-3)' }}>
+            <button
+              type="button"
+              className="bouton discret"
+              onClick={() => navigate('/professionnel/suivi')}
+            >
+              Voir dans le suivi des dossiers
+            </button>
+          </div>
         )}
 
         {lotResultats.length > 0 && (
@@ -815,7 +890,18 @@ export function ImportLotPage() {
               </thead>
               <tbody>
                 {lotResultats.map((resultat) => (
-                  <tr key={`${resultat.ligne}-${resultat.source}`}>
+                  <tr
+                    key={`${resultat.ligne}-${resultat.source}`}
+                    className="ligne-cliquable"
+                    onClick={() => setDetail(resultat)}
+                    tabIndex={0}
+                    onKeyDown={(evenement) => {
+                      if (evenement.key === 'Enter' || evenement.key === ' ') {
+                        evenement.preventDefault()
+                        setDetail(resultat)
+                      }
+                    }}
+                  >
                     <td>{resultat.ligne}</td>
                     <td>{resultat.source}</td>
                     <td className="mono">{resultat.reference}</td>
@@ -832,6 +918,96 @@ export function ImportLotPage() {
           </div>
         )}
       </Carte>
+
+      {detail !== null && (
+        <div
+          className="modale-fond"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="detail-titre"
+          onClick={() => setDetail(null)}
+        >
+          <div className="modale" onClick={(evenement) => evenement.stopPropagation()}>
+            <div className="modale__entete">
+              <h3 id="detail-titre">
+                Détail — {detail.source} (ligne {detail.ligne})
+              </h3>
+              <button
+                type="button"
+                className="bouton discret"
+                onClick={() => setDetail(null)}
+                aria-label="Fermer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="modale__corps">
+              <dl className="liste-definitions">
+                <div>
+                  <dt>Référence</dt>
+                  <dd className="mono">{detail.reference ?? '-'}</dd>
+                </div>
+                <div>
+                  <dt>Statut</dt>
+                  <dd>
+                    <Badge ton={detail.statut === 'ok' ? 'ok' : 'alerte'}>
+                      {detail.statut === 'ok' ? 'Importée' : 'Rejetée'}
+                    </Badge>
+                  </dd>
+                </div>
+                {detail.score_fraude != null && (
+                  <div>
+                    <dt>Score de fraude</dt>
+                    <dd>
+                      {pourcentage(detail.score_fraude)} —{' '}
+                      {detail.is_fraud ? 'au-dessus du seuil (alerte)' : 'sous le seuil'}
+                    </dd>
+                  </div>
+                )}
+                {detail.seuil_applique != null && (
+                  <div>
+                    <dt>Seuil appliqué</dt>
+                    <dd>{pourcentage(detail.seuil_applique)}</dd>
+                  </div>
+                )}
+                {detail.prediction_id != null && (
+                  <div>
+                    <dt>Prédiction</dt>
+                    <dd className="mono">#{detail.prediction_id}</dd>
+                  </div>
+                )}
+                {detail.champ && (
+                  <div>
+                    <dt>Champ fautif</dt>
+                    <dd className="mono">{detail.champ}</dd>
+                  </div>
+                )}
+                {detail.notification_envoye !== null && detail.notification_envoye !== undefined && (
+                  <div>
+                    <dt>Notification</dt>
+                    <dd>
+                      {detail.notification_envoye ? '✓ alerte envoyée' : 'ℹ non envoyée'}
+                      {detail.notification_message ? ` — ${detail.notification_message}` : ''}
+                    </dd>
+                  </div>
+                )}
+                <div>
+                  <dt>Détail</dt>
+                  <dd>{detail.message}</dd>
+                </div>
+              </dl>
+
+              {detail.shap && detail.shap.length > 0 && (
+                <div className="modale__shap">
+                  <h4>Explication (SHAP) — top contributions</h4>
+                  <ShapList contributions={detail.shap} />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

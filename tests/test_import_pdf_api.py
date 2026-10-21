@@ -213,6 +213,19 @@ def _succes(payload: dict) -> SubmitAccepted:
     )
 
 
+def _succes_avec_alerte(payload: dict) -> SubmitAccepted:
+    """Une facture notee dont la chaine d'alerte a ete declenchee."""
+    return SubmitAccepted(
+        facture_id=str(payload["facture_id"]),
+        score_fraude=0.9342,
+        is_fraud=True,
+        seuil_applique=0.2876,
+        prediction_id=1234,
+        shap=[],
+        notification={"envoye": True, "message": "Alerte transmise au canal de notification."},
+    )
+
+
 def _traiter_avec_rejets(payload: dict, request: Any, user: TokenPayload) -> SubmitAccepted:
     """Rejette les 5 derniers fichiers du lot de 20, note les autres."""
     reference = str(payload["facture_id"])
@@ -356,3 +369,23 @@ def test_plus_de_cent_fichiers_est_refuse(client: TestClient) -> None:
 
     assert reponse.status_code == 413
     assert reponse.json()["code"] == "too_many_files"
+
+
+def test_le_bilan_compte_les_notifications_envoyees(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Le compteur d'alertes est renvoye : l'utilisateur sait si l'alerte part."""
+
+    def _capturer(payload: dict, request: Any, user: TokenPayload) -> SubmitAccepted:
+        return _succes_avec_alerte(payload)
+
+    monkeypatch.setattr(billing, "_traiter_facture", _capturer)
+
+    reponse = client.post("/factures/import", files=_fichiers(["a.pdf", "b.pdf"]))
+
+    assert reponse.status_code == 200
+    corps = reponse.json()
+    assert corps["noted"] == 2
+    assert corps["notifications_envoyees"] == 2
+    assert corps["items"][0]["notification_envoye"] is True
+    assert corps["items"][0]["prediction_id"] == 1234
