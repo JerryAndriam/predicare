@@ -35,6 +35,49 @@ x-superset-env: &superset-env
   DB_PORT: "5432"
 
 services:
+  # ---------------------------------------------------------------------------
+  # Couche semantique BI : applique `db/bi/views/*.sql` avant Superset.
+  #
+  # Les vues ne sont volontairement pas dans une migration Alembic (elles
+  # changent plus souvent que le schema). Mais `make up` ne les appliquait
+  # nulle part : une vue ajoutee dans le depot n'existait pas en base, et
+  # `superset-import` sortait en 1 sur la premiere vue absente.
+  #
+  # Ce job rend le demarrage autosuffisant, sans commande manuelle apres
+  # `docker compose up`.
+  # ---------------------------------------------------------------------------
+  bi-init:
+    # Meme image que `db` : elle est deja presente, et `psql` y est installe.
+    image: pgvector/pgvector:pg16
+    container_name: predicare-bi-init
+    restart: "no"
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-predicare}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-predicare}
+      PGDATABASE: ${POSTGRES_DB:-predicare}
+      BI_SCHEMA: bi
+      BI_ROLE: superset_ro
+      BI_VIEWS_DIR: /views
+    volumes:
+      - ./db/bi/views:/views:ro
+      - ./db/bi/apply_views.sh:/apply_views.sh:ro
+    command: ["/bin/bash", "/apply_views.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+      # Le role `superset_ro` et le schema `bi` sont crees par les migrations.
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - core
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   superset-init:
     build:
       context: .
@@ -49,6 +92,10 @@ services:
       # La base `superset` est creee par le job de migration : sans elle,
       # `superset init` echoue sur une base inexistante.
       migrate:
+        condition: service_completed_successfully
+      # Les vues doivent exister et etre lisibles par `superset_ro` avant que
+      # `superset-import` enregistre les datasets.
+      bi-init:
         condition: service_completed_successfully
     networks:
       - core
@@ -76,6 +123,11 @@ services:
       DB_PORT: "5432"
     depends_on:
       superset-init:
+        condition: service_completed_successfully
+      # Dependency directe, en plus de celle portee par `superset-init` : si
+      # ce dernier est deja sorti d'un lancement precedent, Compose ne doit
+      # pas pour autant demarrer l'import avant que les vues soient a jour.
+      bi-init:
         condition: service_completed_successfully
     networks:
       - core

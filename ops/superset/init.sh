@@ -46,7 +46,16 @@ log "Creation du compte d'administration '${SUPERSET_ADMIN_USERNAME}'..."
 DEJA_EXISTANT="$(superset fab list-users 2>/dev/null | grep -c "${SUPERSET_ADMIN_USERNAME}" || true)"
 
 if [ "${DEJA_EXISTANT}" -ge 1 ]; then
-    log "  compte deja present, rien a faire"
+    # Le compte existe deja : on ne le recree pas, mais on REAPPLIQUE le mot
+    # de passe du `.env`. Le `.env` fait foi, et un compte cree lors d'un
+    # lancement precedent peut porter un ancien secret. Sans cette remise a
+    # niveau, les jobs qui parlent a l'API (dashboard, requetes, export)
+    # repondent 401 « Not authorized » et le tableau de bord n'est jamais
+    # applique -- alors que `make up` se termine sans erreur visible.
+    superset fab reset-password \
+        --username "${SUPERSET_ADMIN_USERNAME}" \
+        --password "${SUPERSET_ADMIN_PASSWORD}"
+    log "  compte deja present, mot de passe resynchronise depuis l'environnement"
 else
     superset fab create-admin \
         --username "${SUPERSET_ADMIN_USERNAME}" \
