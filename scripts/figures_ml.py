@@ -31,6 +31,19 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 RACINE = Path(__file__).resolve().parent.parent
 
+#: Police et fond du support de soutenance : les figures doivent etre
+#: indiscernables des diapositives (theme DM Sans, fond FBFBF8).
+POLICE = Path("/tmp/opencode/DMSans-var.ttf")
+FOND = "#FBFBF8"
+if POLICE.exists():
+    from matplotlib import font_manager
+
+    font_manager.fontManager.addfont(str(POLICE))
+    plt.rcParams["font.family"] = font_manager.FontProperties(fname=str(POLICE)).get_name()
+plt.rcParams["figure.facecolor"] = FOND
+plt.rcParams["axes.facecolor"] = FOND
+plt.rcParams["savefig.facecolor"] = FOND
+
 #: Palette sobre, lisible sur un videoprojecteur.
 BLEU = "#1f4e79"
 BLEU_CLAIR = "#5b9bd5"
@@ -90,17 +103,32 @@ def _csv_sql(requete: str) -> list[list[str]]:
 # ---------------------------------------------------------------------------
 
 
-def _figure(titre: str, sous_titre: str = "") -> tuple[plt.Figure, plt.Axes]:
+def _figure(
+    titre: str, sous_titre: str = "", habillage: bool = True
+) -> tuple[plt.Figure, plt.Axes]:
+    """Figure 16:9.
+
+    `habillage=False` produit un graphique nu : ni titre, ni sous-titre, ni
+    ligne de source. C'est la variante destinee a etre posee dans une carte du
+    support de soutenance, ou la carte fournit deja le titre et la source.
+    """
     figure, axe = plt.subplots(figsize=(16, 9), dpi=100)
-    figure.patch.set_facecolor("white")
-    axe.set_facecolor("white")
-    figure.suptitle(titre, fontsize=22, fontweight="bold", color=NOIR, x=0.02, ha="left", y=0.97)
-    if sous_titre:
-        figure.text(0.02, 0.915, sous_titre, fontsize=12.5, color=GRIS, ha="left")
+    figure.patch.set_facecolor(FOND)
+    axe.set_facecolor(FOND)
+    if habillage:
+        figure.suptitle(
+            titre, fontsize=22, fontweight="bold", color=NOIR, x=0.02, ha="left", y=0.97
+        )
+        if sous_titre:
+            figure.text(0.02, 0.915, sous_titre, fontsize=12.5, color=GRIS, ha="left")
+    else:
+        figure.subplots_adjust(left=0.06, right=0.985, top=0.96, bottom=0.10)
     return figure, axe
 
 
-def _pied(figure: plt.Figure, source: str) -> None:
+def _pied(figure: plt.Figure, source: str, habillage: bool = True) -> None:
+    if not habillage:
+        return
     figure.text(0.02, 0.015, f"Source : {source}", fontsize=10, color=GRIS, ha="left")
 
 
@@ -314,7 +342,7 @@ def figure_cycle_vie(sortie: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def figure_courbes(sortie: Path) -> None:
+def figure_courbes(sortie: Path, habillage: bool = True) -> None:
     import joblib
     import numpy as np
     from sklearn.metrics import precision_recall_curve, roc_curve
@@ -338,24 +366,27 @@ def figure_courbes(sortie: Path) -> None:
     pr_auc = average_precision_score(y_test, scores)
 
     figure, (gauche, droite) = plt.subplots(1, 2, figsize=(16, 9), dpi=100)
-    figure.suptitle(
-        "Courbes ROC et precision-rappel sur le jeu de test",
-        fontsize=22,
-        fontweight="bold",
-        color=NOIR,
-        x=0.02,
-        ha="left",
-        y=0.97,
-    )
-    figure.text(
-        0.02,
-        0.915,
-        f"10 086 factures de test, 878 fraudes - ROC-AUC {roc_auc:.4f}, PR-AUC {pr_auc:.4f} "
-        "(recalcul sur l'artefact en service ; le rapport de reference indique 0,9500 et 0,8913 sur son propre run)",
-        fontsize=12.5,
-        color=GRIS,
-        ha="left",
-    )
+    if habillage:
+        figure.suptitle(
+            "Courbes ROC et precision-rappel sur le jeu de test",
+            fontsize=22,
+            fontweight="bold",
+            color=NOIR,
+            x=0.02,
+            ha="left",
+            y=0.97,
+        )
+        figure.text(
+            0.02,
+            0.915,
+            f"10 086 factures de test, 878 fraudes - ROC-AUC {roc_auc:.4f}, PR-AUC {pr_auc:.4f} "
+            "(recalcul sur l'artefact en service ; le rapport de reference indique 0,9500 et 0,8913 sur son propre run)",
+            fontsize=12.5,
+            color=GRIS,
+            ha="left",
+        )
+    else:
+        figure.subplots_adjust(left=0.06, right=0.99, top=0.98, bottom=0.09, wspace=0.16)
 
     gauche.plot([0, 1], [0, 1], linestyle="--", color=GRIS, linewidth=1.2, label="hasard")
     gauche.plot(fpr, tpr, color=BLEU, linewidth=2.6, label=f"ROC-AUC {roc_auc:.4f}")
@@ -391,8 +422,12 @@ def figure_courbes(sortie: Path) -> None:
         for spine in ("top", "right"):
             axe.spines[spine].set_visible(False)
 
-    _pied(figure, "models/2/model.joblib sur le jeu de test de data/raw (recalcul complet)")
-    _enregistrer(figure, sortie / "3-ia" / "p3_courbes_roc_pr.png")
+    _pied(
+        figure, "models/2/model.joblib sur le jeu de test de data/raw (recalcul complet)", habillage
+    )
+    nom = "p3_courbes_roc_pr.png" if habillage else "p3_courbes_roc_pr_carte.png"
+    dossier = sortie / "3-ia" if habillage else sortie / "3-ia" / "carte"
+    _enregistrer(figure, dossier / nom)
 
 
 # ---------------------------------------------------------------------------
@@ -1272,6 +1307,12 @@ def main() -> int:
             fonction(sortie)
         except Exception as erreur:
             print(f"  ECHEC {nom} : {erreur}", file=sys.stderr)
+    # Variante sans habillage, destinee a une carte du support de soutenance.
+    print("[figure] courbes ROC et PR (variante carte)")
+    try:
+        figure_courbes(sortie, habillage=False)
+    except Exception as erreur:
+        print(f"  ECHEC variante carte : {erreur}", file=sys.stderr)
     return 0
 
 

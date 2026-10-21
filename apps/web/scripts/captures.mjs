@@ -259,38 +259,10 @@ async function principal() {
     await contexte.close()
   })
 
-  await tenter('p4_superset', async () => {
-    const contexte = await navigateur.newContext({ viewport: { width: 1600, height: 900 } })
-    const page = await contexte.newPage()
-    await page.goto(`${SUPERSET}/login/`, { waitUntil: 'domcontentloaded', timeout: 60000 })
-    await page.waitForTimeout(2500)
-    const champUtilisateur = page.locator('input[name="username"]')
-    if (await champUtilisateur.count()) {
-      await champUtilisateur.fill('demo')
-      await page.locator('input[name="password"]').fill(mdpSuperset)
-      await page.locator('button:has-text("Sign in"), button:has-text("Log in")').first().click()
-      await page.waitForTimeout(9000)
-    }
-    await shot(page, 4, 'p4_superset_tableau')
-    const carte = page.locator('.chart-container, [data-test="chart-container"]').first()
-    if (await carte.count()) {
-      await carte.hover()
-      await page.waitForTimeout(1500)
-      const menu = page.locator('.ant-dropdown-trigger, [aria-label*="menu" i], button:has-text("More Options")').first()
-      if (await menu.count()) {
-        await menu.click()
-        await page.waitForTimeout(1500)
-        const lien = page.getByText(/View as table/i).first()
-        if (await lien.count()) {
-          await lien.click()
-          await page.waitForTimeout(5000)
-        }
-      }
-    }
-    await shot(page, 4, 'p4_superset_view_as_table')
-    await contexte.close()
-  })
-
+  // Pas de capture Superset plein ecran : le compte de demonstration est en
+  // lecture stricte et ne voit ni tableau ni tuile dans sa liste. Le tableau
+  // se montre par l'application (jeton d'invite, page /pilotage), c'est
+  //.capture plus haut.
   // ---------------------------------------------------------------- partie 5
   await tenter('p5_grafana_vue_modele', async () => {
     const contexte = await navigateur.newContext({ viewport: { width: 1600, height: 900 } })
