@@ -59,6 +59,10 @@ export default function App() {
 
           <Route element={<RequireRole roles={['administrateur']} />}>
             <Route path="/administration" element={<AccueilAdminPage />} />
+            {/* Le lot du jury est multi-prestataires : un professionnel est
+                borne a son propre prestataire par l'API, l'administrateur ne
+                l'est pas. La route dediee evite d'ouvrir toutes les pages pro. */}
+            <Route path="/administration/import-lot" element={<ImportLotPage />} />
             <Route path="/administration/seuil" element={<SeuilPage />} />
             <Route path="/administration/modele" element={<ModelePage />} />
             <Route path="/administration/sante" element={<SantePage />} />

@@ -34,11 +34,13 @@ export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY)
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+/**
+ * Executeur commun : jeton, appel reseau, et traitement uniforme de la
+ * reponse. `api()` et `apiFormData()` ne different que par les en-tetes
+ * qu'ils posent AVANT d'arriver ici.
+ */
+async function executer<T>(path: string, options: RequestInit): Promise<T> {
   const headers = new Headers(options.headers)
-  if (options.body !== undefined && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
@@ -71,6 +73,29 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers)
+  if (options.body !== undefined && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  return executer<T>(path, { ...options, headers })
+}
+
+/**
+ * Envoi multipart.
+ *
+ * On ne pose JAMAIS `Content-Type` : le navigateur doit le generer lui-meme
+ * pour y inclure la frontiere (`boundary`) du `multipart/form-data`. Le
+ * forcer a `application/json` rendrait le corps illisible cote serveur.
+ */
+export async function apiFormData<T>(
+  path: string,
+  form: FormData,
+  method = 'POST',
+): Promise<T> {
+  return executer<T>(path, { method, body: form })
 }
 
 export function messageErreur(error: unknown): string {

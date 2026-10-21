@@ -160,6 +160,13 @@ export const ESPACES: Espace[] = [
         icone: House,
       },
       {
+        chemin: '/administration/import-lot',
+        libelle: 'Import de lot',
+        description:
+          'Déposer les factures PDF du jury en un seul lot. Le bilan indique, fichier par fichier, ce qui est noté et ce qui est rejeté.',
+        icone: Upload,
+      },
+      {
         chemin: '/administration/seuil',
         libelle: 'Seuil d’alerte',
         description:

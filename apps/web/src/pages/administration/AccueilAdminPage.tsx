@@ -7,6 +7,7 @@ import {
   ScrollText,
   ShieldCheck,
   SlidersHorizontal,
+  Upload,
   Users,
 } from 'lucide-react'
 
@@ -20,7 +21,7 @@ import { Erreur, pourcentage } from '../../components/ui'
  * L'accueil de l'espace administration.
  *
  * La page ne regle rien : elle montre l'etat courant (role, version du
- * modele, seuil) et donne acces aux huit sections.
+ * modele, seuil) et donne acces aux neuf sections.
  */
 export function AccueilAdminPage() {
   const { profile } = useAuth()
@@ -56,7 +57,7 @@ export function AccueilAdminPage() {
           <>
             Cet espace regroupe les réglages de la plateforme : le seuil qui déclenche les
             alertes, la version du modèle en service et les comptes utilisateurs. Les
-            huit sections ci-dessous mènent à chaque écran de l’espace.
+            neuf sections ci-dessous mènent à chaque écran de l’espace.
           </>
         }
       />
@@ -83,12 +84,18 @@ export function AccueilAdminPage() {
       </div>
 
       <section className="accueil-section">
-        <h2>Les huit sections de l’espace</h2>
+        <h2>Les neuf sections de l’espace</h2>
         <p className="accueil-section-chapo">
           Chaque réglage se fait là où il s’applique, et il est conservé avec son auteur
           et sa date.
         </p>
         <div className="tuiles">
+          <Tuile
+            icone={Upload}
+            titre="Import de lot"
+            texte="Déposer les factures PDF du jury en un seul lot. Le bilan indique, fichier par fichier, ce qui est noté et ce qui est rejeté."
+            chemin="/administration/import-lot"
+          />
           <Tuile
             icone={SlidersHorizontal}
             titre="Seuil d’alerte"

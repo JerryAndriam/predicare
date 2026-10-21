@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
-import { api, messageErreur } from '../../api/client'
+import { api, apiFormData, messageErreur } from '../../api/client'
 import type { InvoiceInput, Prediction, References } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
 import { EnTetePage } from '../../components/blocs'
 import {
   Badge,
@@ -18,11 +19,41 @@ import {
  *  rejouer un lot plus large sans bloquer l'utilisateur. */
 const LIMITE_LOT = 200
 
+/** Le CDC fait passer 20 factures PDF au jury : l'ecran refuse au-dela, ce
+ *  qui evite un envoi massif par erreur (le serveur tolere davantage). */
+const LIMITE_PDF = 20
+
 interface ResultatLot {
   ligne: number
+  /** Fichier d'origine : nom du PDF, ou nom du fichier JSON/CSV. */
+  source: string
   reference: string
   statut: 'ok' | 'erreur'
   message: string
+}
+
+/** Un fichier du lot PDF, tel que renvoye par `POST /factures/import`. */
+interface ItemImport {
+  fichier: string
+  statut: 'notee' | 'rejetee' | 'echec'
+  reference: string | null
+  score_fraude: number | null
+  is_fraud: boolean | null
+  seuil_applique: number | null
+  message: string
+  champ?: string | null
+}
+
+/**
+ * Reponse de l'import multipart : le serveur a DEJA traite les 20 fichiers.
+ * L'ecran n'a donc aucune boucle de soumission a faire.
+ */
+interface ResultatImport {
+  total: number
+  noted: number
+  rejected: number
+  failed: number
+  items: ItemImport[]
 }
 
 interface FactureDuLot {
@@ -211,6 +242,12 @@ function analyserLot(texte: string, nom: string, impose: string | null): LotAnal
  * interrompu entre deux factures.
  */
 export function ImportLotPage() {
+  // Le meme ecran sert le professionnel (`/professionnel/import-lot`) et
+  // l'administrateur (`/administration/import-lot`) : seul le fil d'Ariane
+  // et l'aide changent, le traitement est identique.
+  const { profile } = useAuth()
+  const estAdmin = profile?.role === 'administrateur'
+
   const [references, setReferences] = useState<References | null>(null)
   const [prestataire, setPrestataire] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
@@ -223,13 +260,20 @@ export function ImportLotPage() {
   const [lotTraitees, setLotTraitees] = useState(0)
   const [lotResultats, setLotResultats] = useState<ResultatLot[]>([])
 
+  const [pdfFichiers, setPdfFichiers] = useState<File[]>([])
+  const [pdfEnCours, setPdfEnCours] = useState(false)
+
+  const importEnCours = lotEnCours || pdfEnCours
+
   useEffect(() => {
     api<References>('/api/core/factures/references')
       .then((valeurs) => {
         setReferences(valeurs)
+        // Le prestataire du compte prime (perimetre serveur). Un
+        // administrateur, lui, n'en a pas : le champ reste vide, ce qui
+        // laisse chaque PDF porter son propre prestataire.
         const propre = valeurs.prestataire_du_compte ?? null
         if (propre !== null) setPrestataire(propre)
-        else if (valeurs.prestataires.length > 0) setPrestataire(valeurs.prestataires[0].code)
       })
       .catch((probleme: unknown) => setErreur(messageErreur(probleme)))
   }, [])
@@ -275,10 +319,15 @@ export function ImportLotPage() {
     setLotEnCours(true)
     setLotAnnule(false)
     setLotTraitees(0)
+    // La colonne « Source » garde le nom du fichier JSON/CSV : dans un bilan
+    // qui peut melanger plusieurs origines, une ligne sans source serait
+    // impossible a rattacher a un depot.
+    const source = lotNom.trim() === '' ? '-' : lotNom
     // Les lignes rejetees a la LECTURE du fichier sont reportees telles
     // quelles : une facture fautive ne doit pas disparaitre du bilan.
     const resultats: ResultatLot[] = analyse.rejetees.map((rejetee) => ({
       ligne: rejetee.ligne,
+      source,
       reference: '-',
       statut: 'erreur',
       message: rejetee.message,
@@ -297,6 +346,7 @@ export function ImportLotPage() {
         })
         resultats.push({
           ligne: entree.ligne,
+          source,
           reference: prediction.facture_id,
           statut: 'ok',
           message: `${pourcentage(prediction.score_fraude)} - ${
@@ -306,6 +356,7 @@ export function ImportLotPage() {
       } catch (probleme) {
         resultats.push({
           ligne: entree.ligne,
+          source,
           reference: entree.facture.facture_id ?? '-',
           statut: 'erreur',
           message: messageErreur(probleme),
@@ -322,6 +373,84 @@ export function ImportLotPage() {
         ? `Import interrompu : ${reussies} facture(s) importée(s), ${refusees} rejetée(s).`
         : `${reussies} facture(s) importée(s), ${refusees} rejetée(s) sur ${resultats.length}.`,
     )
+  }
+
+  /**
+   * Selectionne les PDF a envoyer. Le controle est fait ici, avant l'envoi :
+   * un refus immediat evite de faire monter 20 fichiers pour rien.
+   */
+  const choisirFichiersPdf = (liste: FileList | null) => {
+    if (liste === null) return
+    const fichiers = Array.from(liste)
+    setErreur(null)
+    setSucces(null)
+    setLotResultats([])
+
+    const nonPdf = fichiers.filter((fichier) => !fichier.name.toLowerCase().endsWith('.pdf'))
+    if (nonPdf.length > 0) {
+      setPdfFichiers([])
+      setErreur(
+        `Fichier(s) non PDF : ${nonPdf.map((fichier) => fichier.name).join(', ')}. ` +
+          'Le lot PDF n’accepte que des fichiers .pdf.',
+      )
+      return
+    }
+    if (fichiers.length > LIMITE_PDF) {
+      setPdfFichiers([])
+      setErreur(`Un lot est limité à ${LIMITE_PDF} PDF (${fichiers.length} sélectionnés).`)
+      return
+    }
+    setPdfFichiers(fichiers)
+  }
+
+  /**
+   * Envoie les PDF en UN SEUL appel multipart.
+   *
+   * Le serveur traite chaque fichier isolement et renvoie le bilan complet :
+   * un PDF illisible produit un `echec` sans interrompre les autres. Le
+   * message du serveur (par exemple « PDF sans couche texte : OCR requis »
+   * pour un scan) est affiche TEL QUEL dans la colonne « Détail ».
+   */
+  const importerPdf = async () => {
+    setErreur(null)
+    setSucces(null)
+    setLotResultats([])
+
+    if (pdfFichiers.length === 0) {
+      setErreur('Sélectionnez au moins un PDF.')
+      return
+    }
+    if (pdfFichiers.length > LIMITE_PDF) {
+      setErreur(`Un lot est limité à ${LIMITE_PDF} PDF (${pdfFichiers.length} sélectionnés).`)
+      return
+    }
+
+    const form = new FormData()
+    for (const fichier of pdfFichiers) form.append('fichiers', fichier)
+    // Facultatif : un administrateur peut imposer un prestataire aux
+    // factures qui n'en portent pas. Vide = chaque PDF fait foi.
+    if (prestataire !== '') form.append('prestataire_id', prestataire)
+
+    setPdfEnCours(true)
+    try {
+      const resultat = await apiFormData<ResultatImport>('/api/core/factures/import', form)
+      const bilan: ResultatLot[] = resultat.items.map((item, index) => ({
+        ligne: index + 1,
+        source: item.fichier,
+        reference: item.reference ?? '-',
+        statut: item.statut === 'notee' ? 'ok' : 'erreur',
+        message: item.message.trim() === '' ? item.statut : item.message,
+      }))
+      setLotResultats(bilan)
+      const refusees = resultat.rejected + resultat.failed
+      setSucces(
+        `${resultat.noted} importée(s), ${refusees} rejetée(s) sur ${resultat.total}.`,
+      )
+    } catch (probleme) {
+      setErreur(messageErreur(probleme))
+    } finally {
+      setPdfEnCours(false)
+    }
   }
 
   /**
@@ -354,16 +483,23 @@ export function ImportLotPage() {
   return (
     <div className="pile">
       <EnTetePage
-        fil={[
-          { libelle: 'Espace professionnel de santé', chemin: '/professionnel' },
-          { libelle: 'Import de lot' },
-        ]}
+        fil={
+          estAdmin
+            ? [
+                { libelle: 'Administration', chemin: '/administration' },
+                { libelle: 'Import de lot' },
+              ]
+            : [
+                { libelle: 'Espace professionnel de santé', chemin: '/professionnel' },
+                { libelle: 'Import de lot' },
+              ]
+        }
         titre="Import de lot"
         chapo={
           <>
-            Déposez un fichier de factures : chaque ligne est vérifiée, notée et
-            enregistrée séparément. Une facture invalide est rejetée et listée comme
-            telle, sans interrompre le reste du lot.
+            Déposez les PDF du jury — une facture par fichier — ou un fichier JSON/CSV :
+            chaque facture est vérifiée, notée et enregistrée séparément. Une facture
+            invalide est rejetée et listée comme telle, sans interrompre le reste du lot.
           </>
         }
       />
@@ -378,29 +514,39 @@ export function ImportLotPage() {
             type="button"
             className="bouton discret"
             onClick={() => void chargerLotJury()}
-            disabled={lotEnCours}
+            disabled={importEnCours}
           >
             Charger le lot du jury
           </button>
         }
       >
         <p className="aide">
-          Fichier JSON (tableau de factures) ou CSV avec les colonnes
-          assure_pseudonyme, date_facture, code_acte, quantite, montant_unitaire,
-          date_acte. Chaque facture est notee individuellement : une ligne en erreur
-          n’arrête pas le lot.
+          Trois formats acceptés : PDF (une facture par fichier), JSON ou CSV. Les
+          PDF sont envoyés en un seul appel et traités séparément par le serveur ;
+          pour le JSON/CSV, chaque ligne est vérifiée et déposée individuellement.
+          Une facture invalide est rejetée sans arrêter le reste du lot.
         </p>
 
         <div className="formulaire">
           {references === null ? (
             <Chargement texte="Chargement des référentiels..." />
           ) : (
-            <Champ label="Prestataire">
+            <Champ
+              label="Prestataire"
+              aide={
+                estAdmin
+                  ? 'Facultatif : laissé vide, chaque PDF porte son propre prestataire. Sinon, il est imposé aux factures qui n’en portent pas.'
+                  : undefined
+              }
+            >
               <select
                 value={prestataire}
                 onChange={(event) => setPrestataire(event.target.value)}
                 disabled={references.prestataire_du_compte != null}
               >
+                {references.prestataire_du_compte == null && (
+                  <option value="">— Aucun (lu dans le fichier ou le PDF) —</option>
+                )}
                 {references.prestataires.map((valeur) => (
                   <option key={valeur.code} value={valeur.code}>
                     {valeur.code} - {valeur.nom}
@@ -409,18 +555,83 @@ export function ImportLotPage() {
               </select>
             </Champ>
           )}
+        </div>
 
+        <h3>Factures PDF</h3>
+        <div className="formulaire">
+          <Champ
+            label="Fichiers PDF (une facture par fichier)"
+            aide={`1 à ${LIMITE_PDF} fichiers .pdf, sélection multiple.`}
+          >
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              disabled={importEnCours}
+              onChange={(event) => {
+                choisirFichiersPdf(event.target.files)
+                // Le champ est remis a zero pour pouvoir re-selectionner le
+                // meme fichier apres une correction, sans rouvrir la page.
+                event.target.value = ''
+              }}
+            />
+          </Champ>
+
+          {pdfFichiers.length > 0 && (
+            <div className="aide" role="status" aria-live="polite">
+              <p>
+                {pdfFichiers.length} PDF sélectionné(s) sur {LIMITE_PDF} :
+              </p>
+              <ul>
+                {pdfFichiers.map((fichier) => (
+                  <li key={`${fichier.name}-${fichier.size}-${fichier.lastModified}`}>
+                    {fichier.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="boutons-ligne">
+            <button
+              type="button"
+              className="bouton principal"
+              onClick={() => void importerPdf()}
+              disabled={importEnCours || pdfFichiers.length === 0}
+            >
+              {pdfEnCours ? 'Import des PDF en cours...' : 'Importer les PDF'}
+            </button>
+            {!pdfEnCours && pdfFichiers.length > 0 && (
+              <button
+                type="button"
+                className="bouton discret"
+                onClick={() => setPdfFichiers([])}
+              >
+                Vider la sélection
+              </button>
+            )}
+          </div>
+          {pdfEnCours && (
+            <p className="aide" role="status" aria-live="polite">
+              Envoi de {pdfFichiers.length} PDF et notation en cours…
+            </p>
+          )}
+        </div>
+
+        <h3>Fichier JSON ou CSV</h3>
+        <div className="formulaire">
           <Champ label="Fichier (.json ou .csv)">
             <input
               type="file"
               accept=".json,.csv,application/json,text/csv"
+              disabled={importEnCours}
               onChange={(event) => chargerFichierLot(event.target.files?.[0])}
             />
           </Champ>
 
           <Champ
             label="Contenu (modifiable)"
-            aide="Collez un tableau JSON ou un CSV. Le prestataire de votre compte est repris automatiquement."
+            aide="Collez un tableau JSON ou un CSV. Le prestataire sélectionné ci-dessus sert aux lignes qui n’en portent pas."
           >
             <textarea
               rows={6}
@@ -435,7 +646,7 @@ export function ImportLotPage() {
               type="button"
               className="bouton principal"
               onClick={() => void importerLot()}
-              disabled={lotEnCours || lotTexte.trim() === '' || references === null}
+              disabled={importEnCours || lotTexte.trim() === '' || references === null}
             >
               {lotEnCours ? 'Import en cours...' : 'Importer le lot'}
             </button>
@@ -451,6 +662,7 @@ export function ImportLotPage() {
               <button
                 type="button"
                 className="bouton discret"
+                disabled={pdfEnCours}
                 onClick={() => {
                   setLotTexte('')
                   setLotNom('')
@@ -471,7 +683,7 @@ export function ImportLotPage() {
           </p>
         )}
 
-        {lotResultats.length === 0 && !lotEnCours && (
+        {lotResultats.length === 0 && !importEnCours && (
           <EtatVide
             titre="Aucun import pour le moment"
             texte="Le bilan de l’import, ligne par ligne, apparaîtra ici après le traitement du lot."
@@ -487,6 +699,7 @@ export function ImportLotPage() {
               <thead>
                 <tr>
                   <th scope="col">#</th>
+                  <th scope="col">Source</th>
                   <th scope="col">Référence</th>
                   <th scope="col">Statut</th>
                   <th scope="col">Détail</th>
@@ -494,8 +707,9 @@ export function ImportLotPage() {
               </thead>
               <tbody>
                 {lotResultats.map((resultat) => (
-                  <tr key={resultat.ligne}>
+                  <tr key={`${resultat.ligne}-${resultat.source}`}>
                     <td>{resultat.ligne}</td>
+                    <td>{resultat.source}</td>
                     <td className="mono">{resultat.reference}</td>
                     <td>
                       <Badge ton={resultat.statut === 'ok' ? 'ok' : 'alerte'}>

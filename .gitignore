@@ -32,6 +32,11 @@ apps/web/.vite/
 /data/*
 !/data/seed/
 !/data/seed/lot_20_factures.json
+# Le dossier de depot du lot du jury : le dossier doit exister dans l'image,
+# les fichiers PDF qu'il recoit restent hors du depot.
+!/data/import/
+/data/import/*
+!/data/import/.gitkeep
 /models/
 /backups/
 /artifacts/
@@ -62,3 +67,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
 ops/traefik/generere/
+
+# Artefact de build : copie du lot du jury dans les fichiers statiques.
+# Genere par apps/web/scripts/copier-lot.mjs (predev/prebuild) et par le Dockerfile.
+/apps/web/public/lot-jury.json

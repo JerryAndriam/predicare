@@ -13,17 +13,25 @@ tests du lot du jury et par le parcours e2e.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from predicare.crypto import pseudonymize
+from predicare.pdf_facture import reference_deterministe
+from predicare_seed import add_invoices
 from predicare_seed.add_invoices import (
     FORMAT_CSV_FRONT,
     FORMAT_CSV_RAW,
     FORMAT_JSON,
+    FORMAT_PDF,
     FichierInvalideError,
     detecter_format,
+    executer,
     lire_fichier,
 )
 
@@ -219,3 +227,198 @@ def test_le_montant_total_est_calcule_pour_le_format_front(tmp_path: Path) -> No
     """
     _, factures = lire_fichier(_ecrire(tmp_path, "front.csv", CSV_FRONT))
     assert factures[0].payload["montant_total"] == 19000.0
+
+
+# ---------------------------------------------------------------------------
+# Le jour J : un PDF n'est pas du texte
+# ---------------------------------------------------------------------------
+def _chaine_pdf(texte: str) -> str:
+    morceaux: list[str] = []
+    for caractere in texte:
+        code = ord(caractere)
+        if caractere in "()\\":
+            morceaux.append("\\" + caractere)
+        elif 32 <= code < 127:
+            morceaux.append(caractere)
+        elif code < 256:
+            morceaux.append(f"\\{code:03o}")
+        else:
+            morceaux.append("?")
+    return "(" + "".join(morceaux) + ")"
+
+
+def _pdf(lignes: list[str]) -> bytes:
+    """Un PDF texte d'une page, sans reportlab (non installe)."""
+    ecrivain = PdfWriter()
+    page = ecrivain.add_blank_page(width=595, height=842)
+    police = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+            NameObject("/Encoding"): NameObject("/WinAnsiEncoding"),
+        }
+    )
+    reference_police = ecrivain._add_object(police)
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): reference_police})}
+    )
+    contenu = ["BT", "/F1 10 Tf", "50 800 Td", "14 TL"]
+    for ligne in lignes:
+        contenu.append(f"{_chaine_pdf(ligne)} Tj")
+        contenu.append("T*")
+    contenu.append("ET")
+    flux = DecodedStreamObject()
+    flux.set_data("\n".join(contenu).encode("latin-1"))
+    page[NameObject("/Contents")] = ecrivain._add_object(flux)
+    tampon = BytesIO()
+    ecrivain.write(tampon)
+    return tampon.getvalue()
+
+
+LIGNES_PDF = [
+    "Patient : assr_Wv7VAUFiUXieeWwChWmGXB",
+    "Prestataire : PRE-00155",
+    "Date facture : 20/10/2026",
+    "Code acte : DENT-CONS",
+    "Quantité : 1",
+    "P.U. : 19 000 Ar",
+    "Total : 19 000 Ar",
+]
+
+
+@pytest.fixture
+def base_indisponible(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La resolution est OPTIONNELLE : sans base, on garde les valeurs brutes."""
+
+    @contextmanager
+    def _indisponible():
+        raise RuntimeError("base indisponible pour ce test")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(add_invoices, "session_scope", _indisponible)
+
+
+def test_detecter_format_reconnait_un_pdf(tmp_path: Path) -> None:
+    chemin = tmp_path / "facture_001.pdf"
+    chemin.write_bytes(_pdf(LIGNES_PDF))
+
+    assert detecter_format(chemin) == FORMAT_PDF
+
+
+def test_un_binaire_inconnu_ne_leve_plus_unicode_decode_error(tmp_path: Path) -> None:
+    """Un fichier binaire non reconnu est un refus nomme, pas une trace."""
+    chemin = tmp_path / "binaire.dat"
+    chemin.write_bytes(b"\xff\xfe\x00pas du texte")
+
+    with pytest.raises(FichierInvalideError, match="binaire non reconnu"):
+        detecter_format(chemin)
+
+
+def test_un_pdf_est_normalise_meme_sans_base(tmp_path: Path, base_indisponible: None) -> None:
+    """Le PDF produit le MEME payload que les autres formats.
+
+    La base est indisponible : les valeurs brutes sont conservees et c'est
+    l'API qui tranchera. L'extraction, elle, ne doit jamais echouer pour cela.
+    """
+    chemin = tmp_path / "facture_001.pdf"
+    donnees = _pdf(LIGNES_PDF)
+    chemin.write_bytes(donnees)
+
+    format_, factures = lire_fichier(chemin)
+
+    assert format_ == FORMAT_PDF
+    assert len(factures) == 1
+    facture = factures[0]
+    assert facture.facture_id == reference_deterministe(donnees)
+    assert facture.payload["assure_pseudonyme"] == "assr_Wv7VAUFiUXieeWwChWmGXB"
+    assert facture.payload["prestataire_id"] == "PRE-00155"
+    assert facture.payload["date_facture"] == "2026-10-20T00:00:00"
+    assert facture.payload["montant_total"] == 19000.0
+    assert facture.payload["lignes"][0]["code_acte"] == "DENT-CONS"
+
+
+def test_le_prestataire_impose_remplit_un_pdf_qui_n_en_porte_pas(
+    tmp_path: Path, base_indisponible: None
+) -> None:
+    sans_prestataire = [ligne for ligne in LIGNES_PDF if not ligne.startswith("Prestataire")]
+    chemin = tmp_path / "facture_sans_prestataire.pdf"
+    chemin.write_bytes(_pdf(sans_prestataire))
+
+    _, factures = lire_fichier(chemin, prestataire="PRE-00001")
+
+    assert factures[0].payload["prestataire_id"] == "PRE-00001"
+
+
+def _lot_json_valide(tmp_path: Path) -> Path:
+    contenu = [
+        {
+            "facture_id": "FAC-JSON-DOSSIER",
+            "assure_pseudonyme": "assr_Wv7VAUFiUXieeWwChWmGXB",
+            "prestataire_id": "PRE-00155",
+            "date_facture": "2026-10-18",
+            "lignes": [{"code_acte": "DENT-CONS", "quantite": 1, "montant_unitaire": 19000}],
+        }
+    ]
+    chemin = tmp_path / "lot.json"
+    chemin.write_text(json.dumps(contenu), encoding="utf-8")
+    return chemin
+
+
+def test_dry_run_isole_un_pdf_illisible_et_lit_le_json(
+    tmp_path: Path, base_indisponible: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un fichier fautif produit un echec ; les autres continuent.
+
+    Le dry-run ne doit PAS appeler l'API : `connecter` est piege, et le statut
+    des factures lues est `non_soumis`, pas `notee`.
+    """
+    _lot_json_valide(tmp_path)
+    (tmp_path / "facture_cassee.pdf").write_bytes(b"ceci n'est pas un PDF")
+    monkeypatch.setattr(
+        add_invoices,
+        "connecter",
+        lambda *args, **kwargs: pytest.fail("dry-run ne doit pas appeler l'API"),
+    )
+
+    lignes: list[str] = []
+    succes = executer(
+        [tmp_path],
+        api_core="http://test",
+        email="admin@predicare.local",
+        mot_de_passe="x",
+        flux=lignes.append,
+        dry_run=True,
+    )
+
+    assert succes is False
+    assert any("facture_cassee.pdf" in ligne for ligne in lignes)
+    assert any("Échecs          : 1" in ligne for ligne in lignes)
+    assert any("Non soumis      : 1" in ligne for ligne in lignes)
+
+
+def test_un_fichier_non_reconnu_ne_fait_plus_tomber_executer(
+    tmp_path: Path, base_indisponible: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Avant A.1, un binaire levait `UnicodeDecodeError` et tuait le lot."""
+    _lot_json_valide(tmp_path)
+    (tmp_path / "binaire.dat").write_bytes(b"\xff\xfe\x00pas du texte")
+    monkeypatch.setattr(
+        add_invoices,
+        "connecter",
+        lambda *args, **kwargs: pytest.fail("dry-run ne doit pas appeler l'API"),
+    )
+
+    lignes: list[str] = []
+    succes = executer(
+        [tmp_path],
+        api_core="http://test",
+        email="admin@predicare.local",
+        mot_de_passe="x",
+        flux=lignes.append,
+        dry_run=True,
+    )
+
+    assert succes is False
+    assert any("binaire.dat" in ligne and "binaire non reconnu" in ligne for ligne in lignes)
+    assert any("Non soumis      : 1" in ligne for ligne in lignes)
